@@ -1,0 +1,53 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: event-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/eventdb?createDatabaseIfNotExist=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+theclub:
+  time-zone: ${APP_TIME_ZONE:Asia/Kolkata}
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration: ${JWT_EXPIRATION:PT1H}
+  security:
+    internal-api-key: ${INTERNAL_API_KEY}
+  clients:
+    club-service:
+      url: ${CLUB_SERVICE_URL:}
+    user-service:
+      url: ${USER_SERVICE_URL:}
+    notification-service:
+      url: ${NOTIFICATION_SERVICE_URL:}
+  payments:
+    provider: ${PAYMENT_PROVIDER:mock}
+    mock-secret: ${PAYMENT_MOCK_SECRET:mock-secret}
+    razorpay:
+      key-id: ${RAZORPAY_KEY_ID:}
+      key-secret: ${RAZORPAY_KEY_SECRET:}
+  checkin:
+    opens-before: ${CHECKIN_OPENS_BEFORE:PT6H}
+    closes-after: ${CHECKIN_CLOSES_AFTER:PT12H}
+  points:
+    events-per-star: ${POINTS_EVENTS_PER_STAR:5}

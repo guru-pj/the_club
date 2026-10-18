@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:authdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+eureka:
+  client:
+    enabled: false
+
+theclub:
+  jwt:
+    secret: test-secret-that-is-at-least-32-bytes-long!!
+  security:
+    internal-api-key: test-internal-key

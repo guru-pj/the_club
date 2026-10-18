@@ -32,39 +32,43 @@ then
 fi
 
 # Function: Build all services with Maven
+# The root pom builds common-lib first, then every service that depends on it.
 build_services() {
     echo -e "${GREEN}🔧 Building all microservices with Maven...${NC}"
-    for dir in user-service auth-service activity-service gateway-service discovery-service config-service
-    do
-        if [ -d "$dir" ]; then
-            echo -e "${YELLOW}➡️ Building $dir...${NC}"
-            cd $dir || exit
-            mvn clean package -DskipTests
-            cd ..
-        else
-            echo -e "${RED}⚠️ Directory $dir not found, skipping...${NC}"
-        fi
-    done
+    mvn clean install -DskipTests || exit 1
 }
+
+# Use the Compose v2 plugin when available, fall back to the standalone binary
+if docker compose version &> /dev/null; then
+    COMPOSE="docker compose"
+else
+    COMPOSE="docker-compose"
+fi
+
+# Create .env from the template on first run
+if [ ! -f .env ]; then
+    echo -e "${YELLOW}📝 No .env found, copying enviroinment_variables.env -> .env${NC}"
+    cp enviroinment_variables.env .env
+fi
 
 # Function: Build Docker images
 build_docker() {
     echo -e "${GREEN}🐳 Building Docker images...${NC}"
-    docker-compose build
+    $COMPOSE build
 }
 
 # Function: Start containers
 start_containers() {
     echo -e "${GREEN}🚀 Starting all containers...${NC}"
-    docker-compose up -d
+    $COMPOSE up -d
     echo -e "${YELLOW}📜 Showing live logs... (Press CTRL + C to stop viewing)${NC}"
-    docker-compose logs -f
+    $COMPOSE logs -f
 }
 
 # Function: Stop containers
 stop_containers() {
     echo -e "${RED}🛑 Stopping and removing all containers...${NC}"
-    docker-compose down
+    $COMPOSE down
 }
 
 # Function: Full rebuild (clean build + docker rebuild + start)

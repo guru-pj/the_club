@@ -31,48 +31,11 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-:: Function: Build all services
-:build_services
-echo 🔧 Building all microservices with Maven...
-for %%d in (user-service auth-service activity-service gateway-service discovery-service config-service) do (
-    if exist %%d (
-        echo ➡️ Building %%d...
-        pushd %%d
-        mvn clean package -DskipTests
-        popd
-    ) else (
-        echo ⚠️ Directory %%d not found, skipping...
-    )
+:: Create .env from the template on first run
+if not exist .env (
+    echo 📝 No .env found, copying enviroinment_variables.env to .env
+    copy enviroinment_variables.env .env >nul
 )
-goto :eof
-
-:: Function: Build Docker images
-:build_docker
-echo 🐳 Building Docker images...
-docker-compose build
-goto :eof
-
-:: Function: Start containers
-:start_containers
-echo 🚀 Starting all containers...
-docker-compose up -d
-echo 📜 Showing live logs... (Press CTRL + C to stop viewing)
-docker-compose logs -f
-goto :eof
-
-:: Function: Stop containers
-:stop_containers
-echo 🛑 Stopping and removing all containers...
-docker-compose down
-goto :eof
-
-:: Function: Full rebuild
-:rebuild_all
-echo 🔁 Full rebuild initiated...
-call :build_services
-call :build_docker
-call :start_containers
-goto :eof
 
 :: Parse command arguments
 if "%1"=="" (
@@ -100,3 +63,40 @@ if /i "%1"=="rebuild" (
 echo Unknown command: %1
 echo Usage: project-setup.bat {up^|down^|rebuild}
 exit /b 1
+
+:: Function: Build all services
+:: The root pom builds common-lib first, then every service that depends on it.
+:build_services
+echo 🔧 Building all microservices with Maven...
+call mvn clean install -DskipTests
+if %errorlevel% neq 0 exit /b 1
+goto :eof
+
+:: Function: Build Docker images
+:build_docker
+echo 🐳 Building Docker images...
+docker compose build
+goto :eof
+
+:: Function: Start containers
+:start_containers
+echo 🚀 Starting all containers...
+docker compose up -d
+echo 📜 Showing live logs... (Press CTRL + C to stop viewing)
+docker compose logs -f
+goto :eof
+
+:: Function: Stop containers
+:stop_containers
+echo 🛑 Stopping and removing all containers...
+docker compose down
+goto :eof
+
+:: Function: Full rebuild
+:rebuild_all
+echo 🔁 Full rebuild initiated...
+call :build_services
+call :build_docker
+call :start_containers
+goto :eof
+

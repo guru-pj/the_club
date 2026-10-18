@@ -1,0 +1,202 @@
+package com.theclub.eventservice.service;
+
+import com.theclub.common.security.AuthenticatedUser;
+import com.theclub.common.web.ApiException;
+import com.theclub.eventservice.dto.CreateEventRequest;
+import com.theclub.eventservice.dto.EventResponse;
+import com.theclub.eventservice.dto.PagedResponse;
+import com.theclub.eventservice.dto.RegistrationWindowRequest;
+import com.theclub.eventservice.dto.UpdateEventRequest;
+import com.theclub.eventservice.dto.UserEventRegistration;
+import com.theclub.eventservice.model.Event;
+import com.theclub.eventservice.model.EventStatus;
+import com.theclub.eventservice.model.Registration;
+import com.theclub.eventservice.model.RegistrationStatus;
+import com.theclub.eventservice.repository.EventRepository;
+import com.theclub.eventservice.repository.RegistrationRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+@Service
+public class EventService {
+
+    static final Set<RegistrationStatus> ATTENDING = EnumSet.of(RegistrationStatus.CONFIRMED, RegistrationStatus.CHECKED_IN);
+    private static final UUID NOBODY = new UUID(0, 0);
+    private static final int MAX_PAGE_SIZE = 100;
+
+    private final EventRepository events;
+    private final RegistrationRepository registrations;
+    private final ClubAccess clubAccess;
+    private final ConfirmationNotifier notifier;
+    private final Clock clock;
+
+    public EventService(EventRepository events, RegistrationRepository registrations, ClubAccess clubAccess,
+                        ConfirmationNotifier notifier, Clock clock) {
+        this.events = events;
+        this.registrations = registrations;
+        this.clubAccess = clubAccess;
+        this.notifier = notifier;
+        this.clock = clock;
+    }
+
+    @Transactional
+    public EventResponse create(CreateEventRequest request, AuthenticatedUser caller) {
+        clubAccess.requireOwnerOrAdmin(request.clubId(), caller);
+        LocalDateTime now = LocalDateTime.now(clock);
+        Event event = new Event(request.clubId(), caller.id());
+        event.setTitle(request.title().trim());
+        event.setDescription(request.description());
+        event.setLocation(request.location());
+        event.setStartTime(request.startTime());
+        event.setRegistrationOpensAt(request.registrationOpensAt() != null ? request.registrationOpensAt() : now);
+        event.setRegistrationClosesAt(request.registrationClosesAt());
+        event.setCapacity(request.capacity());
+        if (request.price() != null) {
+            event.setPrice(request.price());
+        }
+        if (request.currency() != null) {
+            event.setCurrency(request.currency());
+        }
+        if (request.points() != null) {
+            event.setPoints(request.points());
+        }
+        EventRules.validate(event, now, true);
+        return view(events.save(event), caller.id());
+    }
+
+    @Transactional
+    public EventResponse update(UUID eventId, UpdateEventRequest request, AuthenticatedUser caller) {
+        Event event = requireManageable(eventId, caller);
+        LocalDateTime now = LocalDateTime.now(clock);
+        boolean startChanged = request.startTime() != null && !request.startTime().equals(event.getStartTime());
+        if (request.title() != null) {
+            event.setTitle(request.title().trim());
+        }
+        if (request.description() != null) {
+            event.setDescription(request.description());
+        }
+        if (request.location() != null) {
+            event.setLocation(request.location());
+        }
+        if (request.startTime() != null) {
+            event.setStartTime(request.startTime());
+        }
+        if (request.registrationOpensAt() != null) {
+            event.setRegistrationOpensAt(request.registrationOpensAt());
+        }
+        if (request.registrationClosesAt() != null) {
+            event.setRegistrationClosesAt(request.registrationClosesAt());
+        }
+        if (request.capacity() != null) {
+            long taken = spotsTaken(event.getId(), now);
+            if (request.capacity() < taken) {
+                throw ApiException.conflict("capacity cannot be lower than the " + taken + " current registrations");
+            }
+            event.setCapacity(request.capacity());
+        }
+        if (request.price() != null) {
+            event.setPrice(request.price());
+        }
+        if (request.currency() != null) {
+            event.setCurrency(request.currency());
+        }
+        if (request.points() != null) {
+            event.setPoints(request.points());
+        }
+        EventRules.validate(event, now, startChanged);
+        return view(event, caller.id());
+    }
+
+    @Transactional
+    public EventResponse updateRegistrationWindow(UUID eventId, RegistrationWindowRequest request,
+                                                  AuthenticatedUser caller) {
+        Event event = requireManageable(eventId, caller);
+        event.setRegistrationOpensAt(request.registrationOpensAt());
+        event.setRegistrationClosesAt(request.registrationClosesAt());
+        EventRules.validate(event, LocalDateTime.now(clock), false);
+        return view(event, caller.id());
+    }
+
+    @Transactional
+    public EventResponse cancel(UUID eventId, AuthenticatedUser caller) {
+        Event event = requireManageable(eventId, caller);
+        event.setStatus(EventStatus.CANCELLED);
+        List<UUID> affected = registrations.findByEventIdAndStatusIn(eventId,
+                        EnumSet.of(RegistrationStatus.CONFIRMED, RegistrationStatus.PENDING_PAYMENT))
+                .stream().map(Registration::getUserId).toList();
+        notifier.eventCancelled(event, affected);
+        return view(event, caller.id());
+    }
+
+    @Transactional(readOnly = true)
+    public EventResponse get(UUID eventId, AuthenticatedUser caller) {
+        return view(find(eventId), caller.id());
+    }
+
+    @Transactional(readOnly = true)
+    public Event find(UUID eventId) {
+        return events.findById(eventId).orElseThrow(() -> ApiException.notFound("Event not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<EventResponse> listByClub(UUID clubId, boolean upcoming, int page, int size,
+                                                   AuthenticatedUser caller) {
+        int pageSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
+        PageRequest pageable = PageRequest.of(Math.max(page, 0), pageSize,
+                upcoming ? Sort.by("startTime").ascending() : Sort.by("startTime").descending());
+        Page<Event> result = upcoming
+                ? events.findByClubIdAndStartTimeGreaterThanEqual(clubId, LocalDateTime.now(clock), pageable)
+                : events.findByClubId(clubId, pageable);
+        List<EventResponse> items = result.getContent().stream().map(e -> view(e, caller.id())).toList();
+        return new PagedResponse<>(items, pageable.getPageNumber(), pageSize, result.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserEventRegistration> registrationsOf(UUID userId) {
+        List<Registration> mine = registrations.findByUserIdOrderByRegisteredAtDesc(userId);
+        Map<UUID, Event> byId = events.findAllById(mine.stream().map(Registration::getEventId).toList()).stream()
+                .collect(Collectors.toMap(Event::getId, Function.identity()));
+        return mine.stream()
+                .filter(r -> byId.containsKey(r.getEventId()))
+                .map(r -> {
+                    Event e = byId.get(r.getEventId());
+                    return new UserEventRegistration(r.getId(), r.getStatus(), r.getRegisteredAt(), r.getCheckedInAt(),
+                            e.getId(), e.getClubId(), e.getTitle(), e.getStartTime(), e.getLocation(), e.getStatus());
+                })
+                .toList();
+    }
+
+    private Event requireManageable(UUID eventId, AuthenticatedUser caller) {
+        Event event = find(eventId);
+        clubAccess.requireOwnerOrAdmin(event.getClubId(), caller);
+        if (event.getStatus() == EventStatus.CANCELLED) {
+            throw ApiException.conflict("Event is cancelled");
+        }
+        return event;
+    }
+
+    private long spotsTaken(UUID eventId, LocalDateTime now) {
+        return registrations.countSpotsTaken(eventId, NOBODY, now.minus(RegistrationService.PAYMENT_HOLD));
+    }
+
+    private EventResponse view(Event event, UUID callerId) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        long registered = registrations.countByEventIdAndStatusIn(event.getId(), ATTENDING);
+        RegistrationStatus mine = registrations.findByEventIdAndUserId(event.getId(), callerId)
+                .map(Registration::getStatus).orElse(null);
+        return EventResponse.of(event, registered, spotsTaken(event.getId(), now), event.isRegistrationOpen(now), mine);
+    }
+}
