@@ -10,6 +10,7 @@ import com.theclub.eventservice.model.PointsLedgerEntry;
 import com.theclub.eventservice.model.Registration;
 import com.theclub.eventservice.model.RegistrationStatus;
 import com.theclub.eventservice.repository.EventRepository;
+import com.theclub.eventservice.repository.PaymentRepository;
 import com.theclub.eventservice.repository.PointsLedgerRepository;
 import com.theclub.eventservice.repository.RegistrationRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +49,8 @@ class CheckInServiceTest {
     @Mock
     PointsLedgerRepository ledger;
     @Mock
+    PaymentRepository payments;
+    @Mock
     ClubAccess clubAccess;
     @Mock
     NameResolver names;
@@ -61,7 +64,7 @@ class CheckInServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new CheckInService(events, registrations, ledger, clubAccess, names, new CheckInProperties(null, null), CLOCK);
+        service = new CheckInService(events, registrations, ledger, payments, clubAccess, names, new CheckInProperties(null, null), CLOCK);
         event = TestData.event(clubId, ownerId);
         event.setStartTime(NOW.plusHours(1));
         event.setPoints(15);

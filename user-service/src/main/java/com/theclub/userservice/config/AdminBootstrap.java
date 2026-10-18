@@ -44,10 +44,11 @@ public class AdminBootstrap implements ApplicationRunner {
             return;
         }
         String normalized = email.trim().toLowerCase(Locale.ROOT);
-        if (users.existsByEmail(normalized)) {
-            return;
-        }
-        users.save(new User("Admin", normalized, passwordEncoder.encode(password), EnumSet.of(Role.USER, Role.ADMIN)));
-        log.info("Created bootstrap admin {}", normalized);
+        users.findByEmail(normalized).ifPresentOrElse(existing -> existing.setEmailVerified(true), () -> {
+            User admin = new User("Admin", normalized, passwordEncoder.encode(password), EnumSet.of(Role.USER, Role.ADMIN));
+            admin.setEmailVerified(true);
+            users.save(admin);
+            log.info("Created bootstrap admin {}", normalized);
+        });
     }
 }

@@ -1,11 +1,12 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:notificationdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1
     username: sa
     password:
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      # Flyway builds the schema; validate proves the migrations match the entities on every test run
+      ddl-auto: validate
 
 eureka:
   client:
@@ -13,6 +14,7 @@ eureka:
 
 theclub:
   jwt:
-    secret: test-secret-that-is-at-least-32-bytes-long!!
+    private-key: classpath:jwt-test-private.pem
+    public-key: classpath:jwt-test-public.pem
   security:
     internal-api-key: test-internal-key

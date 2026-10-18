@@ -1,6 +1,6 @@
 package com.theclub.activityservice.strava;
 
-import com.theclub.common.security.JwtProperties;
+import com.theclub.common.security.SecurityProperties;
 import com.theclub.common.web.ApiException;
 import org.springframework.stereotype.Component;
 
@@ -17,18 +17,24 @@ import java.util.UUID;
 /**
  * Signs the OAuth "state" parameter so the public callback can trust which user started the connect flow.
  * Format: base64url(userId:expiryEpochSeconds) "." base64url(HMAC-SHA256(payload)).
+ * The HMAC key is derived from the internal API key, so it is a server-only secret with a dedicated purpose.
  */
 @Component
 public class StravaStateSigner {
 
     static final Duration VALIDITY = Duration.ofMinutes(10);
     private static final String ALGORITHM = "HmacSHA256";
+    private static final String KEY_PURPOSE = "strava-oauth-state";
 
     private final byte[] key;
     private final Clock clock;
 
-    public StravaStateSigner(JwtProperties jwtProperties, Clock clock) {
-        this.key = jwtProperties.secret().getBytes(StandardCharsets.UTF_8);
+    public StravaStateSigner(SecurityProperties securityProperties, Clock clock) {
+        String secret = securityProperties.internalApiKey();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("theclub.security.internal-api-key must be configured to sign Strava OAuth state");
+        }
+        this.key = hmac(secret.getBytes(StandardCharsets.UTF_8), KEY_PURPOSE);
         this.clock = clock;
     }
 
@@ -74,6 +80,10 @@ public class StravaStateSigner {
     }
 
     private byte[] hmac(String payload) {
+        return hmac(key, payload);
+    }
+
+    private static byte[] hmac(byte[] key, String payload) {
         try {
             Mac mac = Mac.getInstance(ALGORITHM);
             mac.init(new SecretKeySpec(key, ALGORITHM));

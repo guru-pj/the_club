@@ -60,6 +60,7 @@ class RegistrationServiceTest {
     void setUp() {
         service = new RegistrationService(events, registrations, clubAccess, paymentService, new TicketIssuer(),
                 notifier, new QrCodeService(), CLOCK);
+        when(paymentService.pendingHold()).thenReturn(java.time.Duration.ofMinutes(15));
         event = TestData.event(clubId, UUID.randomUUID());
         when(events.findById(event.getId())).thenReturn(Optional.of(event));
         when(events.findByIdForUpdate(event.getId())).thenReturn(Optional.of(event));

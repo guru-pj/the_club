@@ -48,6 +48,8 @@ class EventServiceTest {
     @Mock
     ClubAccess clubAccess;
     @Mock
+    PaymentService paymentService;
+    @Mock
     ConfirmationNotifier notifier;
 
     EventService service;
@@ -57,7 +59,8 @@ class EventServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new EventService(events, registrations, clubAccess, notifier, CLOCK);
+        service = new EventService(events, registrations, clubAccess, notifier, paymentService, CLOCK);
+        when(paymentService.pendingHold()).thenReturn(java.time.Duration.ofMinutes(15));
         when(events.save(any(Event.class))).thenAnswer(inv -> inv.getArgument(0));
         when(clubAccess.requireOwnerOrAdmin(eq(clubId), any())).thenReturn(new ClubInfo(clubId, "Chennai Runners", ownerId, 3));
     }

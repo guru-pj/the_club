@@ -1,156 +1,276 @@
-# Usage: cp enviroinment_variables.env .env && mvn clean install -DskipTests && docker compose up -d --build
-# (or simply ./project-setup.sh up). Open the web app at http://localhost:${WEB_APP_PORT:-3000}
+# ============================================================
+# The Club — production-like stack.
+#
+# Only the web app (WEB_APP_PORT) is published to the network; the gateway is published on 127.0.0.1 for host
+# tooling (smoke tests). Databases, Eureka and the services are reachable only inside the compose network.
+#
+#   First time:  ./scripts/generate-secrets.sh && cp enviroinment_variables.env .env   (then edit .env)
+#   Build:       mvn clean install -DskipTests
+#   Production:  docker compose -f docker-compose.yml up -d --build
+#   Development: docker compose up -d --build      (also loads docker-compose.override.yml: ports, Mailpit, Trino)
+#
+# Secrets are files in ./secrets, mounted read-only into only the containers that need them. Spring reads them
+# through SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ — each file is mounted under the name of the
+# placeholder the service resolves (e.g. /run/secrets/JWT_PUBLIC_KEY for ${JWT_PUBLIC_KEY}).
+# See docs/PRODUCTION.md.
+# ============================================================
 
-x-spring-service: &spring-service
-  restart: unless-stopped
-  depends_on:
-    discovery-service:
-      condition: service_started
-
-x-common-env: &common-env
+x-spring-env: &spring-env
   SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+  SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
   LOGGING_LEVEL_ROOT: ${LOGGING_LEVEL_ROOT}
   APP_TIME_ZONE: ${APP_TIME_ZONE}
   EUREKA_SERVER_URL: ${EUREKA_SERVER_URL}
-  JWT_SECRET: ${JWT_SECRET}
   JWT_EXPIRATION: ${JWT_EXPIRATION}
-  INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+  JWT_KEY_ID: ${JWT_KEY_ID}
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+
+x-spring-service: &spring-service
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: 768M
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+x-depends-mysql: &depends-mysql
+  discovery-service:
+    condition: service_healthy
+  mysql:
+    condition: service_healthy
 
 services:
   # ===================== DATABASES =====================
   mysql:
-    image: mysql:8
+    image: mysql:8.0
     container_name: mysql
+    restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_USER_DB}
-    ports:
-      - "${MYSQL_PORT}:3306"
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql-root-password
+    secrets:
+      - mysql-root-password
+      - db-user-password
+      - db-auth-password
+      - db-club-password
+      - db-event-password
+      - db-notification-password
     volumes:
       - mysql_data:/var/lib/mysql
+      # creates one database + least-privilege user per service on first start
+      - ./docker/mysql/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_PASSWORD}"]
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$(cat /run/secrets/mysql-root-password)\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging: *logging
 
   postgres:
     image: postgres:15
     container_name: postgres
+    restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_ACTIVITY_DB}
-    ports:
-      - "${POSTGRES_PORT}:5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+      POSTGRES_DB: ${POSTGRES_ACTIVITY_DB}
+    secrets:
+      - postgres-password
+      - db-activity-password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # creates the activity-service role and hands it activitydb on first start
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_ACTIVITY_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *logging
 
-  trino:
-    image: trinodb/trino
-    container_name: trino
-    ports:
-      - "${TRINO_PORT}:8080"
+  # ===================== BACKUPS =====================
+  # Nightly dumps (BACKUP_SCHEDULE) into the 'backups' volume, kept BACKUP_RETENTION_DAYS. Each engine is dumped
+  # with its own image so client and server versions always match. On demand: ./scripts/backup.sh
+  db-backup-mysql:
+    image: mysql:8.0
+    container_name: db-backup-mysql
+    restart: unless-stopped
+    entrypoint: ["bash", "/opt/theclub/scripts/backup.sh", "schedule"]
+    environment:
+      BACKUP_ENGINE: mysql
+      MYSQL_HOST: mysql
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS}
+      TZ: ${APP_TIME_ZONE}
+    secrets:
+      - mysql-root-password
+    volumes:
+      - backups:/backups
+      - ./scripts:/opt/theclub/scripts:ro
     depends_on:
-      - mysql
-      - postgres
+      mysql:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *logging
 
-  # Local SMTP catcher for confirmation emails / QR tickets — UI at http://localhost:8025
-  mailpit:
-    image: axllent/mailpit
-    container_name: mailpit
-    ports:
-      - "8025:8025"
-      - "1025:1025"
+  db-backup-postgres:
+    image: postgres:15
+    container_name: db-backup-postgres
+    restart: unless-stopped
+    entrypoint: ["bash", "/opt/theclub/scripts/backup.sh", "schedule"]
+    environment:
+      BACKUP_ENGINE: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DATABASES: ${POSTGRES_ACTIVITY_DB}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS}
+      TZ: ${APP_TIME_ZONE}
+    secrets:
+      - postgres-password
+    volumes:
+      - backups:/backups
+      - ./scripts:/opt/theclub/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *logging
 
-  # ===================== SPRING SERVICES =====================
+  # ===================== PLATFORM =====================
   discovery-service:
+    <<: *spring-service
     build: ./discovery-service
     container_name: discovery-service
-    restart: unless-stopped
-    ports:
-      - "${DISCOVERY_SERVICE_PORT}:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   config-service:
+    <<: *spring-service
     build: ./config-service
     container_name: config-service
-    restart: unless-stopped
-    ports:
-      - "${CONFIG_SERVICE_PORT}:8888"
     environment:
-      - CONFIG_PROFILE=${CONFIG_PROFILE}
-      - CONFIG_GIT_URI=${CONFIG_GIT_URI}
+      CONFIG_PROFILE: ${CONFIG_PROFILE}
+      CONFIG_GIT_URI: ${CONFIG_GIT_URI}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   gateway-service:
     <<: *spring-service
     build: ./gateway-service
     container_name: gateway-service
     ports:
-      - "${GATEWAY_SERVICE_PORT}:8080"
+      # host-local only: public traffic must come through the web app's nginx, which sets the client IP headers
+      - "127.0.0.1:${GATEWAY_SERVICE_PORT}:8080"
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       EUREKA_SERVER_URL: ${EUREKA_SERVER_URL}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      GATEWAY_TRUST_FORWARDED_FOR: "true"
+      RATE_LIMIT_STRICT_PER_MINUTE: ${RATE_LIMIT_STRICT_PER_MINUTE}
+      RATE_LIMIT_GENERAL_PER_MINUTE: ${RATE_LIMIT_GENERAL_PER_MINUTE}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
+  # ===================== DOMAIN SERVICES =====================
   user-service:
     <<: *spring-service
     build: ./user-service
     container_name: user-service
-    ports:
-      - "${USER_SERVICE_PORT}:8081"
     environment:
-      <<: *common-env
-      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_USER_DB}?createDatabaseIfNotExist=true
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      <<: *spring-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/userdb
+      SPRING_DATASOURCE_USERNAME: theclub_user
       ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-    depends_on:
-      discovery-service:
-        condition: service_started
-      mysql:
-        condition: service_healthy
+      APP_BASE_URL: ${APP_BASE_URL}
+    secrets:
+      - source: jwt_public_key
+        target: JWT_PUBLIC_KEY
+      - source: internal_api_key
+        target: INTERNAL_API_KEY
+      - source: db-user-password
+        target: SPRING_DATASOURCE_PASSWORD
+      - source: admin-password
+        target: ADMIN_PASSWORD
+    depends_on: *depends-mysql
 
   auth-service:
     <<: *spring-service
     build: ./auth-service
     container_name: auth-service
-    ports:
-      - "${AUTH_SERVICE_PORT}:8082"
     environment:
-      <<: *common-env
-      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_AUTH_DB}?createDatabaseIfNotExist=true
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      <<: *spring-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/authdb
+      SPRING_DATASOURCE_USERNAME: theclub_auth
       JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
-    depends_on:
-      discovery-service:
-        condition: service_started
-      mysql:
-        condition: service_healthy
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION}
+    secrets:
+      - source: jwt_public_key
+        target: JWT_PUBLIC_KEY
+      - source: jwt_private_key
+        target: JWT_PRIVATE_KEY
+      - source: internal_api_key
+        target: INTERNAL_API_KEY
+      - source: db-auth-password
+        target: SPRING_DATASOURCE_PASSWORD
+    depends_on: *depends-mysql
 
   activity-service:
     <<: *spring-service
     build: ./activity-service
     container_name: activity-service
-    ports:
-      - "${ACTIVITY_SERVICE_PORT}:8083"
     environment:
-      <<: *common-env
-      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST}:5432/${POSTGRES_ACTIVITY_DB}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      <<: *spring-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_ACTIVITY_DB}
+      SPRING_DATASOURCE_USERNAME: theclub_activity
       STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
-      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
       STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI}
       STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN}
+    secrets:
+      - source: jwt_public_key
+        target: JWT_PUBLIC_KEY
+      - source: internal_api_key
+        target: INTERNAL_API_KEY
+      - source: db-activity-password
+        target: SPRING_DATASOURCE_PASSWORD
+      - source: strava-client-secret
+        target: STRAVA_CLIENT_SECRET
     depends_on:
       discovery-service:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
 
@@ -158,61 +278,66 @@ services:
     <<: *spring-service
     build: ./club-service
     container_name: club-service
-    ports:
-      - "${CLUB_SERVICE_PORT}:8084"
     environment:
-      <<: *common-env
-      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_CLUB_DB}?createDatabaseIfNotExist=true
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
-    depends_on:
-      discovery-service:
-        condition: service_started
-      mysql:
-        condition: service_healthy
+      <<: *spring-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/clubdb
+      SPRING_DATASOURCE_USERNAME: theclub_club
+    secrets:
+      - source: jwt_public_key
+        target: JWT_PUBLIC_KEY
+      - source: internal_api_key
+        target: INTERNAL_API_KEY
+      - source: db-club-password
+        target: SPRING_DATASOURCE_PASSWORD
+    depends_on: *depends-mysql
 
   event-service:
     <<: *spring-service
     build: ./event-service
     container_name: event-service
-    ports:
-      - "${EVENT_SERVICE_PORT}:8086"
     environment:
-      <<: *common-env
-      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_EVENT_DB}?createDatabaseIfNotExist=true
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      <<: *spring-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/eventdb
+      SPRING_DATASOURCE_USERNAME: theclub_event
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
-    depends_on:
-      discovery-service:
-        condition: service_started
-      mysql:
-        condition: service_healthy
+    secrets:
+      - source: jwt_public_key
+        target: JWT_PUBLIC_KEY
+      - source: internal_api_key
+        target: INTERNAL_API_KEY
+      - source: db-event-password
+        target: SPRING_DATASOURCE_PASSWORD
+      - source: razorpay-key-secret
+        target: RAZORPAY_KEY_SECRET
+      - source: razorpay-webhook-secret
+        target: RAZORPAY_WEBHOOK_SECRET
+    depends_on: *depends-mysql
 
   notification-service:
     <<: *spring-service
     build: ./notification-service
     container_name: notification-service
-    ports:
-      - "${NOTIFICATION_SERVICE_PORT}:8087"
     environment:
-      <<: *common-env
-      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_NOTIFICATION_DB}?createDatabaseIfNotExist=true
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      <<: *spring-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/notificationdb
+      SPRING_DATASOURCE_USERNAME: theclub_notification
       MAIL_ENABLED: ${MAIL_ENABLED}
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_FROM: ${MAIL_FROM}
-    depends_on:
-      discovery-service:
-        condition: service_started
-      mysql:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_STARTTLS}
+    secrets:
+      - source: jwt_public_key
+        target: JWT_PUBLIC_KEY
+      - source: internal_api_key
+        target: INTERNAL_API_KEY
+      - source: db-notification-password
+        target: SPRING_DATASOURCE_PASSWORD
+      - source: smtp-password
+        target: MAIL_PASSWORD
+    depends_on: *depends-mysql
 
   # ===================== WEB APP =====================
   web-app:
@@ -220,10 +345,51 @@ services:
     container_name: web-app
     restart: unless-stopped
     ports:
-      - "${WEB_APP_PORT}:80"
+      - "${WEB_APP_PORT}:8080"
     depends_on:
-      - gateway-service
+      gateway-service:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *logging
+
+secrets:
+  jwt_public_key:
+    file: ./secrets/theclub.jwt.public-key
+  jwt_private_key:
+    file: ./secrets/theclub.jwt.private-key
+  internal_api_key:
+    file: ./secrets/theclub.security.internal-api-key
+  mysql-root-password:
+    file: ./secrets/mysql-root-password
+  postgres-password:
+    file: ./secrets/postgres-password
+  db-user-password:
+    file: ./secrets/db-user-password
+  db-auth-password:
+    file: ./secrets/db-auth-password
+  db-club-password:
+    file: ./secrets/db-club-password
+  db-event-password:
+    file: ./secrets/db-event-password
+  db-notification-password:
+    file: ./secrets/db-notification-password
+  db-activity-password:
+    file: ./secrets/db-activity-password
+  admin-password:
+    file: ./secrets/admin-password
+  smtp-password:
+    file: ./secrets/smtp-password
+  razorpay-key-secret:
+    file: ./secrets/razorpay-key-secret
+  razorpay-webhook-secret:
+    file: ./secrets/razorpay-webhook-secret
+  strava-client-secret:
+    file: ./secrets/strava-client-secret
 
 volumes:
   mysql_data:
   postgres_data:
+  backups:

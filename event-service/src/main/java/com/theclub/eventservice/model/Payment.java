@@ -21,7 +21,11 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "payments", indexes = @Index(name = "idx_payment_registration_id", columnList = "registration_id"))
+@Table(name = "payments", indexes = {
+        @Index(name = "idx_payment_registration_id", columnList = "registration_id"),
+        @Index(name = "idx_payment_event_id", columnList = "event_id"),
+        @Index(name = "uk_payment_provider_order_id", columnList = "provider_order_id", unique = true),
+        @Index(name = "idx_payment_status_created_at", columnList = "status, created_at")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -64,6 +68,15 @@ public class Payment {
     @Column(nullable = false, length = 20)
     private PaymentStatus status = PaymentStatus.CREATED;
 
+    @Column(name = "refund_id", length = 100)
+    private String refundId;
+
+    @Column(name = "refund_reason", length = 255)
+    private String refundReason;
+
+    @Column(name = "refunded_at")
+    private LocalDateTime refundedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -84,7 +97,9 @@ public class Payment {
 
     @PrePersist
     void onCreate() {
-        createdAt = LocalDateTime.now();
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
         updatedAt = createdAt;
     }
 

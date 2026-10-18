@@ -2,6 +2,7 @@ package com.theclub.authservice.service;
 
 import com.theclub.authservice.client.UserCredentials;
 import com.theclub.authservice.client.UserServiceClient;
+import com.theclub.authservice.config.AuthProperties;
 import com.theclub.authservice.dto.TokenResponse;
 import com.theclub.authservice.model.AuthToken;
 import com.theclub.authservice.repository.AuthTokenRepository;
@@ -44,25 +45,29 @@ class AuthServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-01-01T00:00:00Z");
     private static final PasswordEncoder ENCODER = new BCryptPasswordEncoder(4);
-    private static final String HASH = ENCODER.encode("password123");
+    private static final String PASSWORD = "Str0ng-pass!";
+    private static final String HASH = ENCODER.encode(PASSWORD);
 
     @Mock
     UserServiceClient userClient;
     @Mock
     AuthTokenRepository tokens;
+    @Mock
+    LoginThrottle throttle;
 
     Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-    JwtProperties properties = new JwtProperties("test-secret-that-is-at-least-32-bytes-long!!",
-            Duration.ofMinutes(15), Duration.ofDays(14), null);
+    JwtProperties properties = new JwtProperties("classpath:jwt-test-private.pem", "classpath:jwt-test-public.pem",
+            null, null, Duration.ofMinutes(15), Duration.ofDays(14), null);
     JwtService jwtService = new JwtService(properties, clock);
+    AuthProperties authProperties = new AuthProperties(true, true, null);
     AuthService authService;
 
     UserCredentials user = new UserCredentials(UUID.randomUUID(), "Asha", "asha@example.com", HASH,
-            Set.of("USER"), true);
+            Set.of("USER"), true, true);
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userClient, tokens, jwtService, properties, ENCODER, clock);
+        authService = new AuthService(userClient, tokens, throttle, jwtService, properties, authProperties, ENCODER, clock);
     }
 
     private static FeignException.NotFound notFound() {
@@ -70,23 +75,25 @@ class AuthServiceTest {
         return new FeignException.NotFound("not found", request, null, Map.of());
     }
 
-    private static void assertUnauthorized(Runnable action) {
+    private static void assertStatus(Runnable action, HttpStatus status) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiException.class,
-                e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+                e -> assertThat(e.getStatus()).isEqualTo(status));
     }
 
     @Test
-    void loginIssuesTokensAndStoresHashedRefreshToken() {
+    void loginIssuesRs256TokenAndStoresHashedRefreshToken() {
         when(userClient.getByEmail("asha@example.com")).thenReturn(user);
         when(tokens.save(any(AuthToken.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        TokenResponse response = authService.login(" Asha@Example.com ", "password123");
+        TokenResponse response = authService.login(" Asha@Example.com ", PASSWORD);
 
         AuthenticatedUser parsed = jwtService.parse(response.accessToken());
         assertThat(parsed.id()).isEqualTo(user.id());
         assertThat(parsed.roles()).containsExactly("USER");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(900);
+        verify(throttle).ensureNotLocked("asha@example.com");
+        verify(throttle).recordSuccess("asha@example.com");
 
         ArgumentCaptor<AuthToken> saved = ArgumentCaptor.forClass(AuthToken.class);
         verify(tokens).save(saved.capture());
@@ -98,23 +105,49 @@ class AuthServiceTest {
     }
 
     @Test
-    void wrongPasswordIsUnauthorized() {
+    void wrongPasswordRecordsFailure() {
         when(userClient.getByEmail("asha@example.com")).thenReturn(user);
-        assertUnauthorized(() -> authService.login("asha@example.com", "wrong-password"));
+        assertStatus(() -> authService.login("asha@example.com", "wrong-password"), HttpStatus.UNAUTHORIZED);
+        verify(throttle).recordFailure("asha@example.com");
         verify(tokens, never()).save(any());
     }
 
     @Test
     void inactiveUserIsUnauthorized() {
-        UserCredentials inactive = new UserCredentials(user.id(), user.name(), user.email(), HASH, user.roles(), false);
+        UserCredentials inactive = new UserCredentials(user.id(), user.name(), user.email(), HASH, user.roles(), false, true);
         when(userClient.getByEmail("asha@example.com")).thenReturn(inactive);
-        assertUnauthorized(() -> authService.login("asha@example.com", "password123"));
+        assertStatus(() -> authService.login("asha@example.com", PASSWORD), HttpStatus.UNAUTHORIZED);
     }
 
     @Test
-    void unknownEmailIsUnauthorized() {
+    void unknownEmailIsUnauthorizedAndCounted() {
         when(userClient.getByEmail("ghost@example.com")).thenThrow(notFound());
-        assertUnauthorized(() -> authService.login("ghost@example.com", "password123"));
+        assertStatus(() -> authService.login("ghost@example.com", PASSWORD), HttpStatus.UNAUTHORIZED);
+        verify(throttle).recordFailure("ghost@example.com");
+    }
+
+    @Test
+    void unverifiedEmailIsRejectedWithCode() {
+        UserCredentials unverified = new UserCredentials(user.id(), user.name(), user.email(), HASH, user.roles(), true, false);
+        when(userClient.getByEmail("asha@example.com")).thenReturn(unverified);
+
+        assertThatThrownBy(() -> authService.login("asha@example.com", PASSWORD))
+                .isInstanceOfSatisfying(ApiException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                    assertThat(e.getCode()).isEqualTo(AuthService.EMAIL_NOT_VERIFIED);
+                });
+        verify(tokens, never()).save(any());
+    }
+
+    @Test
+    void unverifiedEmailMayLogInWhenVerificationIsNotRequired() {
+        AuthService lenient = new AuthService(userClient, tokens, throttle, jwtService, properties,
+                new AuthProperties(true, false, null), ENCODER, clock);
+        UserCredentials unverified = new UserCredentials(user.id(), user.name(), user.email(), HASH, user.roles(), true, false);
+        when(userClient.getByEmail("asha@example.com")).thenReturn(unverified);
+        when(tokens.save(any(AuthToken.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(lenient.login("asha@example.com", PASSWORD).accessToken()).isNotBlank();
     }
 
     @Test
@@ -123,7 +156,7 @@ class AuthServiceTest {
         AuthToken stored = new AuthToken(user.id(), AuthService.hash(oldToken),
                 LocalDateTime.ofInstant(NOW, ZoneOffset.UTC).plusDays(1), LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
         UserCredentials promoted = new UserCredentials(user.id(), user.name(), user.email(), HASH,
-                Set.of("USER", "CLUB_OWNER"), true);
+                Set.of("USER", "CLUB_OWNER"), true, true);
         when(tokens.findByRefreshTokenHash(AuthService.hash(oldToken))).thenReturn(Optional.of(stored));
         when(userClient.getById(user.id())).thenReturn(promoted);
         when(tokens.save(any(AuthToken.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -142,14 +175,21 @@ class AuthServiceTest {
                 LocalDateTime.ofInstant(NOW, ZoneOffset.UTC).minusSeconds(1), LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
         when(tokens.findByRefreshTokenHash(AuthService.hash(oldToken))).thenReturn(Optional.of(stored));
 
-        assertUnauthorized(() -> authService.refresh(oldToken));
+        assertStatus(() -> authService.refresh(oldToken), HttpStatus.UNAUTHORIZED);
         verify(tokens).delete(stored);
         verify(userClient, never()).getById(any());
     }
 
     @Test
-    void unknownRefreshTokenIsRejected() {
+    void unknownOrMissingRefreshTokenIsRejected() {
         when(tokens.findByRefreshTokenHash(any())).thenReturn(Optional.empty());
-        assertUnauthorized(() -> authService.refresh("nope"));
+        assertStatus(() -> authService.refresh("nope"), HttpStatus.UNAUTHORIZED);
+        assertStatus(() -> authService.refresh(null), HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void revokeAllSessionsDeletesEveryRefreshTokenOfTheUser() {
+        when(tokens.deleteByUserId(user.id())).thenReturn(3);
+        assertThat(authService.revokeAllSessions(user.id())).isEqualTo(3);
     }
 }

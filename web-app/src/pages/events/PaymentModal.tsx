@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { paymentsApi } from '../../api/endpoints'
 import type { CheckoutInfo, ClubEvent, Payment } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
-import { Button, ErrorMessage, Modal } from '../../components/ui'
+import { Button, ErrorMessage, Modal, Spinner } from '../../components/ui'
+import { isTransientError } from '../../lib/authErrors'
 import { formatDateTime, formatMoney } from '../../lib/format'
+import { pollPayment } from './pollPayment'
 import { loadRazorpay, randomId } from './shared'
 
 interface Props {
@@ -18,11 +20,29 @@ export function PaymentModal({ open, event, checkout, onClose, onPaid }: Props) 
   const { user } = useAuth()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>()
+  const [confirming, setConfirming] = useState(false)
+  const unmounted = useRef(false)
   const amount = formatMoney(checkout.amount, checkout.currency)
 
+  useEffect(() => () => { unmounted.current = true }, [])
+
+  /**
+   * The provider has taken the money at this point. If our confirm call fails (network, server restart), the
+   * Razorpay webhook / reconciliation job still settles the payment server-side, so wait for that instead.
+   */
   async function confirm(providerPaymentId: string, signature: string) {
-    const payment = await paymentsApi.confirm(checkout.paymentId, providerPaymentId, signature)
-    onPaid(payment)
+    try {
+      onPaid(await paymentsApi.confirm(checkout.paymentId, providerPaymentId, signature))
+    } catch (e) {
+      if (!isTransientError(e)) throw e
+      setConfirming(true)
+      const settled = await pollPayment(() => paymentsApi.get(checkout.paymentId), { cancelled: () => unmounted.current })
+      if (unmounted.current) return
+      setConfirming(false)
+      if (settled?.status === 'SUCCEEDED') onPaid(settled)
+      else if (settled) throw new Error('The payment could not be completed. If you were charged, it will be refunded.')
+      else throw new Error("We're still confirming your payment. Check My tickets in a few minutes — you won't be charged twice.")
+    }
   }
 
   async function payMock() {
@@ -69,10 +89,10 @@ export function PaymentModal({ open, event, checkout, onClose, onPaid }: Props) 
   const isMock = checkout.provider === 'MOCK'
 
   return (
-    <Modal open={open} title="Complete payment" onClose={() => !busy && onClose()}
+    <Modal open={open} title="Complete payment" onClose={() => !busy && !confirming && onClose()}
            footer={<>
-             <Button variant="ghost" onClick={onClose} disabled={busy}>Not now</Button>
-             <Button onClick={isMock ? payMock : payRazorpay} loading={busy}>Pay {amount}</Button>
+             <Button variant="ghost" onClick={onClose} disabled={busy || confirming}>Not now</Button>
+             <Button onClick={isMock ? payMock : payRazorpay} loading={busy || confirming}>Pay {amount}</Button>
            </>}>
       <div className="stack">
         <div>
@@ -89,6 +109,11 @@ export function PaymentModal({ open, event, checkout, onClose, onPaid }: Props) 
           <div className="alert alert-warning">Test mode — no real money is charged. Click Pay to simulate a successful payment.</div>
         ) : (
           <div className="muted small">You'll complete the payment securely with Razorpay.</div>
+        )}
+        {confirming && (
+          <div className="alert alert-info row" role="status">
+            <Spinner small /> Payment received — confirming your registration…
+          </div>
         )}
         <ErrorMessage error={error} />
       </div>

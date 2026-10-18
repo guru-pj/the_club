@@ -41,14 +41,16 @@ public class EventService {
     private final RegistrationRepository registrations;
     private final ClubAccess clubAccess;
     private final ConfirmationNotifier notifier;
+    private final PaymentService paymentService;
     private final Clock clock;
 
     public EventService(EventRepository events, RegistrationRepository registrations, ClubAccess clubAccess,
-                        ConfirmationNotifier notifier, Clock clock) {
+                        ConfirmationNotifier notifier, PaymentService paymentService, Clock clock) {
         this.events = events;
         this.registrations = registrations;
         this.clubAccess = clubAccess;
         this.notifier = notifier;
+        this.paymentService = paymentService;
         this.clock = clock;
     }
 
@@ -138,6 +140,9 @@ public class EventService {
                         EnumSet.of(RegistrationStatus.CONFIRMED, RegistrationStatus.PENDING_PAYMENT))
                 .stream().map(Registration::getUserId).toList();
         notifier.eventCancelled(event, affected);
+        if (!event.isFree()) {
+            paymentService.refundAllForCancelledEvent(event);
+        }
         return view(event, caller.id());
     }
 
@@ -189,7 +194,7 @@ public class EventService {
     }
 
     private long spotsTaken(UUID eventId, LocalDateTime now) {
-        return registrations.countSpotsTaken(eventId, NOBODY, now.minus(RegistrationService.PAYMENT_HOLD));
+        return registrations.countSpotsTaken(eventId, NOBODY, now.minus(paymentService.pendingHold()));
     }
 
     private EventResponse view(Event event, UUID callerId) {

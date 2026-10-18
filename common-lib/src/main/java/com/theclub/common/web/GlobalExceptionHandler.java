@@ -28,8 +28,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
-    public ProblemDetail handleApi(ApiException ex) {
-        return ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+    public ResponseEntity<ProblemDetail> handleApi(ApiException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(ex.getStatus(), ex.getMessage());
+        if (ex.getCode() != null) {
+            problem.setProperty("code", ex.getCode());
+        }
+        if (!ex.getFieldErrors().isEmpty()) {
+            problem.setProperty("errors", ex.getFieldErrors());
+        }
+        HttpHeaders headers = new HttpHeaders();
+        ex.getHeaders().forEach(headers::add);
+        return ResponseEntity.status(ex.getStatus()).headers(headers).body(problem);
     }
 
     @ExceptionHandler(AccessDeniedException.class)

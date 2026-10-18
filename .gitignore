@@ -79,3 +79,7 @@ backup/
 # - Protects your secrets (.env).
 # - Safe for all microservices under 'the-club'.
 # ==============================================
+
+# Deployment secrets (scripts/generate-secrets.sh) and local database dumps
+secrets/
+backups/

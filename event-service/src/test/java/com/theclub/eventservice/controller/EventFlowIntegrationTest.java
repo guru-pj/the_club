@@ -11,7 +11,10 @@ import com.theclub.eventservice.client.ClubClient.Membership;
 import com.theclub.eventservice.client.NotificationClient;
 import com.theclub.eventservice.client.NotificationClient.NotificationRequest;
 import com.theclub.eventservice.client.UserClient;
+import com.theclub.eventservice.client.UserClient.UserDetails;
 import com.theclub.eventservice.client.UserClient.UserSummary;
+import com.theclub.eventservice.payment.MockPaymentGateway;
+import com.theclub.eventservice.payment.PaymentGateway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -27,6 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -37,6 +41,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -71,6 +76,8 @@ class EventFlowIntegrationTest {
     JwtService jwtService;
     @Autowired
     MutableClock clock;
+    @Autowired
+    PaymentGateway paymentGateway;
 
     @MockitoBean
     ClubClient clubClient;
@@ -267,5 +274,62 @@ class EventFlowIntegrationTest {
                 .andExpect(jsonPath("$.registrationOpen").value(true));
         mvc.perform(as(post("/api/v1/events/{id}/register", eventId), memberId, "USER"))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void webhookSettlesAPaymentTheClientNeverConfirmedAndOwnerCanRefund() throws Exception {
+        when(userClient.get(memberId)).thenReturn(new UserDetails(memberId, "Asha", "asha@example.com"));
+        String eventId = createEvent(",\"price\":349.50,\"capacity\":10");
+        JsonNode checkout = body(as(post("/api/v1/events/{id}/register", eventId), memberId, "USER"), 201).get("payment");
+        String paymentId = checkout.get("paymentId").asText();
+        String webhook = """
+                {"entity":"event","event":"payment.captured","payload":{"payment":{"entity":
+                {"id":"pay_wh_1","order_id":"%s","amount":34950,"currency":"INR","status":"captured"}}}}
+                """.formatted(checkout.get("providerOrderId").asText());
+        String signature = ((MockPaymentGateway) paymentGateway).signWebhook(webhook.getBytes(StandardCharsets.UTF_8));
+
+        // signature over a different body is rejected
+        mvc.perform(post("/api/v1/payments/webhooks/razorpay").contentType(MediaType.APPLICATION_JSON)
+                        .content(webhook.replace("34950", "1")).header("X-Razorpay-Signature", signature)
+                        .header("X-Razorpay-Event-Id", "evt_1"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(as(get("/api/v1/payments/{id}", paymentId), memberId, "USER"))
+                .andExpect(jsonPath("$.status").value("CREATED"));
+
+        // valid delivery needs no JWT; redelivery is a no-op
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(post("/api/v1/payments/webhooks/razorpay").contentType(MediaType.APPLICATION_JSON)
+                            .content(webhook).header("X-Razorpay-Signature", signature)
+                            .header("X-Razorpay-Event-Id", "evt_1"))
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(as(get("/api/v1/payments/{id}", paymentId), memberId, "USER"))
+                .andExpect(jsonPath("$.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.registrationStatus").value("CONFIRMED"));
+        ArgumentCaptor<NotificationRequest> confirmation = ArgumentCaptor.forClass(NotificationRequest.class);
+        verify(notificationClient, times(1)).create(confirmation.capture());
+        assertThat(confirmation.getValue().type()).isEqualTo("EVENT_REGISTRATION_CONFIRMED");
+        assertThat(confirmation.getValue().email().to()).isEqualTo("asha@example.com");
+
+        mvc.perform(as(get("/api/v1/events/{id}/registrations", eventId), ownerId, "USER", "CLUB_OWNER"))
+                .andExpect(jsonPath("$[0].paymentId").value(paymentId))
+                .andExpect(jsonPath("$[0].paymentStatus").value("SUCCEEDED"));
+
+        // refunds are for the club owner, not the member
+        mvc.perform(as(post("/api/v1/payments/{id}/refund", paymentId), memberId, "USER")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"please\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(post("/api/v1/payments/{id}/refund", paymentId), ownerId, "USER", "CLUB_OWNER")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Injured\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REFUNDED"))
+                .andExpect(jsonPath("$.refundReason").value("Injured"))
+                .andExpect(jsonPath("$.refundedAt").exists())
+                .andExpect(jsonPath("$.registrationStatus").value("CANCELLED"));
+        mvc.perform(as(post("/api/v1/payments/{id}/refund", paymentId), ownerId, "USER", "CLUB_OWNER"))
+                .andExpect(status().isConflict());
+        mvc.perform(as(get("/api/v1/events/{id}/registrations", eventId), ownerId, "USER", "CLUB_OWNER"))
+                .andExpect(jsonPath("$[0].status").value("CANCELLED"))
+                .andExpect(jsonPath("$[0].paymentStatus").value("REFUNDED"));
     }
 }

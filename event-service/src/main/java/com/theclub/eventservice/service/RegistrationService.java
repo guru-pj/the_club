@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
@@ -24,9 +23,6 @@ import java.util.UUID;
 
 @Service
 public class RegistrationService {
-
-    /** How long an unpaid registration holds a spot. */
-    public static final Duration PAYMENT_HOLD = Duration.ofMinutes(15);
 
     private final EventRepository events;
     private final RegistrationRepository registrations;
@@ -74,7 +70,7 @@ public class RegistrationService {
             throw ApiException.conflict("You are already registered for this event");
         }
         if (event.getCapacity() != null
-                && registrations.countSpotsTaken(eventId, caller.id(), now.minus(PAYMENT_HOLD)) >= event.getCapacity()) {
+                && registrations.countSpotsTaken(eventId, caller.id(), now.minus(paymentService.pendingHold())) >= event.getCapacity()) {
             throw ApiException.conflict("Event is full");
         }
         registration.setRegisteredAt(now);

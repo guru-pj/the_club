@@ -1,12 +1,20 @@
 #!/bin/bash
 # End-to-end smoke test of Phase 1 + Phase 2, entirely through the gateway.
-# Requires: curl, jq, a running stack (docker compose up -d), PAYMENT_PROVIDER=mock and
-# the bootstrap admin from .env. Safe to re-run: every run uses fresh emails and a new club.
+# Requires: curl, jq, a running development stack (docker compose up -d) with PAYMENT_PROVIDER=mock and
+# REQUIRE_EMAIL_VERIFICATION=false (the defaults in enviroinment_variables.env), and the bootstrap admin.
+# Safe to re-run: every run uses fresh emails and a new club.
+#   ./scripts/smoke-test.sh                      (admin password read from secrets/admin-password)
 #   GATEWAY_URL=http://localhost:8080 ADMIN_EMAIL=... ADMIN_PASSWORD=... ./scripts/smoke-test.sh
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 G=${GATEWAY_URL:-http://localhost:8080}/api/v1
+ADMIN_EMAIL=${ADMIN_EMAIL:-$(grep -sE '^ADMIN_EMAIL=' "$ROOT_DIR/.env" | tail -1 | cut -d= -f2-)}
 ADMIN_EMAIL=${ADMIN_EMAIL:-admin@theclub.local}
+if [ -z "${ADMIN_PASSWORD:-}" ] && [ -f "$ROOT_DIR/secrets/admin-password" ]; then
+  ADMIN_PASSWORD=$(cat "$ROOT_DIR/secrets/admin-password")
+fi
 ADMIN_PASSWORD=${ADMIN_PASSWORD:-change-me-admin}
-VERIFY_TOKEN=${STRAVA_WEBHOOK_VERIFY_TOKEN:-change-me-strava-verify-token}
+VERIFY_TOKEN=${STRAVA_WEBHOOK_VERIFY_TOKEN:-$(grep -sE '^STRAVA_WEBHOOK_VERIFY_TOKEN=' "$ROOT_DIR/.env" | tail -1 | cut -d= -f2-)}
+VERIFY_TOKEN=${VERIFY_TOKEN:-change-me-strava-verify-token}
 RUN=$(date +%s%N)
 fail() { echo "FAIL: $*"; exit 1; }
 req() { # method path token body -> prints body, sets CODE
@@ -19,12 +27,12 @@ START=$(date -d '+1 hour' +%Y-%m-%dT%H:%M:%S); OPENS=$(date -d '-1 minute' +%Y-%
 MONTH=$(date +%Y-%m)
 
 # --- Phase 1: signup/login
-req POST /users/register "" '{"name":"Owner Olu","email":"owner-'"$RUN"'@example.com","password":"password123"}'; expect 201 "register owner"
+req POST /users/register "" '{"name":"Owner Olu","email":"owner-'"$RUN"'@example.com","password":"Str0ng-pass!"}'; expect 201 "register owner"
 OWNER_ID=$(echo "$BODY" | jq -r .id)
-req POST /users/register "" '{"name":"Member Mia","email":"mia-'"$RUN"'@example.com","password":"password123"}'; expect 201 "register member"
+req POST /users/register "" '{"name":"Member Mia","email":"mia-'"$RUN"'@example.com","password":"Str0ng-pass!"}'; expect 201 "register member"
 MIA_ID=$(echo "$BODY" | jq -r .id)
 req POST /auth/login "" '{"email":"mia-'"$RUN"'@example.com","password":"wrongpass1"}'; expect 401 "bad password rejected"
-OT=$(login owner-$RUN@example.com password123); MT=$(login mia-$RUN@example.com password123); AT=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
+OT=$(login owner-$RUN@example.com Str0ng-pass!); MT=$(login mia-$RUN@example.com Str0ng-pass!); AT=$(login "$ADMIN_EMAIL" "$ADMIN_PASSWORD")
 req GET /users/me "$MT"; expect 200 "users/me"
 req GET /users/me ""; expect 401 "no token rejected"
 
@@ -34,7 +42,7 @@ req POST /owner-verification/apply "$OT" '{"clubName":"Chennai Runners '"$RUN"'"
 REQ_ID=$(echo "$BODY" | jq -r .requestId)
 req POST /owner-verification/requests/$REQ_ID/approve "$MT" '{"createClub":false}'; expect 403 "non-admin cannot approve"
 req POST /owner-verification/requests/$REQ_ID/approve "$AT" '{"createClub":false}'; expect 200 "admin approves"
-req POST /auth/login "" '{"email":"owner-'"$RUN"'@example.com","password":"password123"}'; RT=$(echo "$BODY" | jq -r .refreshToken)
+req POST /auth/login "" '{"email":"owner-'"$RUN"'@example.com","password":"Str0ng-pass!"}'; RT=$(echo "$BODY" | jq -r .refreshToken)
 req POST /auth/refresh "" "{\"refreshToken\":\"$RT\"}"; expect 200 "refresh picks up new role"
 OT=$(echo "$BODY" | jq -r .accessToken)
 req GET /auth/validate "$OT"; expect 200 "validate"; echo "$BODY" | jq -e '.roles | index("CLUB_OWNER")' >/dev/null || fail "role missing"

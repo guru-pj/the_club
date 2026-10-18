@@ -106,7 +106,7 @@ export function RegistrationPanel({ event, club, registrationId, onChanged }: Pr
         {event.price === 0 && !started && (
           <Button variant="ghost" onClick={() => setConfirmCancel(true)}>Cancel registration</Button>
         )}
-        {event.price > 0 && <p className="muted small">Need to cancel a paid registration? Contact the club owner.</p>}
+        {event.price > 0 && <p className="muted small">Need to cancel a paid registration? Ask the club owner — they can refund you from the app.</p>}
       </div>
     )
   } else if (event.status === 'CANCELLED') {
@@ -164,6 +164,12 @@ export function RegistrationPanel({ event, club, registrationId, onChanged }: Pr
     <Card className="register-panel" title="Your registration">
       <div className="stack">
         <div className="price-tag">{price}</div>
+        {status === 'CANCELLED' && event.price > 0 && (
+          <div className="alert alert-info small">
+            Your registration was cancelled. If you had paid, the refund goes back to your original payment method
+            (usually within 5–7 business days).
+          </div>
+        )}
         {body}
       </div>
       {checkout && (

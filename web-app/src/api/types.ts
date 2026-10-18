@@ -23,6 +23,8 @@ export interface User {
   city?: string | null
   profilePicUrl?: string | null
   active?: boolean
+  /** only present on your own profile (or for admins) */
+  emailVerified?: boolean
   createdAt: LocalDateTime
 }
 
@@ -207,7 +209,7 @@ export interface VerificationAudit {
 export type EventStatus = 'SCHEDULED' | 'CANCELLED' | 'COMPLETED'
 export type RegistrationStatus = 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'CHECKED_IN'
 export type PaymentProvider = 'MOCK' | 'RAZORPAY'
-export type PaymentStatus = 'CREATED' | 'SUCCEEDED' | 'FAILED'
+export type PaymentStatus = 'CREATED' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED' | 'REFUND_PENDING' | 'REFUNDED'
 
 export interface ClubEvent {
   id: UUID
@@ -272,6 +274,8 @@ export interface Payment {
   status: PaymentStatus
   registrationStatus: RegistrationStatus
   createdAt: LocalDateTime
+  refundedAt: LocalDateTime | null
+  refundReason: string | null
 }
 
 export interface UserEventRegistration {
@@ -294,6 +298,9 @@ export interface EventRegistrationRow {
   status: RegistrationStatus
   registeredAt: LocalDateTime
   checkedInAt: LocalDateTime | null
+  /** latest payment (null for free events) */
+  paymentId: UUID | null
+  paymentStatus: PaymentStatus | null
 }
 
 export interface Ticket {

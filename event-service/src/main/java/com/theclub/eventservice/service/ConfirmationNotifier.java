@@ -12,6 +12,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.util.HtmlUtils;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
@@ -19,6 +20,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * Sends registration confirmations (in-app + email with the QR ticket) and cancellation notices.
@@ -29,6 +31,7 @@ public class ConfirmationNotifier {
 
     public static final String TYPE_REGISTRATION_CONFIRMED = "EVENT_REGISTRATION_CONFIRMED";
     public static final String TYPE_EVENT_CANCELLED = "EVENT_CANCELLED";
+    public static final String TYPE_PAYMENT_REFUNDED = "PAYMENT_REFUNDED";
     static final String QR_CONTENT_ID = "ticket-qr";
 
     private static final Logger log = LoggerFactory.getLogger(ConfirmationNotifier.class);
@@ -43,15 +46,23 @@ public class ConfirmationNotifier {
     }
 
     public void registrationConfirmed(UUID userId, String email, Event event, String ticketCode) {
+        registrationConfirmedLazily(userId, () -> email, event, ticketCode);
+    }
+
+    /**
+     * @param email resolved after commit, so a remote lookup never runs inside the database transaction.
+     */
+    public void registrationConfirmedLazily(UUID userId, Supplier<String> email, Event event, String ticketCode) {
         String title = event.getTitle();
         LocalDateTime startTime = event.getStartTime();
         String location = event.getLocation();
         afterCommit(() -> {
             String message = "You're registered for " + title + " on " + DATE_FORMAT.format(startTime);
             EmailMessage emailMessage = null;
-            if (email != null && !email.isBlank()) {
+            String to = email.get();
+            if (to != null && !to.isBlank()) {
                 String png = Base64.getEncoder().encodeToString(qrCodeService.ticketPng(ticketCode));
-                emailMessage = new EmailMessage(email, "Your ticket: " + title,
+                emailMessage = new EmailMessage(to, "Your ticket: " + title,
                         ticketEmailHtml(title, startTime, location, ticketCode),
                         List.of(new EmailAttachment("ticket.png", "image/png", png, true, QR_CONTENT_ID)));
             }
@@ -69,6 +80,32 @@ public class ConfirmationNotifier {
                 log.warn("Could not notify user {} about cancellation: {}", userId, e.getMessage());
             }
         }));
+    }
+
+    /**
+     * Tells the member a refund was initiated. The email may resolve to null (in-app only).
+     */
+    public void paymentRefunded(UUID userId, Supplier<String> email, Event event, BigDecimal amount, String currency,
+                                String reason) {
+        String title = event.getTitle();
+        String money = amount.toPlainString() + " " + currency;
+        afterCommit(() -> {
+            String message = "A refund of " + money + " for " + title + " has been initiated"
+                    + (reason == null || reason.isBlank() ? "" : ": " + reason);
+            EmailMessage emailMessage = null;
+            String to = email.get();
+            if (to != null && !to.isBlank()) {
+                emailMessage = new EmailMessage(to, "Refund for " + title, """
+                        <h2>Your refund is on its way</h2>
+                        <p>We've refunded <strong>%s</strong> for <strong>%s</strong>.</p>
+                        %s
+                        <p>Refunds usually reach your account within 5–7 working days.</p>
+                        """.formatted(HtmlUtils.htmlEscape(money), HtmlUtils.htmlEscape(title),
+                        reason == null || reason.isBlank() ? "" : "<p>Reason: " + HtmlUtils.htmlEscape(reason) + "</p>"),
+                        null);
+            }
+            notificationClient.create(new NotificationRequest(userId, TYPE_PAYMENT_REFUNDED, message, emailMessage));
+        });
     }
 
     static String ticketEmailHtml(String title, LocalDateTime startTime, String location, String ticketCode) {

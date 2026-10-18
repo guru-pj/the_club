@@ -35,6 +35,11 @@ function TicketRow({ reg }: { reg: UserEventRegistration }) {
           <StatusBadge status={reg.status} />
           {reg.eventStatus === 'CANCELLED' && <StatusBadge status="CANCELLED" />}
         </div>
+        {muted && (
+          <div className="muted tiny" style={{ marginTop: 4 }}>
+            Paid registrations that are cancelled are refunded to your original payment method.
+          </div>
+        )}
       </div>
       {hasTicket && reg.eventStatus !== 'CANCELLED' && (
         <LinkButton size="sm" to={`/tickets/${reg.registrationId}`}><TicketIcon size={16} />Ticket</LinkButton>

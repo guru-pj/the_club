@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { decodeToken, refreshTokens, tokenStore, type StoredTokens } from '../api/client'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { decodeToken, refreshTokens, tokenStore } from '../api/client'
 import { authApi, usersApi } from '../api/endpoints'
 import type { Role, User } from '../api/types'
 
@@ -10,8 +10,13 @@ interface AuthState {
   roles: Role[]
   hasRole: (role: Role) => boolean
   login: (email: string, password: string) => Promise<void>
+  /** Creates the account, then tries to log in (which fails with EMAIL_NOT_VERIFIED when verification is required). */
   register: (name: string, email: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  /** Revokes every session of this user (all devices), then signs out here. */
+  logoutEverywhere: () => Promise<void>
+  /** Drops the local session without calling the server (e.g. after a password change revoked it). */
+  forgetSession: () => void
   /** Gets a fresh token (e.g. after becoming a club owner) and reloads the profile. */
   refreshSession: () => Promise<void>
   setUser: (user: User) => void
@@ -19,18 +24,16 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null)
 
-function rolesOf(tokens: StoredTokens | null): Role[] {
-  return ((tokens && decodeToken(tokens.accessToken)?.roles) ?? []) as Role[]
+function rolesOf(token: string | null): Role[] {
+  return ((token && decodeToken(token)?.roles) ?? []) as Role[]
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [tokens, setTokens] = useState(tokenStore.get())
-  const [user, setUser] = useState<User | null | undefined>(tokens ? undefined : null)
+  const [token, setToken] = useState(tokenStore.get())
+  const [user, setUser] = useState<User | null | undefined>(undefined)
 
-  useEffect(() => tokenStore.subscribe((t) => {
-    setTokens(t)
-    if (!t) setUser(null)
-  }), [])
+  const userRef = useRef(user)
+  useEffect(() => { userRef.current = user }, [user])
 
   const loadUser = useCallback(async () => {
     try {
@@ -41,19 +44,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Restore the session on first load when tokens are already stored
+  useEffect(() => tokenStore.subscribe((t) => {
+    setToken(t)
+    if (!t) setUser(null)
+    // signed in from another tab while this one was signed out: pick up the shared token
+    else if (userRef.current === null) void loadUser()
+  }), [loadUser])
+
+  // Restore the session on page load from the HttpOnly refresh cookie
   useEffect(() => {
-    if (!tokenStore.get()) return
     let cancelled = false
-    usersApi.me()
-      .then((me) => { if (!cancelled) setUser(me) })
-      .catch(() => { if (!cancelled) tokenStore.set(null) })
+    void (async () => {
+      const restored = tokenStore.get() !== null || await refreshTokens()
+      if (cancelled) return
+      if (!restored) {
+        setUser(null)
+        return
+      }
+      try {
+        const me = await usersApi.me()
+        if (!cancelled) setUser(me)
+      } catch {
+        if (!cancelled) setUser(null)
+      }
+    })()
     return () => { cancelled = true }
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await authApi.login(email, password)
-    tokenStore.set({ accessToken: res.accessToken, refreshToken: res.refreshToken })
+    tokenStore.set(res.accessToken, res.expiresIn)
     await loadUser()
   }, [loadUser])
 
@@ -63,22 +83,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [login])
 
   const logout = useCallback(async () => {
-    const current = tokenStore.get()
-    tokenStore.set(null)
-    if (current) await authApi.logout(current.refreshToken).catch(() => undefined)
+    await authApi.logout().catch(() => undefined)
+    tokenStore.clearEverywhere()
   }, [])
+
+  const logoutEverywhere = useCallback(async () => {
+    await authApi.logoutAll()
+    tokenStore.clearEverywhere()
+  }, [])
+
+  const forgetSession = useCallback(() => tokenStore.clearEverywhere(), [])
 
   const refreshSession = useCallback(async () => {
     if (await refreshTokens()) await loadUser()
   }, [loadUser])
 
   const value = useMemo<AuthState>(() => {
-    const roles = rolesOf(tokens)
+    const roles = rolesOf(token)
     return {
-      user, roles, hasRole: (r) => roles.includes(r), login, register, logout, refreshSession,
-      setUser: (u) => setUser(u),
+      user, roles, hasRole: (r) => roles.includes(r), login, register, logout, logoutEverywhere, forgetSession,
+      refreshSession, setUser: (u) => setUser(u),
     }
-  }, [user, tokens, login, register, logout, refreshSession])
+  }, [user, token, login, register, logout, logoutEverywhere, forgetSession, refreshSession])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

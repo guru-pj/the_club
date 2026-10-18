@@ -12,8 +12,24 @@ type Paging = { page?: number; size?: number }
 export const authApi = {
   login: (email: string, password: string) =>
     request<TokenResponse>('POST', '/api/v1/auth/login', { body: { email, password }, anonymous: true }),
-  logout: (refreshToken: string) =>
-    request<void>('POST', '/api/v1/auth/logout', { body: { refreshToken }, anonymous: true }),
+  /** Revokes this browser's session; the refresh token travels in the HttpOnly cookie. */
+  logout: () => request<void>('POST', '/api/v1/auth/logout', { anonymous: true }),
+  /** Revokes every session of the signed-in user (all devices). */
+  logoutAll: () => request<void>('POST', '/api/v1/auth/logout-all'),
+}
+
+export const accountApi = {
+  verifyEmail: (token: string) =>
+    request<void>('POST', '/api/v1/users/verify-email', { body: { token }, anonymous: true }),
+  resendVerification: (email: string) =>
+    request<void>('POST', '/api/v1/users/verify-email/resend', { body: { email }, anonymous: true }),
+  requestPasswordReset: (email: string) =>
+    request<void>('POST', '/api/v1/users/password-reset/request', { body: { email }, anonymous: true }),
+  resetPassword: (token: string, newPassword: string) =>
+    request<void>('POST', '/api/v1/users/password-reset/confirm', { body: { token, newPassword }, anonymous: true }),
+  /** Also signs out every session, so the caller must log in again. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>('PUT', '/api/v1/users/me/password', { body: { currentPassword, newPassword } }),
 }
 
 export const usersApi = {
@@ -113,6 +129,9 @@ export const paymentsApi = {
   get: (id: UUID) => request<Payment>('GET', `/api/v1/payments/${id}`),
   confirm: (id: UUID, providerPaymentId: string, signature: string) =>
     request<Payment>('POST', `/api/v1/payments/${id}/confirm`, { body: { providerPaymentId, signature } }),
+  /** Club owner/admin: refunds a successful payment and cancels the registration. */
+  refund: (id: UUID, reason?: string) =>
+    request<Payment>('POST', `/api/v1/payments/${id}/refund`, { body: { reason: reason || undefined } }),
   /** Development only (PAYMENT_PROVIDER=mock): produces the signature a real gateway would return. */
   mockSignature: (id: UUID, providerPaymentId: string) =>
     request<{ providerOrderId: string; providerPaymentId: string; signature: string }>(

@@ -11,8 +11,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'change-me-admin'
 const SHOTS = new URL('./screenshots/', import.meta.url).pathname
 mkdirSync(SHOTS, { recursive: true })
 const RUN = Date.now()
-const OWNER = { name: 'Olu Owner', email: `olu${RUN}@example.com`, password: 'password123' }
-const MEMBER = { name: 'Mia Member', email: `mia${RUN}@example.com`, password: 'password123' }
+const OWNER = { name: 'Olu Owner', email: `olu${RUN}@example.com`, password: 'Str0ng-pass!' }
+const MEMBER = { name: 'Mia Member', email: `mia${RUN}@example.com`, password: 'Str0ng-pass!' }
 const CLUB = `Marina Runners ${RUN % 100000}`
 const problems = []
 
@@ -154,6 +154,11 @@ try {
   await member.getByText('Morning tempo run').first().waitFor()
   await shot(member, 'activities')
 
+  step('member reloads the page and stays signed in (session restored from the refresh cookie)')
+  await member.reload()
+  await member.getByText('Morning tempo run').first().waitFor()
+  if (member.url().includes('/login')) throw new Error('session was not restored after reload')
+
   step('member registers for the free event and opens the ticket')
   await member.goto(freeEventUrl)
   await member.getByRole('button', { name: /^register/i }).click()
@@ -173,6 +178,21 @@ try {
   await member.getByRole('dialog').getByRole('button', { name: /^pay/i }).click()
   await member.waitForURL(/\/tickets\//)
   await member.locator('img[src^="data:image/png"]').waitFor()
+
+  step('owner refunds the paid registration')
+  await owner.goto(paidEventUrl)
+  await owner.getByRole('button', { name: `Refund ${MEMBER.name}` }).click()
+  await owner.getByLabel('Reason (optional)').fill('Change of plans')
+  await owner.getByRole('dialog').getByRole('button', { name: 'Refund payment' }).click()
+  await owner.getByRole('dialog').waitFor({ state: 'detached' })
+  await owner.getByText(/^Refund(ed| pending)$/).first().waitFor()
+  await shot(owner, 'refunded')
+
+  step('member sees the refunded registration as cancelled')
+  await member.goto(`${BASE}/tickets`)
+  await member.getByRole('tab', { name: 'Past' }).click()
+  await member.locator('.ticket-card', { hasText: 'Paid 10K Time Trial' }).getByText('Cancelled').first().waitFor()
+  await shot(member, 'tickets-refunded')
 
   // ---------- owner checks the member in by code
   step('owner checks the member in')
@@ -224,13 +244,31 @@ try {
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
   if (overflow) problems.push('[mobile] horizontal overflow on club page')
 
+  step('forgot password shows the generic confirmation')
+  const guest = await newUser('guest')
+  await guest.goto(`${BASE}/login`)
+  await guest.getByRole('link', { name: 'Forgot password?' }).click()
+  await guest.getByLabel('Email').fill(MEMBER.email)
+  await guest.getByRole('button', { name: 'Send reset link' }).click()
+  await guest.getByText('Check your email').waitFor()
+  await shot(guest, 'forgot-password')
+
+  step('owner signs out of all devices')
+  await owner.goto(`${BASE}/profile`)
+  await owner.getByRole('button', { name: 'Sign out of all devices' }).click()
+  await owner.getByRole('dialog').getByRole('button', { name: 'Sign out everywhere' }).click()
+  await owner.waitForURL(/\/login/)
+  await owner.goto(`${BASE}/`)
+  await owner.waitForURL(/\/login/)
+
   console.log('FLOW COMPLETE')
 } catch (e) {
   process.exitCode = 1
   console.log('FAILED:', e.message.split('\n').slice(0, 6).join('\n'))
   for (const ctx of browser.contexts()) for (const p of ctx.pages()) await p.screenshot({ path: `${SHOTS}zz-failure-${browser.contexts().indexOf(ctx)}.png`, fullPage: true }).catch(() => {})
 }
-const unexpected = problems.filter((p) => !p.includes('status of 409'))
+// 409 = the deliberate double check-in; 401 = signed-out page loads probing /auth/refresh for a session
+const unexpected = problems.filter((p) => !p.includes('status of 409') && !p.includes('status of 401'))
 if (unexpected.length) process.exitCode = 1
 console.log(unexpected.length ? 'PROBLEMS:\n' + unexpected.join('\n') : 'No console errors or 5xx responses')
 await browser.close()

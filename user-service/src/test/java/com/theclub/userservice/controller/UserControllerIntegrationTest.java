@@ -2,16 +2,11 @@ package com.theclub.userservice.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.theclub.common.security.JwtService;
+import com.theclub.userservice.support.IntegrationTestBase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -21,30 +16,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles("test")
-class UserControllerIntegrationTest {
+class UserControllerIntegrationTest extends IntegrationTestBase {
 
     @Autowired
-    MockMvc mvc;
-    @Autowired
     ObjectMapper json;
-    @Autowired
-    JwtService jwtService;
 
     private JsonNode register(String email) throws Exception {
         String body = mvc.perform(post("/api/v1/users/register").contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"Guru","email":"%s","password":"password123"}""".formatted(email)))
+                                {"name":"Guru","email":"%s","password":"Str0ng-pass!"}""".formatted(email)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.roles[0]").value("USER"))
+                .andExpect(jsonPath("$.emailVerified").value(false))
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(body);
-    }
-
-    private String tokenFor(String id, String... roles) {
-        return "Bearer " + jwtService.issueAccessToken(UUID.fromString(id), "x@example.com", "X", List.of(roles));
     }
 
     @Test
@@ -65,7 +50,7 @@ class UserControllerIntegrationTest {
     void duplicateRegistrationIsConflict() throws Exception {
         register("dup@example.com");
         mvc.perform(post("/api/v1/users/register").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"G\",\"email\":\"DUP@example.com\",\"password\":\"password123\"}"))
+                        .content("{\"name\":\"G\",\"email\":\"DUP@example.com\",\"password\":\"Str0ng-pass!\"}"))
                 .andExpect(status().isConflict());
     }
 

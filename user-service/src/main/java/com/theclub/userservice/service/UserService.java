@@ -21,10 +21,15 @@ public class UserService {
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordPolicy passwordPolicy;
+    private final AccountService accounts;
 
-    public UserService(UserRepository users, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository users, PasswordEncoder passwordEncoder, PasswordPolicy passwordPolicy,
+                       AccountService accounts) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
+        this.passwordPolicy = passwordPolicy;
+        this.accounts = accounts;
     }
 
     @Transactional
@@ -33,9 +38,11 @@ public class UserService {
         if (users.existsByEmail(email)) {
             throw ApiException.conflict("An account with this email already exists");
         }
-        User user = new User(request.name().trim(), email, passwordEncoder.encode(request.password()),
-                EnumSet.of(Role.USER));
-        return users.save(user);
+        passwordPolicy.check(request.password(), email, "password");
+        User user = users.save(new User(request.name().trim(), email, passwordEncoder.encode(request.password()),
+                EnumSet.of(Role.USER)));
+        accounts.startEmailVerification(user);
+        return user;
     }
 
     @Transactional(readOnly = true)

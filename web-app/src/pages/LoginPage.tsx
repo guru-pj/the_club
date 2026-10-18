@@ -2,7 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { Button, ErrorMessage, Field } from '../components/ui'
-import { Brand } from './account/Brand'
+import { isEmailNotVerified, lockoutMinutes } from '../lib/authErrors'
+import { AuthCard } from './account/AuthCard'
+import { ResendVerification } from './account/ResendVerification'
 import './account.css'
 
 export default function LoginPage() {
@@ -28,27 +30,35 @@ export default function LoginPage() {
     }
   }
 
+  const locked = lockoutMinutes(error)
   return (
-    <div className="auth-shell">
-      <div className="auth-card">
-        <div className="card">
-          <Brand />
-          <p className="muted" style={{ marginBottom: 20 }}>Run, ride and race together with your club.</p>
-          <form className="form" onSubmit={submit}>
-            <Field label="Email" htmlFor="login-email">
-              <input id="login-email" className="input" type="email" autoComplete="email" required
-                     value={email} onChange={(e) => setEmail(e.target.value)} />
-            </Field>
-            <Field label="Password" htmlFor="login-password">
-              <input id="login-password" className="input" type="password" autoComplete="current-password" required
-                     value={password} onChange={(e) => setPassword(e.target.value)} />
-            </Field>
-            <ErrorMessage error={error} />
-            <Button type="submit" block size="lg" loading={submitting}>Log in</Button>
-          </form>
-        </div>
-        <p className="auth-footer muted">New here? <Link to="/register">Create an account</Link></p>
-      </div>
-    </div>
+    <AuthCard subtitle="Run, ride and race together with your club."
+              footer={<>New here? <Link to="/register">Create an account</Link></>}>
+      <form className="form" onSubmit={submit}>
+        <Field label="Email" htmlFor="login-email">
+          <input id="login-email" className="input" type="email" autoComplete="email" required
+                 value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Password" htmlFor="login-password"
+               hint={<Link to="/forgot-password" state={{ email }}>Forgot password?</Link>}>
+          <input id="login-password" className="input" type="password" autoComplete="current-password" required
+                 value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+        {isEmailNotVerified(error) ? (
+          <div className="alert alert-warning stack" role="alert">
+            <div>Please verify your email address before logging in. We sent a link to <strong>{email.trim()}</strong>.</div>
+            <div><ResendVerification email={email.trim()} /></div>
+          </div>
+        ) : locked !== null ? (
+          <div className="alert alert-error" role="alert">
+            Too many failed attempts. Try again in {locked} minute{locked === 1 ? '' : 's'}, or{' '}
+            <Link to="/forgot-password" state={{ email }}>reset your password</Link>.
+          </div>
+        ) : (
+          <ErrorMessage error={error} />
+        )}
+        <Button type="submit" block size="lg" loading={submitting}>Log in</Button>
+      </form>
+    </AuthCard>
   )
 }

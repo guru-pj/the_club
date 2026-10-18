@@ -30,29 +30,45 @@ class UserServiceTest {
     UserRepository users;
     @Mock
     PasswordEncoder passwordEncoder;
+    @Mock
+    AccountService accounts;
+    @org.mockito.Spy
+    PasswordPolicy passwordPolicy = new PasswordPolicy();
     @InjectMocks
     UserService userService;
 
     @Test
     void registerNormalizesEmailHashesPasswordAndGrantsUserRole() {
         when(users.existsByEmail("asha@example.com")).thenReturn(false);
-        when(passwordEncoder.encode("supersecret")).thenReturn("hashed");
+        when(passwordEncoder.encode("Str0ng-pass!")).thenReturn("hashed");
         when(users.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        User user = userService.register(new RegisterUserRequest(" Asha ", " Asha@Example.com ", "supersecret"));
+        User user = userService.register(new RegisterUserRequest(" Asha ", " Asha@Example.com ", "Str0ng-pass!"));
 
         assertThat(user.getId()).isNotNull();
         assertThat(user.getEmail()).isEqualTo("asha@example.com");
         assertThat(user.getName()).isEqualTo("Asha");
         assertThat(user.getPasswordHash()).isEqualTo("hashed");
         assertThat(user.getRoles()).containsExactly(Role.USER);
+        assertThat(user.isEmailVerified()).isFalse();
+        verify(accounts).startEmailVerification(user);
+    }
+
+    @Test
+    void registerRejectsCommonPasswords() {
+        when(users.existsByEmail("asha@example.com")).thenReturn(false);
+
+        assertThatThrownBy(() -> userService.register(new RegisterUserRequest("Asha", "asha@example.com", "password123")))
+                .isInstanceOfSatisfying(ApiException.class,
+                        e -> assertThat(e.getFieldErrors()).containsEntry("password", "This password is too common"));
+        verify(users, never()).save(any());
     }
 
     @Test
     void registerRejectsDuplicateEmail() {
         when(users.existsByEmail("asha@example.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.register(new RegisterUserRequest("Asha", "asha@example.com", "supersecret")))
+        assertThatThrownBy(() -> userService.register(new RegisterUserRequest("Asha", "asha@example.com", "Str0ng-pass!")))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT));
         verify(users, never()).save(any());
     }

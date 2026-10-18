@@ -10,8 +10,15 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:root}
   jpa:
     hibernate:
-      ddl-auto: update
+      # Schema is owned by Flyway (src/main/resources/db/migration); Hibernate only checks it matches the entities.
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    enabled: true
+    # Databases created earlier by Hibernate's ddl-auto=update have no Flyway history table. They are adopted
+    # as version 1 (the baseline) without re-running V1__baseline.sql; later migrations then apply normally.
+    baseline-on-migrate: true
+    baseline-version: 1
 
 eureka:
   client:
@@ -29,8 +36,11 @@ management:
 theclub:
   time-zone: ${APP_TIME_ZONE:Asia/Kolkata}
   jwt:
-    secret: ${JWT_SECRET}
-    expiration: ${JWT_EXPIRATION:PT1H}
+    private-key: ${JWT_PRIVATE_KEY}
+    public-key: ${JWT_PUBLIC_KEY}
+    previous-public-key: ${JWT_PREVIOUS_PUBLIC_KEY:}
+    key-id: ${JWT_KEY_ID:k1}
+    expiration: ${JWT_EXPIRATION:PT15M}
     refresh-expiration: ${JWT_REFRESH_EXPIRATION:P14D}
   security:
     internal-api-key: ${INTERNAL_API_KEY}
@@ -38,6 +48,15 @@ theclub:
       - /api/v1/auth/login
       - /api/v1/auth/refresh
       - /api/v1/auth/logout
+      - /api/v1/auth/.well-known/jwks.json
+  auth:
+    # Secure cookies need HTTPS; set AUTH_COOKIE_SECURE=false only for plain-HTTP local development
+    cookie-secure: ${AUTH_COOKIE_SECURE:true}
+    require-verified-email: ${REQUIRE_EMAIL_VERIFICATION:true}
+    lockout:
+      max-attempts: ${LOGIN_LOCKOUT_MAX_ATTEMPTS:5}
+      window: ${LOGIN_LOCKOUT_WINDOW:PT15M}
+      duration: ${LOGIN_LOCKOUT_DURATION:PT15M}
   clients:
     user-service:
       url: ${USER_SERVICE_URL:}

@@ -18,6 +18,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -44,6 +45,11 @@ public class TheClubCommonAutoConfiguration {
     @ConditionalOnMissingBean
     public Clock clock(@Value("${theclub.time-zone:Asia/Kolkata}") String zone) {
         return Clock.system(ZoneId.of(zone));
+    }
+
+    @Bean
+    public ProductionSafetyCheck productionSafetyCheck(Environment environment, SecurityProperties properties) {
+        return new ProductionSafetyCheck(environment, properties);
     }
 
     @Bean

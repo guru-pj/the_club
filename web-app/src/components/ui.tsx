@@ -76,12 +76,13 @@ const STATUS_TONES: Record<string, Tone> = {
   CONFIRMED: 'success', CHECKED_IN: 'primary', PENDING_PAYMENT: 'warning', CANCELLED: 'danger',
   SCHEDULED: 'info', COMPLETED: 'neutral',
   PENDING: 'warning', UNDER_REVIEW: 'info', NEEDS_INFO: 'accent', APPROVED: 'success', REJECTED: 'danger',
-  SUCCEEDED: 'success', FAILED: 'danger', CREATED: 'warning',
+  SUCCEEDED: 'success', FAILED: 'danger', CREATED: 'warning', EXPIRED: 'neutral', REFUND_PENDING: 'warning', REFUNDED: 'info',
   OWNER: 'accent', MEMBER: 'primary', STRAVA: 'accent', MANUAL: 'neutral',
 }
 
 const STATUS_LABELS: Record<string, string> = {
   CHECKED_IN: 'Checked in', PENDING_PAYMENT: 'Awaiting payment', NEEDS_INFO: 'More info needed', UNDER_REVIEW: 'Under review',
+  SUCCEEDED: 'Paid', CREATED: 'Payment started', REFUND_PENDING: 'Refund pending',
 }
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {

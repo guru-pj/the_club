@@ -10,8 +10,15 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:root}
   jpa:
     hibernate:
-      ddl-auto: update
+      # Schema is owned by Flyway (src/main/resources/db/migration); Hibernate only checks it matches the entities.
+      ddl-auto: validate
     open-in-view: false
+  flyway:
+    enabled: true
+    # Databases created earlier by Hibernate's ddl-auto=update have no Flyway history table. They are adopted
+    # as version 1 (the baseline) without re-running V1__baseline.sql; later migrations then apply normally.
+    baseline-on-migrate: true
+    baseline-version: 1
 
 eureka:
   client:
@@ -29,10 +36,15 @@ management:
 theclub:
   time-zone: ${APP_TIME_ZONE:Asia/Kolkata}
   jwt:
-    secret: ${JWT_SECRET}
-    expiration: ${JWT_EXPIRATION:PT1H}
+    public-key: ${JWT_PUBLIC_KEY}
+    previous-public-key: ${JWT_PREVIOUS_PUBLIC_KEY:}
+    key-id: ${JWT_KEY_ID:k1}
+    expiration: ${JWT_EXPIRATION:PT15M}
   security:
     internal-api-key: ${INTERNAL_API_KEY}
+    public-paths:
+      # authenticated by the provider's HMAC signature instead of a JWT
+      - /api/v1/payments/webhooks/**
   clients:
     club-service:
       url: ${CLUB_SERVICE_URL:}
@@ -41,11 +53,16 @@ theclub:
     notification-service:
       url: ${NOTIFICATION_SERVICE_URL:}
   payments:
-    provider: ${PAYMENT_PROVIDER:mock}
+    # required, no default: "razorpay", or "mock" for development (refused with the prod profile)
+    provider: ${PAYMENT_PROVIDER:}
     mock-secret: ${PAYMENT_MOCK_SECRET:mock-secret}
+    pending-hold: ${PAYMENT_PENDING_HOLD:PT15M}
+    reconcile-enabled: ${PAYMENT_RECONCILE_ENABLED:true}
+    reconcile-interval: ${PAYMENT_RECONCILE_INTERVAL:PT5M}
     razorpay:
       key-id: ${RAZORPAY_KEY_ID:}
       key-secret: ${RAZORPAY_KEY_SECRET:}
+      webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
   checkin:
     opens-before: ${CHECKIN_OPENS_BEFORE:PT6H}
     closes-after: ${CHECKIN_CLOSES_AFTER:PT12H}

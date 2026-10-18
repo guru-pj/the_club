@@ -17,6 +17,9 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}🏋️ Starting The Club setup script...${NC}"
 
+# Always run from the project root
+cd "$(dirname "$0")" || exit 1
+
 # Check Docker
 if ! command -v docker &> /dev/null
 then
@@ -49,6 +52,12 @@ fi
 if [ ! -f .env ]; then
     echo -e "${YELLOW}📝 No .env found, copying enviroinment_variables.env -> .env${NC}"
     cp enviroinment_variables.env .env
+fi
+
+# Generate keys and passwords on first run (existing secrets are never overwritten)
+if [ ! -f secrets/theclub.jwt.private-key ]; then
+    echo -e "${YELLOW}🔐 No secrets found, generating ./secrets ...${NC}"
+    ./scripts/generate-secrets.sh || exit 1
 fi
 
 # Function: Build Docker images

@@ -6,6 +6,8 @@ import { useAuth } from '../auth/AuthContext'
 import { useToast } from '../components/Toast'
 import { Avatar, Badge, Button, Card, ErrorMessage, Field, Loading, PageHeader } from '../components/ui'
 import { fieldError } from '../lib/fieldError'
+import { ResendVerification } from './account/ResendVerification'
+import { SecurityCard } from './account/SecurityCard'
 import { formatDate, humanize } from '../lib/format'
 import './account.css'
 
@@ -53,6 +55,12 @@ export default function ProfilePage() {
           <div className="stack" style={{ gap: 4, minWidth: 0 }}>
             <h2 className="truncate">{user.name}</h2>
             <span className="muted truncate">{user.email}</span>
+            {user.emailVerified === false && (
+              <div className="row" style={{ gap: 8 }}>
+                <Badge tone="warning">Email not verified</Badge>
+                {user.email && <ResendVerification email={user.email} label="Resend verification" />}
+              </div>
+            )}
             <div className="row" style={{ gap: 6 }}>
               {user.roles.map((r) => <Badge key={r} tone={r === 'ADMIN' ? 'danger' : r === 'CLUB_OWNER' ? 'accent' : 'primary'}>{humanize(r)}</Badge>)}
             </div>
@@ -79,6 +87,7 @@ export default function ProfilePage() {
           <div><Button type="submit" loading={saving}>Save changes</Button></div>
         </form>
       </Card>
+      <SecurityCard />
       <Card title="Connected apps">
         <p className="muted">Connect Strava to import your runs and rides automatically. <Link to="/activities">Manage on the Activities page</Link>.</p>
       </Card>

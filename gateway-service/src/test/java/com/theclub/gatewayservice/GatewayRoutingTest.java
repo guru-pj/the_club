@@ -1,6 +1,5 @@
 package com.theclub.gatewayservice;
 
-import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,9 +9,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Routes every service to a stub HTTP server that echoes the path and headers it received.
@@ -21,42 +18,19 @@ import java.nio.charset.StandardCharsets;
 @AutoConfigureWebTestClient
 class GatewayRoutingTest {
 
-    private static final HttpServer STUB = startStub();
+    private static final StubBackend STUB = new StubBackend();
 
     @Autowired
     WebTestClient client;
 
-    private static HttpServer startStub() {
-        try {
-            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-            server.createContext("/", exchange -> {
-                String auth = exchange.getRequestHeaders().getFirst("Authorization");
-                String internal = exchange.getRequestHeaders().getFirst("X-Internal-Key");
-                byte[] body = ("path=" + exchange.getRequestURI().getPath() + ";auth=" + auth + ";internal=" + internal)
-                        .getBytes(StandardCharsets.UTF_8);
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-                exchange.close();
-            });
-            server.start();
-            return server;
-        } catch (IOException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
     @AfterAll
     static void stop() {
-        STUB.stop(0);
+        STUB.stop();
     }
 
     @DynamicPropertySource
     static void routes(DynamicPropertyRegistry registry) {
-        String uri = "http://localhost:" + STUB.getAddress().getPort();
-        for (String service : new String[]{"USER", "AUTH", "ACTIVITY", "CLUB", "EVENT", "NOTIFICATION"}) {
-            registry.add(service + "_SERVICE_URI", () -> uri);
-        }
-        registry.add("eureka.client.enabled", () -> "false");
+        STUB.register(registry);
     }
 
     @Test
@@ -67,7 +41,7 @@ class GatewayRoutingTest {
                 "/api/v1/leaderboards/monthly", "/api/v1/notifications/me"}) {
             client.get().uri(path).header("Authorization", "Bearer abc").exchange()
                     .expectStatus().isOk()
-                    .expectBody(String.class).isEqualTo("path=" + path + ";auth=Bearer abc;internal=null");
+                    .expectBody(String.class).isEqualTo("path=" + path + ";auth=Bearer abc;internal=null;bytes=0");
         }
     }
 
@@ -75,7 +49,7 @@ class GatewayRoutingTest {
     void stripsClientSuppliedInternalKey() {
         client.get().uri("/api/v1/clubs").header("X-Internal-Key", "guess").exchange()
                 .expectStatus().isOk()
-                .expectBody(String.class).value(body -> org.assertj.core.api.Assertions.assertThat(body).endsWith("internal=null"));
+                .expectBody(String.class).value(body -> assertThat(body).contains("internal=null"));
     }
 
     @Test
@@ -84,5 +58,20 @@ class GatewayRoutingTest {
         client.get().uri("/api/v1/users/internal/x").exchange().expectStatus().isNotFound();
         client.get().uri("/api/v1/users/%2e%2e/%2e%2e/internal/users/x").exchange().expectStatus().isNotFound();
         client.get().uri("/api/v1/unknown").exchange().expectStatus().isNotFound();
+    }
+
+    @Test
+    void addsSecurityHeadersAndKeepsRefreshCookie() {
+        client.post().uri("/api/v1/auth/login").exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("X-Content-Type-Options", "nosniff")
+                .expectHeader().valueEquals("Referrer-Policy", "no-referrer")
+                .expectHeader().valueEquals("Cache-Control", "no-store")
+                .expectHeader().value("Set-Cookie", cookie -> assertThat(cookie).startsWith("theclub_refresh=abc").contains("HttpOnly"));
+
+        client.get().uri("/api/v1/clubs").exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals("X-Content-Type-Options", "nosniff")
+                .expectHeader().doesNotExist("Set-Cookie");
     }
 }

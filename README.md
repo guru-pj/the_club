@@ -61,7 +61,7 @@ npm run dev          # http://localhost:5173, proxies /api to http://localhost:8
 npm test             # unit tests (vitest)
 npm run e2e          # browser end-to-end flow (needs Chrome; set CHROME_PATH, ADMIN_EMAIL, ADMIN_PASSWORD)
 ```
-Log in as the bootstrap admin from `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) to approve club-owner applications.
+Log in as the bootstrap admin (`ADMIN_EMAIL` from `.env`, password in `secrets/admin-password`) to approve club-owner applications. For local UI development against a plain-HTTP backend, set `AUTH_COOKIE_SECURE=false` and `REQUIRE_EMAIL_VERIFICATION=false` (the dev template already does).
 The camera QR scanner needs HTTPS or `localhost`; on a phone over plain HTTP, use the manual ticket-code field.
 
 ---
@@ -139,18 +139,18 @@ docker compose version
 git clone https://github.com/guru-pj/the_club.git
 cd the_club
 cp enviroinment_variables.env .env
+./scripts/generate-secrets.sh
 ```
 
-Edit `.env`. At minimum, change these:
+`.env` holds only non-secret settings. The defaults work for a first local run: test-mode payments, emails caught by Mailpit, email verification off.
 
-| Variable | What to set |
-|---|---|
-| `JWT_SECRET` | Random string of 32+ characters, e.g. `openssl rand -base64 48` |
-| `INTERNAL_API_KEY` | Another random string |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Your first admin login |
-| `MYSQL_PASSWORD`, `POSTGRES_PASSWORD` | Change if the machine is reachable by others |
+`generate-secrets.sh` creates `./secrets/` (gitignored) containing:
+- the RS256 token signing key pair
+- the internal service key
+- database passwords, including a separate least-privilege user per service
+- the first admin's password, printed once at the end and kept in `secrets/admin-password`
 
-The defaults are fine for everything else on a first run: payments in test mode, emails caught by Mailpit.
+Each file is mounted only into the containers that need it. `project-setup.sh` runs the generator automatically on first use.
 
 ### 3. Build and start
 ```bash
@@ -176,7 +176,7 @@ docker compose up -d --build
 
 Then run the end-to-end smoke test (needs `curl` and `jq`). It should end with `ALL PASSED`:
 ```bash
-ADMIN_PASSWORD=<from .env> STRAVA_WEBHOOK_VERIFY_TOKEN=<from .env> ./scripts/smoke-test.sh
+./scripts/smoke-test.sh      # reads the admin password from secrets/admin-password
 ```
 
 ### Day-to-day commands
@@ -202,7 +202,7 @@ cd web-app && npm test         # web app unit tests
 |---|---|
 | `port is already allocated` | Another program uses one of the ports 3306, 5432, 8080–8088, 8761, 8888, 1025, 8025 or 3000 (often a local MySQL). Stop it or change the port in `.env`. |
 | 503 errors for the first 30–60 s | Services are still registering with Eureka. Wait and retry. |
-| A service keeps restarting | Check `docker compose logs <service>`. Usually the database wasn't ready yet (it recovers on its own) or `JWT_SECRET` is shorter than 32 characters. |
+| A service keeps restarting | Check `docker compose logs <service>`. Usually the database wasn't ready yet (it recovers on its own) or `secrets/` is missing; run `./scripts/generate-secrets.sh`. |
 | `release version 21 not supported` (Maven) | Only a Java runtime is installed. Install `openjdk-21-jdk`. |
 | Machine low on memory | The stack needs about 4–6 GB. Trino is optional: `docker compose stop trino`. |
 | Opening the app from other computers | Use `http://<server-ip>:3000`. For Strava, set `STRAVA_REDIRECT_URI` to `http://<server-ip>:3000/strava/callback`. |
@@ -211,15 +211,29 @@ cd web-app && npm test         # web app unit tests
 
 ## 🧠 Developer Notes
 
-- **Secrets:** change `JWT_SECRET` (≥ 32 chars), `INTERNAL_API_KEY` and `ADMIN_PASSWORD` in `.env` for anything beyond local dev.
-- **First admin:** `ADMIN_EMAIL` / `ADMIN_PASSWORD` create a platform admin at startup. The admin reviews club-owner applications.
-- **Payments:** `PAYMENT_PROVIDER=mock` is for development only. The mock provider exposes `POST /api/v1/payments/{id}/mock-signature`, so anyone can "pay". Set `PAYMENT_PROVIDER=razorpay` plus `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` for real payments. The client completes checkout with Razorpay and sends `{providerPaymentId, signature}` to `/confirm`. Refunds are not implemented.
-- **Strava:** set `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET`. Set the Strava app's callback domain to match `STRAVA_REDIRECT_URI` (the web app's `/strava/callback` page). Register the webhook `https://<public-host>/api/v1/strava/webhook` with `STRAVA_WEBHOOK_VERIFY_TOKEN`.
-- **Email:** all mail goes to Mailpit locally. Point `MAIL_HOST`/`MAIL_PORT` at a real SMTP server in other environments.
+- **Going to production:** follow [`docs/PRODUCTION.md`](docs/PRODUCTION.md). It covers TLS, `SPRING_PROFILES_ACTIVE=prod`, secrets, backups, key rotation and the deploy command. In production only the web app is exposed; the gateway listens on localhost behind nginx.
+- **Security model:**
+  - Access tokens are RS256 JWTs valid for 15 minutes. Only auth-service holds the signing key; public key at `/api/v1/auth/.well-known/jwks.json`.
+  - Refresh tokens live in an httpOnly `SameSite=Strict` cookie.
+  - Logins lock for 15 minutes after 5 failures. The gateway rate-limits auth endpoints per IP.
+  - Accounts get email verification, password reset, password change and "sign out of all devices".
+  - Details are in [`docs/SERVICE_CONTRACTS.md`](docs/SERVICE_CONTRACTS.md).
+- **Database schema:** managed by Flyway (`db/migration` in each service; Hibernate only validates). See [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md) before changing an entity.
+- **Payments:**
+  - `PAYMENT_PROVIDER` must be set explicitly. `mock` is development-only and refused under the `prod` profile.
+  - With `razorpay`, set the key ID plus the key and webhook secrets, and point the Razorpay webhook at `https://<host>/api/v1/payments/webhooks/razorpay`. The webhook and a 5-minute reconciliation job confirm payments even if the browser closes.
+  - Owners can refund a payment, and cancelling a paid event refunds everyone.
+- **Backups:** nightly MySQL and PostgreSQL dumps into the `backups` volume (14-day retention). On demand: `scripts/backup.sh`. Restore one database: `scripts/restore.sh`.
+- **CI/CD:** `.github/workflows/ci.yml` runs on every push and pull request:
+  - backend tests, plus Testcontainers migration tests against real MySQL and PostgreSQL
+  - web lint, tests and build
+  - on `main`, builds the images, scans them with Trivy and pushes them to GHCR
+
+  CodeQL and Dependabot are enabled as well.
+- **Strava:** put `STRAVA_CLIENT_ID` in `.env` and the client secret in `secrets/strava-client-secret`. Set the Strava app's callback domain to match `STRAVA_REDIRECT_URI` (the web app's `/strava/callback` page), and register the webhook `https://<public-host>/api/v1/strava/webhook`.
+- **Email:** all mail goes to Mailpit locally. Configure `MAIL_*` in `.env` and `secrets/smtp-password` for a real SMTP server.
 - **Proof documents** for owner verification are submitted as URLs. Upload storage (MinIO/S3) is not built yet.
-- **Logout** revokes the refresh token. Access tokens stay valid until they expire (`JWT_EXPIRATION`, default 1h).
 - **Times:** event times are local to `APP_TIME_ZONE` (default `Asia/Kolkata`). Check-in opens 6h before the start and closes 12h after.
-- **Schema:** schemas are managed with `ddl-auto=update`. Introduce Flyway/Liquibase before production.
 
 ---
 

@@ -1,6 +1,6 @@
 package com.theclub.activityservice.strava;
 
-import com.theclub.common.security.JwtProperties;
+import com.theclub.common.security.SecurityProperties;
 import com.theclub.common.web.ApiException;
 import org.junit.jupiter.api.Test;
 
@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class StravaStateSignerTest {
 
     private static final Instant NOW = Instant.parse("2026-10-18T00:00:00Z");
-    private static final JwtProperties JWT = new JwtProperties("test-secret-that-is-at-least-32-bytes-long!!", null, null, null);
+    private static final SecurityProperties JWT = new SecurityProperties(List.of(), "test-internal-key-that-is-long-enough");
 
     private final StravaStateSigner signer = new StravaStateSigner(JWT, Clock.fixed(NOW, ZoneOffset.UTC));
 
@@ -37,7 +38,7 @@ class StravaStateSignerTest {
 
     @Test
     void rejectsStateSignedWithAnotherKey() {
-        JwtProperties other = new JwtProperties("another-secret-that-is-also-32-bytes-long", null, null, null);
+        SecurityProperties other = new SecurityProperties(List.of(), "another-internal-key-that-is-long");
         String state = new StravaStateSigner(other, Clock.fixed(NOW, ZoneOffset.UTC)).sign(UUID.randomUUID());
 
         assertThatThrownBy(() -> signer.verify(state)).isInstanceOf(ApiException.class);

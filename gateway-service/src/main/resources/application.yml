@@ -18,6 +18,8 @@ spring:
                 allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
                 allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
                 allowed-headers: "*"
+                # the refresh token travels in an httpOnly cookie
+                allow-credentials: true
                 max-age: 3600
           routes:
             - id: user-service
@@ -44,6 +46,21 @@ spring:
               uri: ${NOTIFICATION_SERVICE_URI:lb://notification-service}
               predicates:
                 - Path=/api/v1/notifications/**
+
+theclub:
+  gateway:
+    # true only behind a trusted reverse proxy (nginx in the web-app container sets X-Real-IP / X-Forwarded-For)
+    trust-forwarded-for: ${GATEWAY_TRUST_FORWARDED_FOR:false}
+    max-body-bytes: ${GATEWAY_MAX_BODY_BYTES:1048576}
+    rate-limit:
+      enabled: ${RATE_LIMIT_ENABLED:true}
+      # login, register, password reset, email verification (POST); token refresh only uses the general bucket
+      strict:
+        capacity: ${RATE_LIMIT_STRICT_PER_MINUTE:10}
+        period: PT1M
+      general:
+        capacity: ${RATE_LIMIT_GENERAL_PER_MINUTE:300}
+        period: PT1M
 
 eureka:
   client:

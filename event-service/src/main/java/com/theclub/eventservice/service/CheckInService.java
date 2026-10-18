@@ -6,11 +6,13 @@ import com.theclub.eventservice.config.CheckInProperties;
 import com.theclub.eventservice.dto.CheckInResponse;
 import com.theclub.eventservice.dto.EventRegistrationRow;
 import com.theclub.eventservice.model.Event;
+import com.theclub.eventservice.model.Payment;
 import com.theclub.eventservice.model.EventStatus;
 import com.theclub.eventservice.model.PointsLedgerEntry;
 import com.theclub.eventservice.model.Registration;
 import com.theclub.eventservice.model.RegistrationStatus;
 import com.theclub.eventservice.repository.EventRepository;
+import com.theclub.eventservice.repository.PaymentRepository;
 import com.theclub.eventservice.repository.PointsLedgerRepository;
 import com.theclub.eventservice.repository.RegistrationRepository;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Event-day check-in by scanning the member's QR ticket; awards participation points exactly once.
@@ -32,14 +36,17 @@ public class CheckInService {
     private final EventRepository events;
     private final RegistrationRepository registrations;
     private final PointsLedgerRepository ledger;
+    private final PaymentRepository payments;
     private final ClubAccess clubAccess;
     private final NameResolver names;
     private final CheckInProperties properties;
     private final Clock clock;
 
     public CheckInService(EventRepository events, RegistrationRepository registrations, PointsLedgerRepository ledger,
-                          ClubAccess clubAccess, NameResolver names, CheckInProperties properties, Clock clock) {
+                          PaymentRepository payments, ClubAccess clubAccess, NameResolver names,
+                          CheckInProperties properties, Clock clock) {
         this.events = events;
+        this.payments = payments;
         this.registrations = registrations;
         this.ledger = ledger;
         this.clubAccess = clubAccess;
@@ -92,9 +99,16 @@ public class CheckInService {
         clubAccess.requireOwnerOrAdmin(event.getClubId(), caller);
         List<Registration> rows = registrations.findByEventIdOrderByRegisteredAt(eventId);
         Map<UUID, String> userNames = names.userNames(rows.stream().map(Registration::getUserId).toList());
+        Map<UUID, Payment> latestPayment = payments.findByEventId(eventId).stream()
+                .collect(Collectors.toMap(Payment::getRegistrationId, Function.identity(),
+                        (a, b) -> a.getCreatedAt().isAfter(b.getCreatedAt()) ? a : b));
         return rows.stream()
-                .map(r -> new EventRegistrationRow(r.getId(), r.getUserId(), userNames.get(r.getUserId()),
-                        r.getStatus(), r.getRegisteredAt(), r.getCheckedInAt()))
+                .map(r -> {
+                    Payment payment = latestPayment.get(r.getId());
+                    return new EventRegistrationRow(r.getId(), r.getUserId(), userNames.get(r.getUserId()),
+                            r.getStatus(), r.getRegisteredAt(), r.getCheckedInAt(),
+                            payment == null ? null : payment.getId(), payment == null ? null : payment.getStatus());
+                })
                 .toList();
     }
 }

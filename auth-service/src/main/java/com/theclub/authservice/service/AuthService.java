@@ -2,6 +2,7 @@ package com.theclub.authservice.service;
 
 import com.theclub.authservice.client.UserCredentials;
 import com.theclub.authservice.client.UserServiceClient;
+import com.theclub.authservice.config.AuthProperties;
 import com.theclub.authservice.dto.TokenResponse;
 import com.theclub.authservice.model.AuthToken;
 import com.theclub.authservice.repository.AuthTokenRepository;
@@ -22,43 +23,61 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.UUID;
 
 @Service
 public class AuthService {
 
+    public static final String EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
     private static final String INVALID_CREDENTIALS = "Invalid email or password";
     private static final String INVALID_REFRESH = "Invalid or expired refresh token";
     private static final int REFRESH_TOKEN_BYTES = 32;
 
     private final UserServiceClient userClient;
     private final AuthTokenRepository tokens;
+    private final LoginThrottle throttle;
     private final JwtService jwtService;
     private final JwtProperties jwtProperties;
+    private final AuthProperties authProperties;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
-    public AuthService(UserServiceClient userClient, AuthTokenRepository tokens, JwtService jwtService,
-                       JwtProperties jwtProperties, PasswordEncoder passwordEncoder, Clock clock) {
+    public AuthService(UserServiceClient userClient, AuthTokenRepository tokens, LoginThrottle throttle,
+                       JwtService jwtService, JwtProperties jwtProperties, AuthProperties authProperties,
+                       PasswordEncoder passwordEncoder, Clock clock) {
         this.userClient = userClient;
         this.tokens = tokens;
+        this.throttle = throttle;
         this.jwtService = jwtService;
         this.jwtProperties = jwtProperties;
+        this.authProperties = authProperties;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
     }
 
-    @Transactional
-    public TokenResponse login(String email, String password) {
+    /**
+     * Failed attempts are persisted even though the call fails, hence no rollback on ApiException.
+     */
+    @Transactional(noRollbackFor = ApiException.class)
+    public TokenResponse login(String rawEmail, String password) {
+        String email = rawEmail.trim().toLowerCase(Locale.ROOT);
+        throttle.ensureNotLocked(email);
         UserCredentials user;
         try {
-            user = userClient.getByEmail(email.trim().toLowerCase(Locale.ROOT));
+            user = userClient.getByEmail(email);
         } catch (FeignException.NotFound e) {
-            throw ApiException.unauthorized(INVALID_CREDENTIALS);
+            user = null;
         }
         if (user == null || !user.active() || user.passwordHash() == null
                 || !passwordEncoder.matches(password, user.passwordHash())) {
+            throttle.recordFailure(email);
             throw ApiException.unauthorized(INVALID_CREDENTIALS);
+        }
+        throttle.recordSuccess(email);
+        if (authProperties.requireVerifiedEmail() && !user.emailVerified()) {
+            throw ApiException.forbidden("Please verify your email address before logging in")
+                    .withCode(EMAIL_NOT_VERIFIED);
         }
         return issue(user);
     }
@@ -69,6 +88,9 @@ public class AuthService {
      */
     @Transactional(noRollbackFor = ApiException.class)
     public TokenResponse refresh(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw ApiException.unauthorized(INVALID_REFRESH);
+        }
         AuthToken stored = tokens.findByRefreshTokenHash(hash(refreshToken))
                 .orElseThrow(() -> ApiException.unauthorized(INVALID_REFRESH));
         tokens.delete(stored);
@@ -89,7 +111,18 @@ public class AuthService {
 
     @Transactional
     public void logout(String refreshToken) {
-        tokens.deleteByRefreshTokenHash(hash(refreshToken));
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            tokens.deleteByRefreshTokenHash(hash(refreshToken));
+        }
+    }
+
+    /**
+     * Revokes every refresh token of the user ("log out everywhere", password reset/change).
+     * Access tokens already issued stay valid until they expire (short-lived by design).
+     */
+    @Transactional
+    public int revokeAllSessions(UUID userId) {
+        return tokens.deleteByUserId(userId);
     }
 
     private TokenResponse issue(UserCredentials user) {

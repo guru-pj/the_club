@@ -10,6 +10,9 @@
 
 setlocal enabledelayedexpansion
 
+:: Always run from the project root
+cd /d "%~dp0"
+
 :: Colors
 set "GREEN="
 set "YELLOW="
@@ -35,6 +38,18 @@ if %errorlevel% neq 0 (
 if not exist .env (
     echo 📝 No .env found, copying enviroinment_variables.env to .env
     copy enviroinment_variables.env .env >nul
+)
+
+:: Generate keys and passwords on first run (needs bash + openssl: Git for Windows' Git Bash or WSL)
+if not exist secrets\theclub.jwt.private-key (
+    echo 🔐 No secrets found, generating .\secrets ...
+    where bash >nul 2>nul
+    if !errorlevel! neq 0 (
+        echo ❌ bash was not found. Install Git for Windows ^(Git Bash^) or WSL, then run: bash scripts/generate-secrets.sh
+        exit /b 1
+    )
+    bash scripts/generate-secrets.sh
+    if !errorlevel! neq 0 exit /b 1
 )
 
 :: Parse command arguments
