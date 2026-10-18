@@ -1,0 +1,44 @@
+Club Owner Verification – Flow
+
+1) User applies to become a Club Owner
+   Endpoint: POST /api/v1/owner-verification/apply
+   Includes:
+     - clubName
+     - clubType
+     - city
+     - socialLinks (instagram, facebook, website, strava link)
+     - proofDocuments (uploaded images/files)
+     - description
+
+   System:
+     - Save a VerificationRequest (status = PENDING)
+     - Upload proof files to storage (S3/minio)
+     - Notify admin service of new request
+
+2) Admin Review (48 hours SLA)
+   Admin can:
+     - Approve
+     - Reject (with reason)
+     - Request more information
+
+3) Approval Actions
+   If approved:
+     - Update user role to ROLE_CLUB_OWNER
+     - Optionally auto-create club OR let user create after approval
+     - Notify user
+
+4) Rejection Actions
+   - Save adminNotes
+   - Notify user
+   - Allow re-apply
+
+5) Needs Info
+   - Admin requests specific extra proofs
+   - User uploads missing items
+   - Status goes back to UNDER_REVIEW
+
+6) Integration
+   - User Service: set user as club owner
+   - Club Service: create a club if needed
+   - Notification Service: send updates
+   - Storage: for documents

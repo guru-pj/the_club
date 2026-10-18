@@ -1,0 +1,41 @@
+# API Endpoints — Owner Verification Service
+
+Base URL: /api/v1/owner-verification
+
+1) POST /apply
+   Auth: USER
+   Creates a verification request.
+   Body: multipart/form-data
+   Returns: { requestId, status }
+
+2) GET /requests/me
+   Auth: USER
+   Returns all requests created by logged-in user.
+
+3) GET /requests/{id}
+   Auth: USER or ADMIN
+   Returns request details.
+
+4) GET /requests?status=PENDING
+   Auth: ADMIN
+   Lists pending requests for admin UI.
+
+5) POST /requests/{id}/approve
+   Auth: ADMIN
+   Body:
+     {
+       "createClub": true/false,
+       "clubPayload": { ... optional ... }
+     }
+
+6) POST /requests/{id}/reject
+   Auth: ADMIN
+   Body: { reason }
+
+7) POST /requests/{id}/request-info
+   Auth: ADMIN
+   Body: { message }
+
+8) POST /requests/{id}/upload-proof
+   Auth: USER
+   Add more files to request.

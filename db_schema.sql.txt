@@ -1,0 +1,18 @@
+CREATE TABLE owner_verification_requests (
+    id CHAR(36) PRIMARY KEY,
+    user_id CHAR(36) NOT NULL,
+    club_name VARCHAR(200) NOT NULL,
+    club_type VARCHAR(50),
+    city VARCHAR(100),
+    social_links JSON,
+    proof_files JSON,
+    description TEXT,
+    contact_phone VARCHAR(20),
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING', 
+    admin_notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_id ON owner_verification_requests(user_id);
+CREATE INDEX idx_status ON owner_verification_requests(status);

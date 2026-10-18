@@ -1,0 +1,27 @@
+Service: owner-verification-service
+
+Directory Structure:
+
+owner-verification-service/
+ └── pom.xml
+ └── src/main/java/com/theclub/ownerverification
+       ├── controller/
+       │     └── VerificationController.java
+       ├── service/
+       │     └── VerificationService.java
+       ├── model/
+       │     └── VerificationRequest.java
+       ├── repository/
+       │     └── VerificationRequestRepository.java
+       └── OwnerVerificationServiceApplication.java
+ └── src/main/resources/
+       └── application.properties
+ └── db_schema.sql
+ └── README.md
+ └── .gitignore
+
+Notes:
+- Use FeignClient to call UserService & ClubService
+- Use Minio/S3 for proof file storage
+- JWT validated via AuthService
+- JPA for DB

@@ -1,0 +1,33 @@
+# Admin Workflow
+
+1) Admin sees PENDING requests
+   Shows:
+     - Applicant user info
+     - clubName, city
+     - social links
+     - proof files
+     - submitted time
+
+2) Tools:
+   - Open all social links in new tab
+   - Quick checks (Strava Club check)
+   - Admin comments
+
+3) Admin Actions:
+   A) Approve:
+      - Set status = APPROVED
+      - Call User Service → add ROLE_CLUB_OWNER
+      - Optionally call Club Service → create club
+      - Notify user
+   B) Reject:
+      - Set status = REJECTED
+      - Add admin notes
+      - Notify user
+   C) Needs More Info:
+      - status = NEEDS_INFO
+      - Ask user for specific documents
+
+4) Audit:
+   - Store admin ID
+   - Store timestamps
+   - Keep history for safety
