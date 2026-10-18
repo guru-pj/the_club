@@ -5,6 +5,10 @@
 import { mkdirSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 
+const DEFAULT_CHROME = {
+  darwin: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  win32: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+}[process.platform] ?? '/usr/bin/google-chrome'
 const BASE = process.env.APP_URL ?? 'http://localhost:5173'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'admin@theclub.local'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'change-me-admin'
@@ -22,7 +26,7 @@ const local = (offsetMin) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? '/usr/bin/google-chrome', headless: true })
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH ?? DEFAULT_CHROME, headless: true })
 
 async function newUser(label, viewport = { width: 1280, height: 860 }) {
   const ctx = await browser.newContext({ viewport })

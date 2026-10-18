@@ -15,7 +15,9 @@ fi
 ADMIN_PASSWORD=${ADMIN_PASSWORD:-change-me-admin}
 VERIFY_TOKEN=${STRAVA_WEBHOOK_VERIFY_TOKEN:-$(grep -sE '^STRAVA_WEBHOOK_VERIFY_TOKEN=' "$ROOT_DIR/.env" | tail -1 | cut -d= -f2-)}
 VERIFY_TOKEN=${VERIFY_TOKEN:-change-me-strava-verify-token}
-RUN=$(date +%s%N)
+# Portable across GNU (Linux) and BSD (macOS) date: unique run id and "now ± minutes" timestamps
+RUN="$(date +%s)$$${RANDOM}"
+at_minutes() { date -d "$1 minutes" +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -v"$1"M +%Y-%m-%dT%H:%M:%S; }
 fail() { echo "FAIL: $*"; exit 1; }
 req() { # method path token body -> prints body, sets CODE
   local out; out=$(curl -s -w '\n%{http_code}' -X "$1" "$G$2" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} ${4:+-d "$4"})
@@ -23,7 +25,7 @@ req() { # method path token body -> prints body, sets CODE
 expect() { [ "$CODE" = "$1" ] || fail "$2 expected $1 got $CODE: $BODY"; echo "ok  $2 ($CODE)"; }
 login() { req POST /auth/login "" "{\"email\":\"$1\",\"password\":\"$2\"}"; expect 200 "login $1" >&2; echo "$BODY" | jq -r .accessToken; }
 NOW=$(date +%Y-%m-%dT%H:%M:%S)
-START=$(date -d '+1 hour' +%Y-%m-%dT%H:%M:%S); OPENS=$(date -d '-1 minute' +%Y-%m-%dT%H:%M:%S)
+START=$(at_minutes +60); OPENS=$(at_minutes -1)
 MONTH=$(date +%Y-%m)
 
 # --- Phase 1: signup/login

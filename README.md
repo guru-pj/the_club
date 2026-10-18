@@ -137,7 +137,7 @@ sudo usermod -aG docker $USER
 newgrp docker                      # or log out and back in, so docker works without sudo
 ```
 
-**macOS:** `brew install git openjdk@21 maven jq`, plus Docker Desktop.
+**macOS (Apple Silicon or Intel):** follow the step-by-step [macOS installation guide](docs/INSTALL_MACOS.md). It covers Homebrew, Temurin JDK 21, Maven and Docker Desktop resource settings, with Mac-specific troubleshooting.
 
 **Windows:** install Git for Windows (it includes Git Bash with bash and openssl), Temurin JDK 21, Maven 3.9+ and Docker Desktop with the WSL 2 backend. Run the `.sh` scripts from Git Bash or WSL.
 
