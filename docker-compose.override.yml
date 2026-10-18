@@ -1,0 +1,79 @@
+# ============================================================
+# Development additions — loaded automatically by `docker compose up`.
+# Production deploys ignore this file: docker compose -f docker-compose.yml up -d
+#
+# Adds: host ports for databases, services and Eureka; Mailpit (catches all email, UI http://localhost:8025);
+# Trino; relaxed rate limits for local testing.
+# ============================================================
+
+services:
+  mysql:
+    ports:
+      - "127.0.0.1:${MYSQL_PORT}:3306"
+
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT}:5432"
+
+  discovery-service:
+    ports:
+      - "127.0.0.1:${DISCOVERY_SERVICE_PORT}:8761"
+
+  config-service:
+    ports:
+      - "127.0.0.1:${CONFIG_SERVICE_PORT}:8888"
+
+  gateway-service:
+    environment:
+      # browser end-to-end tests log in many times from one IP
+      RATE_LIMIT_STRICT_PER_MINUTE: "120"
+
+  user-service:
+    ports:
+      - "127.0.0.1:${USER_SERVICE_PORT}:8081"
+
+  auth-service:
+    ports:
+      - "127.0.0.1:${AUTH_SERVICE_PORT}:8082"
+
+  activity-service:
+    ports:
+      - "127.0.0.1:${ACTIVITY_SERVICE_PORT}:8083"
+
+  club-service:
+    ports:
+      - "127.0.0.1:${CLUB_SERVICE_PORT}:8084"
+
+  event-service:
+    ports:
+      - "127.0.0.1:${EVENT_SERVICE_PORT}:8086"
+
+  notification-service:
+    ports:
+      - "127.0.0.1:${NOTIFICATION_SERVICE_PORT}:8087"
+    environment:
+      MAIL_ENABLED: "true"
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "false"
+    depends_on:
+      mailpit:
+        condition: service_started
+
+  # Local SMTP catcher for confirmation emails / QR tickets / password resets
+  mailpit:
+    image: axllent/mailpit:v1.20
+    container_name: mailpit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  # Federated SQL over MySQL + PostgreSQL for ad-hoc analytics (development only)
+  trino:
+    image: trinodb/trino:460
+    container_name: trino
+    ports:
+      - "127.0.0.1:${TRINO_PORT}:8080"
+    depends_on:
+      - mysql
+      - postgres

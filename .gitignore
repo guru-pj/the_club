@@ -43,6 +43,8 @@ mvnw.cmd
 # ----------------------------
 # Docker build cache, volumes, etc.
 **/docker-compose.override.yml
+# ...except the project's own dev override, which is committed on purpose
+!/docker-compose.override.yml
 **/.docker/
 **/tmp/
 
@@ -72,6 +74,10 @@ backup/
 **/db/
 *.sql
 *.db
+# ...but Flyway migrations are source code and must be committed
+!**/src/main/resources/db/
+!**/src/main/resources/db/migration/
+!**/src/main/resources/db/migration/*.sql
 
 # ==============================================
 # ✅ Summary:
