@@ -1,0 +1,75 @@
+{{- $c := .Values.config -}}
+{{- $o := .Values.observability -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "theclub.fullname" . }}-env
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "config") | nindent 4 }}
+data:
+  SPRING_PROFILES_ACTIVE: {{ $c.springProfilesActive | quote }}
+  # Secrets are files under /run/secrets, named after the variable they provide (same as docker-compose)
+  SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
+  LOGGING_LEVEL_ROOT: {{ $c.logLevel | quote }}
+  APP_TIME_ZONE: {{ $c.timeZone | quote }}
+  APP_BASE_URL: {{ $c.appBaseUrl | quote }}
+  ADMIN_EMAIL: {{ $c.adminEmail | quote }}
+  JWT_EXPIRATION: {{ $c.jwt.expiration | quote }}
+  JWT_REFRESH_EXPIRATION: {{ $c.jwt.refreshExpiration | quote }}
+  JWT_KEY_ID: {{ $c.jwt.keyId | quote }}
+  AUTH_COOKIE_SECURE: {{ $c.auth.cookieSecure | quote }}
+  REQUIRE_EMAIL_VERIFICATION: {{ $c.auth.requireEmailVerification | quote }}
+  PAYMENT_PROVIDER: {{ $c.payments.provider | quote }}
+  RAZORPAY_KEY_ID: {{ $c.payments.razorpayKeyId | quote }}
+  MAIL_PROVIDER: {{ $c.mail.provider | quote }}
+  MAIL_ENABLED: {{ $c.mail.enabled | quote }}
+  MAIL_FROM: {{ $c.mail.from | quote }}
+  MAIL_REPLY_TO: {{ $c.mail.replyTo | quote }}
+  MAIL_REDIRECT_ALL_TO: {{ $c.mail.redirectAllTo | quote }}
+  ZEPTOMAIL_API_URL: {{ $c.mail.zeptomailApiUrl | quote }}
+  MAIL_DISPATCHER_ENABLED: {{ $c.mail.dispatcherEnabled | quote }}
+  MAIL_DISPATCHER_INTERVAL: {{ $c.mail.dispatcherInterval | quote }}
+  {{- /* with the dev mail catcher enabled and no SMTP host given, send to it */}}
+  MAIL_HOST: {{ $c.mail.smtp.host | default (ternary (include "theclub.serviceName" (dict "root" $ "component" "mailpit")) "" .Values.mailpit.enabled) | quote }}
+  MAIL_PORT: {{ $c.mail.smtp.port | quote }}
+  MAIL_USERNAME: {{ $c.mail.smtp.username | quote }}
+  MAIL_STARTTLS: {{ $c.mail.smtp.starttls | quote }}
+  SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: {{ $c.mail.smtp.starttls | quote }}
+  STRAVA_CLIENT_ID: {{ $c.strava.clientId | quote }}
+  STRAVA_REDIRECT_URI: {{ $c.strava.redirectUri | quote }}
+  STRAVA_WEBHOOK_VERIFY_TOKEN: {{ $c.strava.webhookVerifyToken | quote }}
+  STRAVA_WEBHOOK_CALLBACK_URL: {{ $c.strava.webhookCallbackUrl | quote }}
+  STRAVA_INITIAL_SYNC_DAYS: {{ $c.strava.initialSyncDays | quote }}
+  STRAVA_WORKER_ENABLED: {{ $c.strava.workerEnabled | quote }}
+  STRAVA_WORKER_BATCH_SIZE: {{ $c.strava.workerBatchSize | quote }}
+  CORS_ALLOWED_ORIGINS: {{ $c.corsAllowedOrigins | quote }}
+  # The gateway sits behind the web app's nginx, which sets X-Real-IP to the (real) client address
+  GATEWAY_TRUST_FORWARDED_FOR: "true"
+  RATE_LIMIT_STRICT_PER_MINUTE: {{ $c.gateway.rateLimitStrictPerMinute | quote }}
+  RATE_LIMIT_GENERAL_PER_MINUTE: {{ $c.gateway.rateLimitGeneralPerMinute | quote }}
+  # Observability
+  {{- if eq $o.logFormat "json" }}
+  # one JSON (Elastic Common Schema) object per line, with traceId/spanId — ready for Loki / Elasticsearch
+  LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+  {{- end }}
+  TRACING_ENABLED: {{ $o.tracing.enabled | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ $o.tracing.otlpEndpoint | quote }}
+  TRACING_SAMPLING_PROBABILITY: {{ $o.tracing.samplingProbability | quote }}
+  # Kubernetes probes (/actuator/health/liveness and /readiness); Spring enables them on Kubernetes anyway
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  SERVER_SHUTDOWN: "graceful"
+{{- if .Values.services.discovery.enabled }}
+  # Service discovery through Eureka (discovery.enabled)
+  EUREKA_CLIENT_ENABLED: "true"
+  EUREKA_SERVER_URL: {{ printf "%s/eureka" (include "theclub.serviceUrl" (dict "root" $ "component" "discovery")) | quote }}
+{{- else }}
+  # Kubernetes Services provide discovery and load balancing: Feign clients and gateway routes use their URLs
+  EUREKA_CLIENT_ENABLED: "false"
+{{- range $component := list "user" "auth" "activity" "club" "event" "notification" }}
+  {{ upper $component }}_SERVICE_URL: {{ include "theclub.serviceUrl" (dict "root" $ "component" $component) | quote }}
+  {{ upper $component }}_SERVICE_URI: {{ include "theclub.serviceUrl" (dict "root" $ "component" $component) | quote }}
+{{- end }}
+{{- end }}
+{{- range $key, $value := $c.extraEnv }}
+  {{ $key }}: {{ $value | quote }}
+{{- end }}

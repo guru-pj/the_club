@@ -1,0 +1,30 @@
+{{- $root := . -}}
+{{- range (fromYaml (include "theclub.workloads" .)).items }}
+{{- if .autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $root "component" .component) }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $root "component" .component) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "theclub.serviceName" (dict "root" $root "component" .component) }}
+  minReplicas: {{ .autoscaling.minReplicas }}
+  maxReplicas: {{ .autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    # JVMs are CPU-hungry while starting; don't flap
+    scaleDown:
+      stabilizationWindowSeconds: 300
+{{- end }}
+{{- end }}

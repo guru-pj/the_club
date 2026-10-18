@@ -1,0 +1,103 @@
+# Production overrides. Copy, fill in every "CHANGE-ME" and install with:
+#   helm upgrade --install the-club deploy/helm/the-club -n the-club -f deploy/helm/the-club/values-prod.yaml \
+#     --set global.imageTag=<git sha>
+# Full guide: docs/KUBERNETES.md
+global:
+  imageRegistry: ghcr.io/guru-pj
+  imageTag: ""                      # set to the commit SHA published by CI (never "latest" in production)
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []              # [{name: ghcr-pull}] if the packages are private
+
+config:
+  springProfilesActive: prod        # fail fast on placeholder secrets and mock payments
+  appBaseUrl: https://theclub.example.com            # CHANGE-ME
+  corsAllowedOrigins: https://theclub.example.com    # CHANGE-ME
+  adminEmail: admin@theclub.example.com              # CHANGE-ME
+  auth:
+    cookieSecure: true
+    requireEmailVerification: true
+  payments:
+    provider: razorpay
+    razorpayKeyId: rzp_live_CHANGE-ME
+  mail:
+    provider: zeptomail
+    from: "The Club <no-reply@theclub.example.com>"  # CHANGE-ME: a ZeptoMail-verified sender domain
+  strava:
+    clientId: ""                                      # CHANGE-ME (empty disables Strava)
+    redirectUri: https://theclub.example.com/strava/callback
+    webhookCallbackUrl: https://theclub.example.com/api/v1/strava/webhook
+    webhookVerifyToken: CHANGE-ME-random-string
+  gateway:
+    # per gateway pod (3 pods => 30/min/IP for login & co.)
+    rateLimitStrictPerMinute: 10
+    rateLimitGeneralPerMinute: 300
+
+observability:
+  logFormat: json
+  tracing:
+    enabled: false                  # true + otlpEndpoint once a collector is running
+    otlpEndpoint: ""
+  metrics:
+    serviceMonitor:
+      enabled: false                # true with the Prometheus Operator (kube-prometheus-stack)
+
+secrets:
+  # kubectl -n the-club create secret generic the-club-secrets --from-file=secrets/
+  # (or an ExternalSecret that produces the same keys — see docs/KUBERNETES.md)
+  name: the-club-secrets
+  create: false
+
+databases:
+  mysql:
+    host: mysql.example.internal    # CHANGE-ME: managed MySQL 8 (RDS / Cloud SQL / Azure Database)
+    port: 3306
+    params: "?sslMode=REQUIRED"
+  postgres:
+    host: postgres.example.internal # CHANGE-ME: managed PostgreSQL 15
+    port: 5432
+    params: "?sslmode=require"
+  embedded:
+    enabled: false
+
+serviceDefaults:
+  replicaCount: 2
+  resources:
+    requests: {cpu: 250m, memory: 640Mi}
+    limits: {memory: 1Gi}
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
+services:
+  gateway:
+    autoscaling:
+      minReplicas: 3
+
+webApp:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+
+ingress:
+  enabled: true
+  className: ""                     # CHANGE-ME if your cluster has no default IngressClass
+  host: theclub.example.com         # CHANGE-ME
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: the-club-tls
+
+networkPolicy:
+  enabled: true
+  ingressControllerNamespace: ""    # CHANGE-ME: e.g. traefik / ingress-controller namespace
+  prometheusNamespace: ""           # e.g. monitoring
+  # Narrow these to your managed database subnets
+  databaseCidrs: ["10.0.0.0/8"]     # CHANGE-ME
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

@@ -1,5 +1,6 @@
 package com.theclub.userservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.common.web.ApiException;
 import com.theclub.userservice.dto.RegisterUserRequest;
 import com.theclub.userservice.dto.UpdateUserRequest;
@@ -42,6 +43,7 @@ public class UserService {
         User user = users.save(new User(request.name().trim(), email, passwordEncoder.encode(request.password()),
                 EnumSet.of(Role.USER)));
         accounts.startEmailVerification(user);
+        BusinessMetrics.increment("users.registrations");
         return user;
     }
 

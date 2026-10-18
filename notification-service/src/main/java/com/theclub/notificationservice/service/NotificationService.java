@@ -2,6 +2,7 @@ package com.theclub.notificationservice.service;
 
 import com.theclub.common.web.ApiException;
 import com.theclub.notificationservice.dto.EmailRequest;
+import com.theclub.notificationservice.email.EmailOutboxService;
 import com.theclub.notificationservice.model.Notification;
 import com.theclub.notificationservice.repository.NotificationRepository;
 import org.springframework.data.domain.Page;
@@ -19,23 +20,24 @@ public class NotificationService {
     static final int MAX_PAGE_SIZE = 100;
 
     private final NotificationRepository notifications;
-    private final EmailSender emailSender;
+    private final EmailOutboxService emailOutbox;
     private final Clock clock;
 
-    public NotificationService(NotificationRepository notifications, EmailSender emailSender, Clock clock) {
+    public NotificationService(NotificationRepository notifications, EmailOutboxService emailOutbox, Clock clock) {
         this.notifications = notifications;
-        this.emailSender = emailSender;
+        this.emailOutbox = emailOutbox;
         this.clock = clock;
     }
 
     /**
-     * Stores the in-app notification and, when {@code email} is given, hands it to the async sender.
+     * Stores the in-app notification and, when {@code email} is given, queues it in the email outbox in the
+     * same transaction: either both are stored or neither is, and the email is delivered (with retries) later.
      */
     @Transactional
     public Notification create(UUID userId, String type, String message, EmailRequest email) {
         Notification notification = notifications.save(new Notification(userId, type, message, LocalDateTime.now(clock)));
         if (email != null) {
-            emailSender.send(email);
+            emailOutbox.enqueue(email);
         }
         return notification;
     }

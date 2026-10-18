@@ -1,0 +1,60 @@
+{{- if .Values.mailpit.enabled }}
+# Development mail catcher: every email the app sends lands here (UI: kubectl port-forward svc/<release>-mailpit 8025)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "mailpit") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "mailpit") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "mailpit") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "theclub.labels" (dict "root" $ "component" "mailpit") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mailpit
+          image: {{ .Values.mailpit.image }}
+          ports:
+            - {name: smtp, containerPort: 1025}
+            - {name: http, containerPort: 8025}
+          readinessProbe:
+            tcpSocket: {port: smtp}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            # mailpit keeps its message database in /tmp
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "mailpit") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "mailpit") | nindent 4 }}
+spec:
+  selector:
+    {{- include "theclub.selectorLabels" (dict "root" $ "component" "mailpit") | nindent 4 }}
+  ports:
+    - {name: smtp, port: 1025, targetPort: smtp}
+    - {name: http, port: 8025, targetPort: http}
+{{- end }}

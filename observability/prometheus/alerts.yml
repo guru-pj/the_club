@@ -1,0 +1,122 @@
+# Alert rules. Each alert has a runbook hint in docs/OBSERVABILITY.md (section "Alerts").
+groups:
+  - name: theclub-availability
+    rules:
+      - alert: ServiceDown
+        expr: up{job="theclub-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} is down"
+          description: "Prometheus could not scrape {{ $labels.service }} for 2 minutes."
+
+      - alert: HighErrorRate
+        expr: |
+          sum by (application) (rate(http_server_requests_seconds_count{status=~"5..", uri!~"/actuator.*"}[5m]))
+            / sum by (application) (rate(http_server_requests_seconds_count{uri!~"/actuator.*"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.application }}: more than 5% of requests fail"
+          description: "5xx ratio is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum by (application, le) (
+            rate(http_server_requests_seconds_bucket{uri!~"/actuator.*"}[5m]))) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }}: p95 latency above 2s"
+          description: "95th percentile latency is {{ $value | humanizeDuration }}."
+
+      - alert: JvmHeapHigh
+        expr: |
+          sum by (application, instance) (jvm_memory_used_bytes{area="heap"})
+            / sum by (application, instance) (jvm_memory_max_bytes{area="heap"} > 0) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }}: heap above 90%"
+          description: "Heap usage is {{ $value | humanizePercentage }}; risk of OutOfMemoryError (the container restarts on OOM)."
+
+      - alert: DatabasePoolExhausted
+        expr: max by (application) (hikaricp_connections_pending) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }}: requests are waiting for database connections"
+          description: "{{ $value }} threads waiting for a pooled connection for 5 minutes (DB_POOL_MAX_SIZE, slow queries)."
+
+  - name: theclub-business
+    rules:
+      - alert: PaymentReconciliationErrors
+        expr: increase(theclub_payments_reconciled_total{outcome="error"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment reconciliation is failing"
+          description: "{{ $value }} reconciliation errors in 15 minutes; payments may stay pending (check event-service logs and the payment provider)."
+
+      - alert: PaymentFailuresSpike
+        expr: sum(increase(theclub_payments_transitions_total{status="failed"}[15m])) > 10
+        labels:
+          severity: warning
+        annotations:
+          summary: "Many failed payments"
+          description: "{{ $value }} payments failed in 15 minutes."
+
+      - alert: EmailOutboxBacklog
+        expr: max(theclub_email_outbox_pending) > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Emails are piling up in the outbox"
+          description: "{{ $value }} emails waiting for 15 minutes (email provider down or credentials invalid)."
+
+      - alert: EmailDeliveryFailing
+        expr: sum(increase(theclub_emails_failed_total{reason=~"permanent|exhausted"}[15m])) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "Email delivery is failing"
+          description: "{{ $value }} emails failed permanently in 15 minutes."
+
+      - alert: LoginLockoutSpike
+        expr: sum(increase(theclub_auth_logins_total{outcome="locked"}[10m])) > 20
+        labels:
+          severity: warning
+        annotations:
+          summary: "Many locked-out login attempts"
+          description: "{{ $value }} attempts against locked accounts in 10 minutes; possible credential-stuffing attack."
+
+      - alert: GatewayRateLimitingSpike
+        expr: sum(increase(theclub_gateway_rate_limited_total[10m])) > 200
+        labels:
+          severity: info
+        annotations:
+          summary: "Gateway is rate limiting many requests"
+          description: "{{ $value }} requests rejected with 429 in 10 minutes."
+
+      - alert: StravaRateLimited
+        expr: sum(increase(theclub_strava_api_calls_total{outcome="rate_limited"}[15m])) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: "Strava API rate limit reached"
+          description: "Strava imports are delayed until the rate-limit window resets (queued webhook events are retried)."
+
+      - alert: StravaRateLimitNearlyUsed
+        expr: max by (kind, window) (theclub_strava_ratelimit_usage / (theclub_strava_ratelimit_limit > 0)) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Strava {{ $labels.kind }} {{ $labels.window }} quota above 90%"
+          description: "Usage is {{ $value | humanizePercentage }} of the Strava API limit; request a higher limit from Strava if this recurs."

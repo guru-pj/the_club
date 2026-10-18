@@ -3,11 +3,11 @@ package com.theclub.activityservice;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
-import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
 @ConfigurationPropertiesScan
-@EnableAsync
+@EnableFeignClients
 public class ActivityServiceApplication {
 
     public static void main(String[] args) {

@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @FeignClient(name = "notification-service", contextId = "notificationClient",
@@ -19,8 +20,11 @@ public interface NotificationClient {
     record NotificationRequest(UUID userId, String type, String message, EmailMessage email) {
     }
 
+    /**
+     * A templated email rendered by notification-service (see its EmailTemplate ids).
+     */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    record EmailMessage(String to, String subject, String body, List<EmailAttachment> attachments) {
+    record EmailMessage(String to, String template, Map<String, Object> variables, List<EmailAttachment> attachments) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)

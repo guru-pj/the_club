@@ -2,6 +2,7 @@ package com.theclub.notificationservice.service;
 
 import com.theclub.common.web.ApiException;
 import com.theclub.notificationservice.dto.EmailRequest;
+import com.theclub.notificationservice.email.EmailOutboxService;
 import com.theclub.notificationservice.model.Notification;
 import com.theclub.notificationservice.repository.NotificationRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,14 +31,14 @@ class NotificationServiceTest {
     @Mock
     NotificationRepository notifications;
     @Mock
-    EmailSender emailSender;
+    EmailOutboxService emailOutbox;
 
     NotificationService service;
     UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        service = new NotificationService(notifications, emailSender,
+        service = new NotificationService(notifications, emailOutbox,
                 Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -49,17 +50,17 @@ class NotificationServiceTest {
 
         assertThat(saved.getUserId()).isEqualTo(userId);
         assertThat(saved.isRead()).isFalse();
-        verify(emailSender, never()).send(any());
+        verify(emailOutbox, never()).enqueue(any());
     }
 
     @Test
-    void storesNotificationAndSendsEmail() {
+    void storesNotificationAndQueuesEmail() {
         when(notifications.save(any(Notification.class))).thenAnswer(inv -> inv.getArgument(0));
         EmailRequest email = new EmailRequest("a@b.com", "Ticket", "<p>hi</p>", List.of());
 
         service.create(userId, "EVENT_REGISTRATION_CONFIRMED", "You're in", email);
 
-        verify(emailSender).send(email);
+        verify(emailOutbox).enqueue(email);
     }
 
     @Test

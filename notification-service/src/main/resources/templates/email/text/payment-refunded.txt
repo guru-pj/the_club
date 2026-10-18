@@ -1,0 +1,9 @@
+Your refund is on its way.
+
+We've refunded [(${amount})] for [(${eventTitle})].
+[# th:if="${reason}"]Reason: [(${reason})]
+[/]
+Refunds usually reach your account within 5-7 working days, back to the original payment method.
+
+--
+You received this email because [(${footerReason})]

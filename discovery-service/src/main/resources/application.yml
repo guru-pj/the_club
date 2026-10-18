@@ -19,4 +19,30 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # /actuator is never reachable from outside: nginx proxies only /api and the gateway never routes /actuator.
+        # Prometheus scrapes /actuator/prometheus over the internal network.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # /actuator/health/liveness and /actuator/health/readiness for Docker and Kubernetes probes
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        http.client.requests: true
+      slo:
+        http.server.requests: 100ms,300ms,1s,3s
+
+# --- Operations: graceful shutdown on SIGTERM (rolling deploys), connection pool, outbound timeouts ---
+# Logs are plain text locally; set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs for JSON (the observability stack does).
+server.shutdown: graceful
+spring.lifecycle.timeout-per-shutdown-phase: 20s

@@ -54,11 +54,9 @@ if [ ! -f .env ]; then
     cp enviroinment_variables.env .env
 fi
 
-# Generate keys and passwords on first run (existing secrets are never overwritten)
-if [ ! -f secrets/theclub.jwt.private-key ]; then
-    echo -e "${YELLOW}🔐 No secrets found, generating ./secrets ...${NC}"
-    ./scripts/generate-secrets.sh || exit 1
-fi
+# Generate keys and passwords. Idempotent: existing secrets are never overwritten, and secrets added by newer
+# versions (e.g. zeptomail-token) are created on upgrade so docker compose can mount them.
+./scripts/generate-secrets.sh || exit 1
 
 # Function: Build Docker images
 build_docker() {

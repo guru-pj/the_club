@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/layout :: layout('Your club owner application', ~{::#content})}">
+<body>
+<div id="content">
+        <h1 style="font-size:22px;margin:0 0 16px;">Club owner application: <span th:text="${decision}">update</span></h1>
+        <p>Hi <span th:text="${name}">there</span>,</p>
+        <p th:if="${message}" th:text="${message}">Details about the decision.</p>
+        <div th:if="${link}"><div th:replace="~{html/parts :: button(${link}, 'Open The Club')}"></div></div>
+</div>
+</body>
+</html>

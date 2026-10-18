@@ -1,0 +1,125 @@
+{{- if and .Values.backups.enabled .Values.databases.embedded.enabled }}
+{{- $b := .Values.backups -}}
+{{- $e := .Values.databases.embedded -}}
+{{- $secretName := include "theclub.secretName" . -}}
+# Nightly logical dumps of the EMBEDDED databases, exactly like the docker-compose db-backup-* containers: one
+# small Deployment per engine runs scripts/backup.sh in "schedule" mode with its own volume. (A CronJob's volume
+# would only bind once the first job runs, which blocks `helm install --wait` on WaitForFirstConsumer storage.)
+# On demand: kubectl exec deploy/<release>-backup-mysql -- bash /opt/theclub/scripts/backup.sh run
+# Managed databases use their provider's backups / point-in-time recovery instead.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "theclub.fullname" . }}-backup-script
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "backup") | nindent 4 }}
+data:
+  backup.sh: |
+    {{- .Files.Get "files/backup.sh" | nindent 4 }}
+{{- range $engine := list "mysql" "postgres" }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "theclub.fullname" $ }}-backups-{{ $engine }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "backup") | nindent 4 }}
+  annotations:
+    # keep the dumps if the release is uninstalled
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with $b.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $b.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "theclub.fullname" $ }}-backup-{{ $engine }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "backup") | nindent 4 }}
+spec:
+  replicas: 1
+  # one scheduler at a time on the ReadWriteOnce volume
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "backup") | nindent 6 }}
+      theclub.io/backup-engine: {{ $engine }}
+  template:
+    metadata:
+      labels:
+        {{- include "theclub.labels" (dict "root" $ "component" "backup") | nindent 8 }}
+        theclub.io/backup-engine: {{ $engine }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: backup
+          image: {{ if eq $engine "mysql" }}{{ $e.mysql.image }}{{ else }}{{ $e.postgres.image }}{{ end }}
+          command: ["bash", "/opt/theclub/scripts/backup.sh", "schedule"]
+          env:
+            - name: BACKUP_ENGINE
+              value: {{ $engine }}
+            - name: BACKUP_SCHEDULE
+              value: {{ $b.schedule | quote }}
+            - name: BACKUP_RETENTION_DAYS
+              value: {{ $b.retentionDays | quote }}
+            - name: TZ
+              value: {{ $b.timeZone | quote }}
+            {{- if eq $engine "mysql" }}
+            - name: MYSQL_HOST
+              value: {{ include "theclub.mysqlHost" $ }}
+            {{- else }}
+            - name: POSTGRES_HOST
+              value: {{ include "theclub.postgresHost" $ }}
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_DATABASES
+              value: {{ $.Values.services.activity.database.name }}
+            {{- end }}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+            - name: script
+              mountPath: /opt/theclub/scripts
+              readOnly: true
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "theclub.fullname" $ }}-backups-{{ $engine }}
+        - name: script
+          configMap:
+            name: {{ include "theclub.fullname" $ }}-backup-script
+            defaultMode: 0555
+        - name: secrets
+          secret:
+            secretName: {{ $secretName }}
+            defaultMode: 0440
+            items:
+              {{- if eq $engine "mysql" }}
+              - {key: mysql-root-password, path: mysql-root-password}
+              {{- else }}
+              - {key: postgres-password, path: postgres-password}
+              {{- end }}
+{{- end }}
+{{- end }}

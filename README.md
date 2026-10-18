@@ -315,11 +315,17 @@ docker compose down                      # remove containers (data is kept in vo
 docker compose down -v                   # remove containers AND all data (fresh start)
 ```
 
-Update to the latest code:
+Update to the latest code. The generator only adds new secrets and never changes existing ones; newer versions may need new ones:
 ```bash
 git pull
+./scripts/generate-secrets.sh
 mvn clean install -DskipTests
 docker compose up -d --build
+```
+
+Monitoring (Prometheus, Grafana, Tempo, Loki). Grafana runs at http://localhost:3001 with user `admin` and the password from `cat secrets/grafana-admin-password`:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.observability.yml up -d
 ```
 
 Low on memory? Trino (analytics) is optional. Stop it:
@@ -495,11 +501,15 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
 - **CI/CD:** `.github/workflows/ci.yml` runs on every push and pull request:
   - backend tests, plus Testcontainers migration tests against real MySQL and PostgreSQL
   - web lint, tests and build
+  - Helm lint and Kubernetes schema validation
   - on `main`, builds the images, scans them with Trivy and pushes them to GHCR
 
   CodeQL and Dependabot are enabled as well.
-- **Strava:** put `STRAVA_CLIENT_ID` in `.env` and the client secret in `secrets/strava-client-secret`. Set the Strava app's callback domain to match `STRAVA_REDIRECT_URI` (the web app's `/strava/callback` page), and register the webhook `https://<public-host>/api/v1/strava/webhook`.
-- **Email:** all mail goes to Mailpit locally. Configure `MAIL_*` in `.env` and `secrets/smtp-password` for a real SMTP server.
+- **Email:** Mailpit catches all mail locally. In production, mail is sent through **Zoho ZeptoMail** with a durable retry queue, branded templates and bounce handling. Setup: [`docs/EMAIL_SETUP.md`](docs/EMAIL_SETUP.md).
+- **Strava:** OAuth connect, durable webhook processing, rate-limit handling, encrypted tokens, incremental sync and webhook subscription management. Create your Strava app with [`docs/STRAVA_SETUP.md`](docs/STRAVA_SETUP.md).
+- **Observability:** Prometheus metrics (including business metrics), OpenTelemetry tracing across services, JSON logs with `traceId`/`requestId`, and Grafana dashboards and alerts. See [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
+- **Kubernetes:** a Helm chart in `deploy/helm/the-club` with dev and prod values, HPA, PDBs, NetworkPolicies, ServiceMonitors and hardened pods. Try it locally with `./deploy/kind/up.sh`. Guide: [`docs/KUBERNETES.md`](docs/KUBERNETES.md).
+- **Multiple replicas:** scheduled jobs are safe to run on several replicas: payment reconciliation uses ShedLock, while the email queue and Strava worker use row-level claims.
 - **Proof documents** for owner verification are submitted as URLs. Upload storage (MinIO/S3) is not built yet.
 - **Times:** event times are local to `APP_TIME_ZONE` (default `Asia/Kolkata`). Check-in opens 6h before the start and closes 12h after.
 

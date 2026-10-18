@@ -2,6 +2,7 @@ package com.theclub.common.security;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.theclub.common.observability.RequestIds;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -30,7 +31,10 @@ public class ProblemAuthenticationEntryPoint implements AuthenticationEntryPoint
     private static void write(HttpServletResponse response, int status, String title, String detail) throws IOException {
         response.setStatus(status);
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        // the request id is validated (RequestIds.isValid) or generated, so it is safe to embed without escaping
+        String requestId = RequestIds.current();
         response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"" + title + "\",\"status\":" + status
-                + ",\"detail\":\"" + detail + "\"}");
+                + ",\"detail\":\"" + detail + "\""
+                + (requestId != null ? ",\"requestId\":\"" + requestId + "\"" : "") + "}");
     }
 }

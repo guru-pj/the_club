@@ -5,6 +5,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
+import java.util.Map;
 import java.util.UUID;
 
 @FeignClient(name = "notification-service", url = "${theclub.clients.notification-service.url:}",
@@ -18,6 +19,9 @@ public interface NotificationClient {
     record Notification(UUID userId, String type, String message, Email email) {
     }
 
-    record Email(String to, String subject, String body) {
+    /**
+     * A templated email rendered by notification-service (see its EmailTemplate ids).
+     */
+    record Email(String to, String template, Map<String, Object> variables) {
     }
 }

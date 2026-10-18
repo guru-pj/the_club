@@ -8,6 +8,7 @@ import com.theclub.authservice.model.AuthToken;
 import com.theclub.authservice.repository.AuthTokenRepository;
 import com.theclub.common.security.JwtProperties;
 import com.theclub.common.security.JwtService;
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.common.web.ApiException;
 import feign.FeignException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -62,7 +63,12 @@ public class AuthService {
     @Transactional(noRollbackFor = ApiException.class)
     public TokenResponse login(String rawEmail, String password) {
         String email = rawEmail.trim().toLowerCase(Locale.ROOT);
-        throttle.ensureNotLocked(email);
+        try {
+            throttle.ensureNotLocked(email);
+        } catch (ApiException locked) {
+            BusinessMetrics.increment("auth.logins", "outcome", "locked");
+            throw locked;
+        }
         UserCredentials user;
         try {
             user = userClient.getByEmail(email);
@@ -72,13 +78,16 @@ public class AuthService {
         if (user == null || !user.active() || user.passwordHash() == null
                 || !passwordEncoder.matches(password, user.passwordHash())) {
             throttle.recordFailure(email);
+            BusinessMetrics.increment("auth.logins", "outcome", "bad_credentials");
             throw ApiException.unauthorized(INVALID_CREDENTIALS);
         }
         throttle.recordSuccess(email);
         if (authProperties.requireVerifiedEmail() && !user.emailVerified()) {
+            BusinessMetrics.increment("auth.logins", "outcome", "unverified");
             throw ApiException.forbidden("Please verify your email address before logging in")
                     .withCode(EMAIL_NOT_VERIFIED);
         }
+        BusinessMetrics.increment("auth.logins", "outcome", "success");
         return issue(user);
     }
 
@@ -88,6 +97,17 @@ public class AuthService {
      */
     @Transactional(noRollbackFor = ApiException.class)
     public TokenResponse refresh(String refreshToken) {
+        try {
+            TokenResponse response = rotate(refreshToken);
+            BusinessMetrics.increment("auth.refreshes", "outcome", "success");
+            return response;
+        } catch (ApiException rejected) {
+            BusinessMetrics.increment("auth.refreshes", "outcome", "rejected");
+            throw rejected;
+        }
+    }
+
+    private TokenResponse rotate(String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw ApiException.unauthorized(INVALID_REFRESH);
         }
@@ -114,6 +134,7 @@ public class AuthService {
         if (refreshToken != null && !refreshToken.isBlank()) {
             tokens.deleteByRefreshTokenHash(hash(refreshToken));
         }
+        BusinessMetrics.increment("auth.logouts");
     }
 
     /**
@@ -122,7 +143,9 @@ public class AuthService {
      */
     @Transactional
     public int revokeAllSessions(UUID userId) {
-        return tokens.deleteByUserId(userId);
+        int revoked = tokens.deleteByUserId(userId);
+        BusinessMetrics.add("auth.sessions.revoked", revoked);
+        return revoked;
     }
 
     private TokenResponse issue(UserCredentials user) {

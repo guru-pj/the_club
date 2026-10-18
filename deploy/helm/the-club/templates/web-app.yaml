@@ -1,0 +1,152 @@
+{{- if .Values.webApp.enabled }}
+{{- $w := .Values.webApp -}}
+{{- if $w.realIpFrom }}
+---
+# Trust X-Forwarded-For from the ingress controller / load balancer so nginx (and the gateway's per-client rate
+# limits behind it) see real client IPs. Mounted as /etc/nginx/snippets/real-ip.conf (see web-app/nginx.conf).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "theclub.fullname" . }}-web-real-ip
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "web") | nindent 4 }}
+data:
+  real-ip.conf: |
+    {{- range $w.realIpFrom }}
+    set_real_ip_from {{ . }};
+    {{- end }}
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "web") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "web") | nindent 4 }}
+spec:
+  {{- if not $w.autoscaling.enabled }}
+  replicas: {{ $w.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "theclub.labels" (dict "root" $ "component" "web") | nindent 8 }}
+      {{- with $w.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "theclub.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        # nginx-unprivileged runs as uid 101
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+      {{- if .Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $ "component" "web") | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: web
+          image: {{ include "theclub.image" (dict "root" $ "image" $w.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $w.port }}
+          env:
+            # rendered into nginx's config at start-up (web-app/nginx.conf is a template)
+            - name: NGINX_RESOLVER
+              value: {{ $w.resolver | quote }}
+            - name: GATEWAY_UPSTREAM
+              value: {{ include "theclub.serviceUrl" (dict "root" $ "component" "gateway") | quote }}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+          resources:
+            {{- toYaml $w.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            # nginx pid/temp files
+            - name: tmp
+              mountPath: /tmp
+            # the image's entrypoint renders the config template here
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            {{- if $w.realIpFrom }}
+            - name: real-ip
+              mountPath: /etc/nginx/snippets/real-ip.conf
+              subPath: real-ip.conf
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}
+        {{- if $w.realIpFrom }}
+        - name: real-ip
+          configMap:
+            name: {{ include "theclub.fullname" . }}-web-real-ip
+        {{- end }}
+      {{- with $w.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $w.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $w.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "web") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "web") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "theclub.selectorLabels" (dict "root" $ "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+{{- end }}

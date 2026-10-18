@@ -145,7 +145,8 @@ class EventFlowIntegrationTest {
         verify(notificationClient).create(notification.capture());
         assertThat(notification.getValue().type()).isEqualTo("EVENT_REGISTRATION_CONFIRMED");
         assertThat(notification.getValue().email().to()).isEqualTo("asha@example.com");
-        assertThat(notification.getValue().email().body()).contains("cid:ticket-qr");
+        assertThat(notification.getValue().email().template()).isEqualTo("registration-confirmed");
+        assertThat(notification.getValue().email().variables()).containsEntry("qrCid", "ticket-qr");
         assertThat(notification.getValue().email().attachments().get(0).contentId()).isEqualTo("ticket-qr");
 
         mvc.perform(as(get("/api/v1/events/me/registrations"), memberId, "USER"))

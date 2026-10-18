@@ -37,7 +37,36 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # /actuator is never reachable from outside: nginx proxies only /api and the gateway never routes /actuator.
+        # Prometheus scrapes /actuator/prometheus over the internal network.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # /actuator/health/liveness and /actuator/health/readiness for Docker and Kubernetes probes
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        http.client.requests: true
+      slo:
+        http.server.requests: 100ms,300ms,1s,3s
+  tracing:
+    # Spans are exported only where an OpenTelemetry collector runs (docker-compose.observability.yml, Helm chart)
+    enabled: ${TRACING_ENABLED:false}
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 theclub:
   time-zone: ${APP_TIME_ZONE:Asia/Kolkata}
@@ -57,3 +86,12 @@ theclub:
       url: ${EVENT_SERVICE_URL:}
     notification-service:
       url: ${NOTIFICATION_SERVICE_URL:}
+
+# --- Operations: graceful shutdown on SIGTERM (rolling deploys), connection pool, outbound timeouts ---
+# Logs are plain text locally; set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs for JSON (the observability stack does).
+server.shutdown: graceful
+spring.lifecycle.timeout-per-shutdown-phase: 20s
+spring.datasource.hikari.maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+spring.datasource.hikari.connection-timeout: 5000
+spring.cloud.openfeign.client.config.default.connect-timeout: 3000
+spring.cloud.openfeign.client.config.default.read-timeout: 10000

@@ -1,0 +1,275 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $root := . -}}
+{{- $np := .Values.networkPolicy -}}
+{{- $embedded := .Values.databases.embedded.enabled -}}
+{{- /*
+  Zero-trust baseline: every pod of the release denies all traffic, then each workload gets exactly the flows it
+  needs. Service-to-service ingress follows services.<name>.calls (the internal call graph in
+  docs/SERVICE_CONTRACTS.md).
+*/ -}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "theclub.fullname" . }}-default-deny
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "theclub.instanceSelector" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "theclub.fullname" . }}-allow-dns
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "theclub.instanceSelector" . | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+{{- if .Values.webApp.enabled }}
+---
+# web app: reachable from the ingress controller; may only talk to the gateway
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "web") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "web") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - {{- if $np.ingressControllerNamespace }}
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressControllerNamespace }}
+      {{- end }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.webApp.port }}}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $ "component" "gateway") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ .Values.services.gateway.port }}}
+{{- end }}
+{{- range $component, $svc := .Values.services }}
+{{- if $svc.enabled }}
+{{- /* who calls this service: the gateway (every API route), plus any service listing it in `calls` */}}
+{{- $callers := list }}
+{{- range $other, $o := $root.Values.services }}
+{{- if and $o.enabled (has $component ($o.calls | default list)) (ne $other $component) }}
+{{- $callers = append $callers $other }}
+{{- end }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $root "component" $component) }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $root "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $root "component" $component) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    {{- if eq $component "gateway" }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" "web") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ $svc.port }}}
+    {{- end }}
+    {{- if $callers }}
+    - from:
+        {{- range $callers }}
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" .) | nindent 14 }}
+        {{- end }}
+      ports:
+        - {protocol: TCP, port: {{ $svc.port }}}
+    {{- end }}
+    {{- if eq $component "discovery" }}
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.instanceSelector" $root | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ $svc.port }}}
+    {{- end }}
+    {{- with $np.prometheusNamespace }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+      ports:
+        - {protocol: TCP, port: {{ $svc.port }}}
+    {{- end }}
+  egress:
+    {{- range $callee := ($svc.calls | default list) }}
+    {{- $c := index $root.Values.services $callee }}
+    {{- if $c.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" $callee) | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ $c.port }}}
+    {{- end }}
+    {{- end }}
+    {{- if and $root.Values.services.discovery.enabled (ne $component "discovery") }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" "discovery") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ $root.Values.services.discovery.port }}}
+    {{- end }}
+    {{- with $svc.database }}
+    {{- $port := ternary $root.Values.databases.postgres.port $root.Values.databases.mysql.port (eq .engine "postgres") }}
+    - to:
+        {{- if $embedded }}
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" .engine) | nindent 14 }}
+        {{- else }}
+        {{- range $np.databaseCidrs }}
+        - ipBlock: {cidr: {{ . }}}
+        {{- end }}
+        {{- end }}
+      ports:
+        - {protocol: TCP, port: {{ if $embedded }}{{ ternary 5432 3306 (eq .engine "postgres") }}{{ else }}{{ $port }}{{ end }}}
+    {{- end }}
+    {{- if $svc.internetEgress }}
+    - to:
+        {{- range $np.internetCidrs }}
+        - ipBlock: {cidr: {{ . }}}
+        {{- end }}
+      ports:
+        {{- range $np.internetPorts }}
+        - {protocol: TCP, port: {{ . }}}
+        {{- end }}
+    {{- end }}
+    {{- if and (eq $component "notification") $root.Values.mailpit.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" "mailpit") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 1025}
+    {{- end }}
+    {{- if $root.Values.observability.tracing.enabled }}
+    - to:
+        {{- range $np.otlpCidrs }}
+        - ipBlock: {cidr: {{ . }}}
+        {{- end }}
+        # in-cluster collectors are pods, which ipBlock does not match on most CNIs
+        - namespaceSelector: {}
+      ports:
+        {{- range $np.otlpPorts }}
+        - {protocol: TCP, port: {{ . }}}
+        {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- if $embedded }}
+{{- range $engine := list "mysql" "postgres" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $root "component" $engine) }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $root "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $root "component" $engine) | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- range $component, $svc := $root.Values.services }}
+        {{- if and $svc.enabled $svc.database (eq $svc.database.engine $engine) }}
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" $component) | nindent 14 }}
+        {{- end }}
+        {{- end }}
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" "backup") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: {{ ternary 5432 3306 (eq $engine "postgres") }}}
+{{- end }}
+{{- if .Values.backups.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "theclub.fullname" . }}-backup
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "backup") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $ "component" "mysql") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 3306}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $ "component" "postgres") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 5432}
+{{- end }}
+{{- end }}
+{{- if .Values.mailpit.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "mailpit") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "mailpit") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $ "component" "notification") | nindent 14 }}
+      ports:
+        - {protocol: TCP, port: 1025}
+{{- end }}
+{{- end }}

@@ -1,5 +1,6 @@
 package com.theclub.eventservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.config.CheckInProperties;
@@ -89,6 +90,8 @@ public class CheckInService {
                     PointsLedgerEntry.REASON_EVENT_CHECK_IN, now));
             awarded = event.getPoints();
         }
+        BusinessMetrics.increment("events.checkins");
+        BusinessMetrics.add("events.points_awarded", awarded);
         String name = names.userNames(List.of(registration.getUserId())).get(registration.getUserId());
         return new CheckInResponse(registration.getId(), registration.getUserId(), name, now, awarded);
     }

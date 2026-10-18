@@ -1,0 +1,31 @@
+The Club {{ include "theclub.imageTag" . }} is deploying to namespace {{ .Release.Namespace }}.
+
+1. Watch the pods become Ready (the first start runs the database migrations; allow a few minutes):
+     kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+
+{{- if and .Values.ingress.enabled .Values.webApp.enabled }}
+
+2. Open the app: {{ if .Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.ingress.host | default "<your ingress address>" }}/
+{{- else }}
+
+2. Open the app:
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "theclub.serviceName" (dict "root" $ "component" "web") }} 8088:80
+     http://localhost:8088/
+{{- end }}
+
+3. Admin login: {{ .Values.config.adminEmail }} with the password stored under the "admin-password" key of
+   secret {{ include "theclub.secretName" . }}:
+     kubectl -n {{ .Release.Namespace }} get secret {{ include "theclub.secretName" . }} -o jsonpath='{.data.admin-password}' | base64 -d; echo
+{{- if .Values.mailpit.enabled }}
+
+4. Emails (development mail catcher):
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "theclub.serviceName" (dict "root" $ "component" "mailpit") }} 8025:8025
+{{- end }}
+{{- if eq (include "theclub.imageTag" .) "latest" }}
+
+WARNING: images use the "latest" tag. Pin global.imageTag to a commit SHA so upgrades and rollbacks are exact.
+{{- end }}
+{{- if eq .Values.config.payments.provider "mock" }}
+
+WARNING: PAYMENT_PROVIDER=mock — anyone can "pay". Development only.
+{{- end }}

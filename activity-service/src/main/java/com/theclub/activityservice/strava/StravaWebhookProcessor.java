@@ -1,19 +1,18 @@
 package com.theclub.activityservice.strava;
 
 import com.theclub.activityservice.model.StravaConnection;
+import com.theclub.activityservice.model.StravaConnectionStatus;
 import com.theclub.activityservice.repository.StravaConnectionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 
-import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 /**
- * Applies Strava webhook events. Strava expects a 200 within 2 seconds, so the controller hands events
- * to {@link #processAsync} and returns immediately.
+ * Applies one Strava push event. Called by {@link StravaWebhookWorker}; exceptions mean "retry later".
  * <p>
  * The webhook endpoint is public, so events are treated as hints: activity data is always fetched from Strava
  * with the athlete's own token, and destructive events (delete, deauthorize) are confirmed with Strava first.
@@ -23,66 +22,80 @@ public class StravaWebhookProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(StravaWebhookProcessor.class);
 
+    public enum Outcome { DONE, IGNORED }
+
     private final StravaConnectionRepository connections;
     private final StravaTokenManager tokens;
     private final StravaClient client;
     private final StravaActivityImporter importer;
+    private final StravaProperties properties;
 
     public StravaWebhookProcessor(StravaConnectionRepository connections, StravaTokenManager tokens,
-                                  StravaClient client, StravaActivityImporter importer) {
+                                  StravaClient client, StravaActivityImporter importer, StravaProperties properties) {
         this.connections = connections;
         this.tokens = tokens;
         this.client = client;
         this.importer = importer;
+        this.properties = properties;
     }
 
-    @Async
-    public void processAsync(StravaWebhookEvent event) {
-        try {
-            process(event);
-        } catch (RuntimeException e) {
-            log.warn("Failed to process Strava {} {} event for object {}: {}",
-                    event.objectType(), event.aspectType(), event.objectId(), e.getMessage());
+    /**
+     * @throws StravaRateLimitedException requeue without counting an attempt
+     * @throws RuntimeException           any other failure: retry with backoff
+     */
+    public Outcome process(StravaWebhookEvent event) {
+        if (!properties.isConfigured()) {
+            return Outcome.IGNORED;
         }
-    }
-
-    public void process(StravaWebhookEvent event) {
         Optional<StravaConnection> connection = connections.findByAthleteId(event.ownerId());
-        if (connection.isEmpty()) {
-            log.debug("Ignoring Strava event for unknown athlete {}", event.ownerId());
-            return;
+        if (connection.isEmpty() || connection.get().getStatus() != StravaConnectionStatus.ACTIVE) {
+            log.debug("Ignoring Strava event for unknown or disconnected athlete {}", event.ownerId());
+            return Outcome.IGNORED;
         }
         StravaConnection owner = connection.get();
         if ("athlete".equals(event.objectType())) {
-            Object authorized = event.updates() == null ? null : event.updates().get("authorized");
-            if ("false".equals(String.valueOf(authorized)) && accessRevoked(owner)) {
-                connections.delete(owner);
-                log.info("Strava athlete {} revoked access; connection removed", event.ownerId());
+            Map<String, Object> updates = event.updates();
+            Object authorized = updates == null ? null : updates.get("authorized");
+            if ("false".equals(String.valueOf(authorized))) {
+                confirmDeauthorization(owner);
+                return Outcome.DONE;
             }
-            return;
+            return Outcome.IGNORED;
         }
         if (!"activity".equals(event.objectType())) {
-            return;
+            return Outcome.IGNORED;
         }
-        switch (event.aspectType()) {
-            case "create", "update" -> {
-                StravaActivity activity = client.getActivity(tokens.accessToken(owner), event.objectId());
-                if (activity != null && activity.ownedBy(owner.getAthleteId())) {
+        try {
+            switch (event.aspectType()) {
+                case "create", "update" -> {
+                    StravaActivity activity = tokens.withAccessToken(owner,
+                            token -> client.getActivity(token, event.objectId()));
+                    if (activity == null || !activity.ownedBy(owner.getAthleteId())) {
+                        return Outcome.IGNORED;
+                    }
                     importer.upsert(owner.getUserId(), activity);
+                    return Outcome.DONE;
+                }
+                case "delete" -> {
+                    if (activityGone(owner, event.objectId())) {
+                        importer.delete(owner.getUserId(), event.objectId());
+                    }
+                    return Outcome.DONE;
+                }
+                default -> {
+                    return Outcome.IGNORED;
                 }
             }
-            case "delete" -> {
-                if (activityGone(owner, event.objectId())) {
-                    importer.delete(owner.getUserId(), event.objectId());
-                }
-            }
-            default -> log.debug("Ignoring Strava aspect {}", event.aspectType());
+        } catch (StravaAccessRevokedException e) {
+            // The connection was marked REVOKED and the member notified; nothing left to do for this event
+            return Outcome.IGNORED;
         }
     }
 
+    /** Strava sends a 404 for an activity that really was deleted (or made inaccessible to us). */
     private boolean activityGone(StravaConnection owner, long activityId) {
         try {
-            StravaActivity stillThere = client.getActivity(tokens.accessToken(owner), activityId);
+            StravaActivity stillThere = tokens.withAccessToken(owner, token -> client.getActivity(token, activityId));
             if (stillThere != null && stillThere.ownedBy(owner.getAthleteId())) {
                 importer.upsert(owner.getUserId(), stillThere);
             }
@@ -92,16 +105,16 @@ public class StravaWebhookProcessor {
         }
     }
 
-    private boolean accessRevoked(StravaConnection owner) {
+    /**
+     * "authorized: false" means the athlete revoked our app on Strava. The event is unauthenticated, so confirm it:
+     * a revoked app can no longer refresh tokens. If refreshing still works, the event was not genuine.
+     */
+    private void confirmDeauthorization(StravaConnection owner) {
         try {
-            StravaTokenResponse refreshed = client.refresh(owner.getRefreshToken());
-            owner.setAccessToken(refreshed.accessToken());
-            owner.setRefreshToken(refreshed.refreshToken());
-            owner.setExpiresAt(Instant.ofEpochSecond(refreshed.expiresAt()));
-            connections.save(owner);
-            return false;
-        } catch (HttpClientErrorException e) {
-            return e.getStatusCode().value() == 400 || e.getStatusCode().value() == 401;
+            tokens.verifyAuthorization(owner.getId());
+            log.warn("Ignoring Strava deauthorization event for athlete {}: tokens still refresh", owner.getAthleteId());
+        } catch (StravaAccessRevokedException e) {
+            log.info("Strava athlete {} revoked access", owner.getAthleteId());
         }
     }
 }

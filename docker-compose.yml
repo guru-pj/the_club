@@ -259,6 +259,8 @@ services:
       STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
       STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI}
       STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN}
+      STRAVA_WEBHOOK_CALLBACK_URL: ${STRAVA_WEBHOOK_CALLBACK_URL}
+      STRAVA_INITIAL_SYNC_DAYS: ${STRAVA_INITIAL_SYNC_DAYS}
     secrets:
       - source: jwt_public_key
         target: JWT_PUBLIC_KEY
@@ -268,6 +270,8 @@ services:
         target: SPRING_DATASOURCE_PASSWORD
       - source: strava-client-secret
         target: STRAVA_CLIENT_SECRET
+      - source: strava-token-encryption-key
+        target: STRAVA_TOKEN_ENCRYPTION_KEY
     depends_on:
       discovery-service:
         condition: service_healthy
@@ -322,11 +326,15 @@ services:
       <<: *spring-env
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/notificationdb
       SPRING_DATASOURCE_USERNAME: theclub_notification
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-}
       MAIL_ENABLED: ${MAIL_ENABLED}
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_FROM: ${MAIL_FROM}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      MAIL_REDIRECT_ALL_TO: ${MAIL_REDIRECT_ALL_TO:-}
+      ZEPTOMAIL_API_URL: ${ZEPTOMAIL_API_URL:-https://api.zeptomail.in/v1.1/email}
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_STARTTLS}
     secrets:
       - source: jwt_public_key
@@ -337,6 +345,10 @@ services:
         target: SPRING_DATASOURCE_PASSWORD
       - source: smtp-password
         target: MAIL_PASSWORD
+      - source: zeptomail-token
+        target: ZEPTOMAIL_TOKEN
+      - source: zeptomail-webhook-token
+        target: ZEPTOMAIL_WEBHOOK_TOKEN
     depends_on: *depends-mysql
 
   # ===================== WEB APP =====================
@@ -382,12 +394,18 @@ secrets:
     file: ./secrets/admin-password
   smtp-password:
     file: ./secrets/smtp-password
+  zeptomail-token:
+    file: ./secrets/zeptomail-token
+  zeptomail-webhook-token:
+    file: ./secrets/zeptomail-webhook-token
   razorpay-key-secret:
     file: ./secrets/razorpay-key-secret
   razorpay-webhook-secret:
     file: ./secrets/razorpay-webhook-secret
   strava-client-secret:
     file: ./secrets/strava-client-secret
+  strava-token-encryption-key:
+    file: ./secrets/strava-token-encryption-key
 
 volumes:
   mysql_data:

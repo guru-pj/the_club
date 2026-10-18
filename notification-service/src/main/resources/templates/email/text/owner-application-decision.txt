@@ -1,0 +1,10 @@
+Hi [(${name})],
+
+Your club owner application: [(${decision})]
+[# th:if="${message}"]
+[(${message})]
+[/][# th:if="${link}"]
+[(${link})]
+[/]
+--
+You received this email because [(${footerReason})]

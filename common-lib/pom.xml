@@ -49,6 +49,24 @@
             <artifactId>jjwt-jackson</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Observability baseline shared by every servlet service: Prometheus metrics and OpenTelemetry tracing.
+             Export is switched on per environment (TRACING_ENABLED / OTEL_EXPORTER_OTLP_ENDPOINT). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
         <!-- Only needed by services that use Feign clients; the interceptor config is conditional on it. -->
         <dependency>
             <groupId>io.github.openfeign</groupId>

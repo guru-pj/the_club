@@ -1,5 +1,6 @@
 package com.theclub.eventservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.dto.ConfirmPaymentRequest;
@@ -89,6 +90,7 @@ public class PaymentService {
         payment.setCreatedAt(LocalDateTime.now(clock));
         log.info("Payment {} created for registration {} ({} {})", payment.getId(), registration.getId(),
                 payment.getAmount(), payment.getCurrency());
+        BusinessMetrics.increment("payments.created", "provider", String.valueOf(gateway.provider()).toLowerCase(java.util.Locale.ROOT));
         return payments.save(payment);
     }
 
@@ -357,6 +359,8 @@ public class PaymentService {
     private void transition(Payment payment, PaymentStatus to) {
         log.info("Payment {} {} -> {}", payment.getId(), payment.getStatus(), to);
         payment.setStatus(to);
+        BusinessMetrics.increment("payments.transitions", "status", to.name().toLowerCase(java.util.Locale.ROOT),
+                "provider", String.valueOf(payment.getProvider()).toLowerCase(java.util.Locale.ROOT));
     }
 
     private RegistrationStatus registrationStatus(Payment payment) {

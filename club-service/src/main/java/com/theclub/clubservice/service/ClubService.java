@@ -1,5 +1,6 @@
 package com.theclub.clubservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.clubservice.client.UserClient;
 import com.theclub.clubservice.dto.ClubResponse;
 import com.theclub.clubservice.dto.CreateClubRequest;
@@ -66,6 +67,7 @@ public class ClubService {
         Club club = clubs.save(new Club(name, request.description(), request.city(), request.clubType(),
                 request.logoUrl(), ownerId));
         memberships.save(new ClubMembership(club.getId(), ownerId, MembershipRole.OWNER));
+        BusinessMetrics.increment("clubs.created");
         return club;
     }
 
@@ -138,8 +140,10 @@ public class ClubService {
         get(clubId);
         return memberships.findByClubIdAndUserId(clubId, userId)
                 .map(existing -> new JoinResult(existing, false))
-                .orElseGet(() -> new JoinResult(
-                        memberships.save(new ClubMembership(clubId, userId, MembershipRole.MEMBER)), true));
+                .orElseGet(() -> {
+                    BusinessMetrics.increment("clubs.joins");
+                    return new JoinResult(memberships.save(new ClubMembership(clubId, userId, MembershipRole.MEMBER)), true);
+                });
     }
 
     @Transactional

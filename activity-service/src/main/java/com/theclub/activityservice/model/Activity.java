@@ -16,6 +16,7 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -70,6 +71,35 @@ public class Activity {
     /** Strava activity id for imported activities. */
     @Column(name = "external_id", length = 64)
     private String externalId;
+
+    /** Total time including pauses, in seconds (Strava elapsed_time); {@link #duration} is moving time. */
+    @Column(name = "elapsed_time")
+    private Integer elapsedTime;
+
+    /** Metres climbed. */
+    @Column(name = "total_elevation_gain")
+    private Double totalElevationGain;
+
+    @Column(name = "average_heartrate")
+    private Double averageHeartrate;
+
+    @Column(name = "device_name", length = 255)
+    private String deviceName;
+
+    /**
+     * Private on Strava ("only me"). Excluded from club leaderboards unless the athlete opted in
+     * ({@link StravaConnection#isIncludePrivate()}).
+     */
+    @Column(name = "is_private", nullable = false)
+    private boolean privateActivity;
+
+    /** Absolute start instant; {@link #startTime} is the athlete's local wall-clock time. */
+    @Column(name = "start_time_utc")
+    private Instant startTimeUtc;
+
+    /** IANA zone of the activity, e.g. "Asia/Kolkata", when Strava provides one. */
+    @Column(name = "time_zone", length = 64)
+    private String timeZone;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

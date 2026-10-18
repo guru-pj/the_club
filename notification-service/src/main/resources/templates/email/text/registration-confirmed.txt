@@ -1,0 +1,12 @@
+You're in!
+
+Your registration for [(${eventTitle})] is confirmed.
+
+When:  [(${when})]
+[# th:if="${location}"]Where: [(${location})]
+[/]
+Ticket code: [(${ticketCode})]
+Show the QR code from this email (or the code above) to the club owner at check-in.
+
+--
+You received this email because [(${footerReason})]

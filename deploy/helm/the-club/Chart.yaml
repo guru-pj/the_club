@@ -1,0 +1,15 @@
+apiVersion: v2
+name: the-club
+description: The Club — fitness club platform (Spring Boot microservices + React web app) on Kubernetes
+type: application
+# Chart version (bump on any chart change) and the application image tag deployed by default
+version: 0.3.0
+appVersion: "latest"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/guru-pj/the_club
+sources:
+  - https://github.com/guru-pj/the_club
+keywords:
+  - spring-boot
+  - microservices
+  - fitness

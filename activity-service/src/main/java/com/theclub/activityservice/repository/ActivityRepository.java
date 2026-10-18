@@ -6,6 +6,7 @@ import com.theclub.activityservice.model.ActivitySource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -25,14 +26,21 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
 
     Optional<Activity> findBySourceAndExternalId(ActivitySource source, String externalId);
 
+    /** Private Strava activities only count when the athlete opted in to sharing them with clubs. */
     @Query("""
             select new com.theclub.activityservice.dto.UserActivityStats(
                 a.userId, sum(a.distance), sum(a.duration), count(a))
             from Activity a
             where a.userId in :userIds and a.startTime >= :from and a.startTime < :to
+              and (a.privateActivity = false
+                   or exists (select c.id from StravaConnection c where c.userId = a.userId and c.includePrivate = true))
             group by a.userId
             """)
     List<UserActivityStats> aggregate(@Param("userIds") Collection<UUID> userIds,
                                       @Param("from") LocalDateTime from,
                                       @Param("to") LocalDateTime to);
+
+    @Modifying
+    @Query("delete from Activity a where a.userId = :userId and a.source = :source")
+    int deleteByUserIdAndSource(@Param("userId") UUID userId, @Param("source") ActivitySource source);
 }

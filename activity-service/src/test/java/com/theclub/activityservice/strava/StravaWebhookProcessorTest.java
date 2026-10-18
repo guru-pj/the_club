@@ -4,6 +4,7 @@ import com.theclub.activityservice.model.Activity;
 import com.theclub.activityservice.model.ActivitySource;
 import com.theclub.activityservice.model.ActivityType;
 import com.theclub.activityservice.model.StravaConnection;
+import com.theclub.activityservice.model.StravaConnectionStatus;
 import com.theclub.activityservice.repository.ActivityRepository;
 import com.theclub.activityservice.repository.StravaConnectionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,10 +21,14 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -51,9 +56,16 @@ class StravaWebhookProcessorTest {
 
     @BeforeEach
     void setUp() {
-        processor = new StravaWebhookProcessor(connections, tokens, client, new StravaActivityImporter(activities));
+        StravaProperties properties = new StravaProperties("123", "secret", null, "verify", null, null, null,
+                null, null, null, null);
+        processor = new StravaWebhookProcessor(connections, tokens, client, new StravaActivityImporter(activities),
+                properties);
         connection = new StravaConnection(userId, ATHLETE);
-        connection.setRefreshToken("refresh");
+        // Run the call the processor hands to the token manager with a fixed token
+        lenient().when(tokens.withAccessToken(eq(connection), any())).thenAnswer(invocation -> {
+            Function<String, Object> call = invocation.getArgument(1);
+            return call.apply("token");
+        });
     }
 
     private static StravaWebhookEvent event(String objectType, String aspect, Map<String, Object> updates) {
@@ -61,19 +73,13 @@ class StravaWebhookProcessorTest {
                 updates, 0, 1L);
     }
 
-    private static StravaActivity stravaActivity(String name, long ownerAthlete) {
-        return new StravaActivity(STRAVA_ID, name, "Run", "TrailRun", 10500.0, 3600, 3700, 812.4,
-                "2026-10-18T06:00:00Z", new StravaTokenResponse.Athlete(ownerAthlete));
-    }
-
     @Test
     void createImportsActivityIntoMembersAccount() {
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
-        when(tokens.accessToken(connection)).thenReturn("token");
-        when(client.getActivity("token", STRAVA_ID)).thenReturn(stravaActivity("Trail run", ATHLETE));
+        when(client.getActivity("token", STRAVA_ID)).thenReturn(StravaTestData.activity(STRAVA_ID, "Trail run", ATHLETE));
         when(activities.findBySourceAndExternalId(ActivitySource.STRAVA, "9001")).thenReturn(Optional.empty());
 
-        processor.process(event("activity", "create", null));
+        assertThat(processor.process(event("activity", "create", null))).isEqualTo(StravaWebhookProcessor.Outcome.DONE);
 
         ArgumentCaptor<Activity> saved = ArgumentCaptor.forClass(Activity.class);
         verify(activities).save(saved.capture());
@@ -84,9 +90,29 @@ class StravaWebhookProcessorTest {
         assertThat(activity.getType()).isEqualTo(ActivityType.RUN);
         assertThat(activity.getDistance()).isEqualTo(10.5);
         assertThat(activity.getDuration()).isEqualTo(3600);
+        assertThat(activity.getElapsedTime()).isEqualTo(3700);
         assertThat(activity.getCalories()).isEqualTo(812);
+        assertThat(activity.getTotalElevationGain()).isEqualTo(120.5);
+        assertThat(activity.getAverageHeartrate()).isEqualTo(152.3);
+        assertThat(activity.getDeviceName()).isEqualTo("Garmin Forerunner 265");
+        assertThat(activity.isPrivateActivity()).isFalse();
         assertThat(activity.getStartTime()).isEqualTo(LocalDateTime.of(2026, 10, 18, 6, 0));
+        assertThat(activity.getStartTimeUtc()).isEqualTo(Instant.parse("2026-10-18T00:30:00Z"));
+        assertThat(activity.getTimeZone()).isEqualTo("Asia/Kolkata");
         assertThat(activity.getEndTime()).isEqualTo(LocalDateTime.of(2026, 10, 18, 7, 1, 40));
+    }
+
+    @Test
+    void privateActivitiesAreImportedAndFlagged() {
+        when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
+        when(client.getActivity("token", STRAVA_ID)).thenReturn(StravaTestData.activity(STRAVA_ID, "Secret", ATHLETE, true));
+        when(activities.findBySourceAndExternalId(ActivitySource.STRAVA, "9001")).thenReturn(Optional.empty());
+
+        processor.process(event("activity", "create", null));
+
+        ArgumentCaptor<Activity> saved = ArgumentCaptor.forClass(Activity.class);
+        verify(activities).save(saved.capture());
+        assertThat(saved.getValue().isPrivateActivity()).isTrue();
     }
 
     @Test
@@ -94,8 +120,7 @@ class StravaWebhookProcessorTest {
         Activity existing = new Activity(userId, ActivitySource.STRAVA);
         existing.setExternalId("9001");
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
-        when(tokens.accessToken(connection)).thenReturn("token");
-        when(client.getActivity("token", STRAVA_ID)).thenReturn(stravaActivity("Renamed run", ATHLETE));
+        when(client.getActivity("token", STRAVA_ID)).thenReturn(StravaTestData.activity(STRAVA_ID, "Renamed run", ATHLETE));
         when(activities.findBySourceAndExternalId(ActivitySource.STRAVA, "9001")).thenReturn(Optional.of(existing));
 
         processor.process(event("activity", "update", Map.of("title", "Renamed run")));
@@ -103,25 +128,26 @@ class StravaWebhookProcessorTest {
 
         verify(activities, times(2)).save(existing);
         assertThat(existing.getTitle()).isEqualTo("Renamed run");
-        assertThat(existing.getId()).isNotNull();
     }
 
     @Test
     void ignoresActivitiesNotOwnedByTheAthlete() {
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
-        when(tokens.accessToken(connection)).thenReturn("token");
-        when(client.getActivity("token", STRAVA_ID)).thenReturn(stravaActivity("Someone else", 7L));
+        when(client.getActivity("token", STRAVA_ID)).thenReturn(StravaTestData.activity(STRAVA_ID, "Someone else", 7L));
 
-        processor.process(event("activity", "create", null));
+        assertThat(processor.process(event("activity", "create", null))).isEqualTo(StravaWebhookProcessor.Outcome.IGNORED);
 
         verify(activities, never()).save(any());
     }
 
     @Test
-    void ignoresUnknownAthletes() {
+    void ignoresUnknownAndRevokedAthletes() {
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.empty());
+        assertThat(processor.process(event("activity", "create", null))).isEqualTo(StravaWebhookProcessor.Outcome.IGNORED);
 
-        processor.process(event("activity", "create", null));
+        connection.setStatus(StravaConnectionStatus.REVOKED);
+        when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
+        assertThat(processor.process(event("activity", "create", null))).isEqualTo(StravaWebhookProcessor.Outcome.IGNORED);
 
         verifyNoInteractions(client, activities);
     }
@@ -130,7 +156,6 @@ class StravaWebhookProcessorTest {
     void deleteRemovesActivityOnceStravaConfirmsItIsGone() {
         Activity existing = new Activity(userId, ActivitySource.STRAVA);
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
-        when(tokens.accessToken(connection)).thenReturn("token");
         when(client.getActivity("token", STRAVA_ID)).thenThrow(
                 HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found", null, null, null));
         when(activities.findBySourceAndExternalId(ActivitySource.STRAVA, "9001")).thenReturn(Optional.of(existing));
@@ -143,8 +168,7 @@ class StravaWebhookProcessorTest {
     @Test
     void spoofedDeleteIsIgnoredWhenActivityStillExists() {
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
-        when(tokens.accessToken(connection)).thenReturn("token");
-        when(client.getActivity("token", STRAVA_ID)).thenReturn(stravaActivity("Still here", ATHLETE));
+        when(client.getActivity("token", STRAVA_ID)).thenReturn(StravaTestData.activity(STRAVA_ID, "Still here", ATHLETE));
 
         processor.process(event("activity", "delete", null));
 
@@ -152,26 +176,41 @@ class StravaWebhookProcessorTest {
     }
 
     @Test
-    void deauthorizationRemovesConnectionWhenRefreshIsRejected() {
+    void deauthorizationIsConfirmedByRefreshing() {
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
-        when(client.refresh("refresh")).thenThrow(
-                HttpClientErrorException.create(HttpStatus.BAD_REQUEST, "Bad Request", null, null, null));
+        doThrow(new StravaAccessRevokedException(userId)).when(tokens).verifyAuthorization(connection.getId());
 
-        processor.process(event("athlete", "update", Map.of("authorized", "false")));
+        assertThat(processor.process(event("athlete", "update", Map.of("authorized", "false"))))
+                .isEqualTo(StravaWebhookProcessor.Outcome.DONE);
 
-        verify(connections).delete(connection);
+        verify(tokens).verifyAuthorization(connection.getId());
+        verifyNoInteractions(client);
     }
 
     @Test
     void spoofedDeauthorizationKeepsConnection() {
         when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
-        when(client.refresh("refresh")).thenReturn(new StravaTokenResponse("new-access", "new-refresh",
-                Instant.parse("2026-10-18T12:00:00Z").getEpochSecond(), null));
 
         processor.process(event("athlete", "update", Map.of("authorized", "false")));
 
+        verify(tokens).verifyAuthorization(connection.getId());
         verify(connections, never()).delete(any());
-        assertThat(connection.getRefreshToken()).isEqualTo("new-refresh");
-        verify(client, never()).getActivity(any(), anyLong());
+    }
+
+    @Test
+    void failuresPropagateSoTheWorkerRetries() {
+        when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
+        when(client.getActivity("token", STRAVA_ID)).thenThrow(new StravaRateLimitedException(Instant.EPOCH));
+
+        assertThatThrownBy(() -> processor.process(event("activity", "create", null)))
+                .isInstanceOf(StravaRateLimitedException.class);
+    }
+
+    @Test
+    void revokedAccessDuringProcessingEndsTheEvent() {
+        when(connections.findByAthleteId(ATHLETE)).thenReturn(Optional.of(connection));
+        when(client.getActivity("token", STRAVA_ID)).thenThrow(new StravaAccessRevokedException(userId));
+
+        assertThat(processor.process(event("activity", "create", null))).isEqualTo(StravaWebhookProcessor.Outcome.IGNORED);
     }
 }

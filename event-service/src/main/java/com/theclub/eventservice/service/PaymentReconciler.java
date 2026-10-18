@@ -1,11 +1,13 @@
 package com.theclub.eventservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.eventservice.model.Payment;
 import com.theclub.eventservice.model.PaymentStatus;
 import com.theclub.eventservice.payment.CapturedPayment;
 import com.theclub.eventservice.payment.PaymentGateway;
 import com.theclub.eventservice.payment.PaymentProperties;
 import com.theclub.eventservice.repository.PaymentRepository;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -33,6 +35,8 @@ public class PaymentReconciler {
     /** Give the client and the webhook a chance before polling the provider. */
     static final Duration GRACE = Duration.ofMinutes(2);
 
+    static final String LOCK_NAME = "payment-reconciler";
+
     private static final Logger log = LoggerFactory.getLogger(PaymentReconciler.class);
 
     private final PaymentRepository payments;
@@ -55,6 +59,8 @@ public class PaymentReconciler {
 
     @Scheduled(fixedDelayString = "${theclub.payments.reconcile-interval:PT5M}",
             initialDelayString = "${theclub.payments.reconcile-initial-delay:PT1M}")
+    // With several replicas only one runs the batch at a time (lock row in the shedlock table)
+    @SchedulerLock(name = LOCK_NAME, lockAtMostFor = "PT10M", lockAtLeastFor = "PT30S")
     public void scheduledRun() {
         run();
     }
@@ -100,6 +106,11 @@ public class PaymentReconciler {
         }
 
         Summary summary = new Summary(checked, settled, expired, refunds, errors);
+        BusinessMetrics.increment("payments.reconciliation_runs");
+        BusinessMetrics.add("payments.reconciled", settled, "outcome", "settled");
+        BusinessMetrics.add("payments.reconciled", expired, "outcome", "expired");
+        BusinessMetrics.add("payments.reconciled", refunds, "outcome", "refund_retried");
+        BusinessMetrics.add("payments.reconciled", errors, "outcome", "error");
         if (checked > 0 || refunds > 0 || errors > 0) {
             log.info("Payment reconciliation: {}", summary);
         }

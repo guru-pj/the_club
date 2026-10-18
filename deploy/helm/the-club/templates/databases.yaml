@@ -1,0 +1,221 @@
+{{- if .Values.databases.embedded.enabled }}
+{{- $e := .Values.databases.embedded -}}
+{{- $secretName := include "theclub.secretName" . -}}
+# Development / evaluation databases. Production should use managed MySQL 8 + PostgreSQL 15 (backups, HA, PITR).
+# The init scripts are copies of docker/{mysql,postgres}/initdb (one database + least-privilege user per service).
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "theclub.fullname" . }}-db-init
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "database") | nindent 4 }}
+data:
+  mysql-01-service-users.sh: |
+    {{- .Files.Get "files/mysql-01-service-users.sh" | nindent 4 }}
+  postgres-01-service-user.sh: |
+    {{- .Files.Get "files/postgres-01-service-user.sh" | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "mysql") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "mysql") | nindent 4 }}
+spec:
+  serviceName: {{ include "theclub.serviceName" (dict "root" $ "component" "mysql") }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "mysql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "theclub.labels" (dict "root" $ "component" "mysql") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mysql
+          image: {{ $e.mysql.image }}
+          env:
+            - name: MYSQL_ROOT_PASSWORD_FILE
+              value: /run/secrets/mysql-root-password
+          ports:
+            - name: mysql
+              containerPort: 3306
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "MYSQL_PWD=\"$(cat /run/secrets/mysql-root-password)\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: mysql}
+            initialDelaySeconds: 120
+            periodSeconds: 20
+          resources:
+            {{- toYaml $e.mysql.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: {{ include "theclub.fullname" . }}-db-init
+            defaultMode: 0555
+            items:
+              - {key: mysql-01-service-users.sh, path: 01-service-users.sh}
+        - name: secrets
+          secret:
+            secretName: {{ $secretName }}
+            defaultMode: 0440
+            items:
+              - {key: mysql-root-password, path: mysql-root-password}
+              - {key: db-user-password, path: db-user-password}
+              - {key: db-auth-password, path: db-auth-password}
+              - {key: db-club-password, path: db-club-password}
+              - {key: db-event-password, path: db-event-password}
+              - {key: db-notification-password, path: db-notification-password}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with $e.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $e.mysql.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "mysql") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "mysql") | nindent 4 }}
+spec:
+  selector:
+    {{- include "theclub.selectorLabels" (dict "root" $ "component" "mysql") | nindent 4 }}
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "postgres") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "postgres") | nindent 4 }}
+spec:
+  serviceName: {{ include "theclub.serviceName" (dict "root" $ "component" "postgres") }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "theclub.labels" (dict "root" $ "component" "postgres") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: {{ $e.postgres.image }}
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD_FILE
+              value: /run/secrets/postgres-password
+            - name: POSTGRES_DB
+              value: {{ .Values.services.activity.database.name }}
+            # a subdirectory, so a fresh volume's lost+found does not block initdb
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U postgres -d {{ .Values.services.activity.database.name }}"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: postgres}
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            {{- toYaml $e.postgres.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: {{ include "theclub.fullname" . }}-db-init
+            defaultMode: 0555
+            items:
+              - {key: postgres-01-service-user.sh, path: 01-service-user.sh}
+        - name: secrets
+          secret:
+            secretName: {{ $secretName }}
+            defaultMode: 0440
+            items:
+              - {key: postgres-password, path: postgres-password}
+              - {key: db-activity-password, path: db-activity-password}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with $e.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $e.postgres.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "postgres") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "postgres") | nindent 4 }}
+spec:
+  selector:
+    {{- include "theclub.selectorLabels" (dict "root" $ "component" "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+{{- end }}

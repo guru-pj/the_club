@@ -65,7 +65,7 @@ How the services fit together. Public endpoints are reached through the gateway 
 ### activity-service
 | Method | Path | Body | Response |
 |---|---|---|---|
-| POST | `/internal/activities/stats` | `{userIds: [uuid], from: LocalDateTime?, to: LocalDateTime?}` | `[{userId, totalDistanceKm, totalDurationSeconds, sessions}]` — only users with ≥ 1 activity in range (by `startTime`, `from` inclusive, `to` exclusive) |
+| POST | `/internal/activities/stats` | `{userIds: [uuid], from: LocalDateTime?, to: LocalDateTime?}` | `[{userId, totalDistanceKm, totalDurationSeconds, sessions}]` — only users with ≥ 1 activity in range (by `startTime`, `from` inclusive, `to` exclusive) | Private Strava activities are excluded unless the athlete enabled `includePrivate`.
 | GET  | `/internal/activities/{id}` | — | `{id, userId, title, type, distance, duration, calories, startTime, endTime, source, externalId}`; 404 if missing |
 
 ### club-service
@@ -83,9 +83,30 @@ How the services fit together. Public endpoints are reached through the gateway 
 ### notification-service
 | Method | Path | Body | Response |
 |---|---|---|---|
-| POST | `/internal/notifications` | `{userId, type, message, email?: {to, subject, body, attachments?: [{filename, contentType, base64Content, inline: boolean, contentId?}]}}` | `202 {id}` |
+| POST | `/internal/notifications` | `{userId, type, message, email?: {to, template, variables, attachments?: [{filename, contentType, base64Content, inline: boolean, contentId?}]}}` | `202 {id}` |
 
-Email is best-effort: delivery failures are logged, the in-app notification is still stored.
+`email` names a branded template rendered by notification-service (HTML + plain text, variables escaped).
+Templates and their required variables:
+
+| template | required variables | optional |
+|---|---|---|
+| `email-verification` | `name`, `link` | |
+| `password-reset` | `name`, `link` | |
+| `password-changed` | `name` | |
+| `registration-confirmed` | `eventTitle`, `when`, `ticketCode` | `location`, `qrCid` (inline image content id, e.g. `ticket-qr`) |
+| `payment-refunded` | `eventTitle`, `amount` | `reason` |
+| `event-cancelled` | `eventTitle`, `when` | `refundNote` |
+| `owner-application-decision` | `name`, `decision` | `message`, `link` |
+
+The older raw form `email: {to, subject, body}` (HTML body) is still accepted. An unknown template, a missing
+required variable or an invalid recipient is a `400` and nothing is stored.
+
+Delivery is reliable but asynchronous: the notification and the rendered email are written to an outbox in one
+transaction and the response is `202`. A background dispatcher sends via the configured provider (ZeptoMail in
+production, SMTP/Mailpit in development) and retries temporary failures with backoff (1m, 5m, 15m, 1h, 6h; up to
+8 attempts). Hard-bounced addresses are suppressed. Admins can inspect and retry failed emails at
+`GET /api/v1/notifications/admin/email-outbox?status=FAILED` and `POST /api/v1/notifications/admin/email-outbox/{id}/retry`.
+See [`EMAIL_SETUP.md`](EMAIL_SETUP.md).
 
 ## Gateway routes
 
@@ -134,3 +155,42 @@ Other changes:
 * `GET /api/v1/events/{id}/registrations` rows include `paymentId` and `paymentStatus`.
 * `PaymentResponse` includes `refundedAt` and `refundReason`.
 * `PAYMENT_PROVIDER` is required (`razorpay`, or `mock` for development). The mock provider is refused when the `prod` profile is active.
+
+## Strava (activity-service)
+
+Setup guide: [`STRAVA_SETUP.md`](STRAVA_SETUP.md).
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/api/v1/strava/connect` | user | `{authorizeUrl}` (scope `read,activity:read_all`, signed 10-minute `state`) |
+| GET | `/api/v1/strava/callback?code&state&scope` | public | Exchanges the code; the web app's `/strava/callback` page forwards here |
+| GET | `/api/v1/strava/connection` | user | `{connected, athleteId, connectedAt, status: ACTIVE\|REVOKED, includePrivate, lastSyncedAt}` |
+| PUT | `/api/v1/strava/connection/settings` | user | `{includePrivate}`: whether private Strava activities count towards club leaderboards (default false) |
+| DELETE | `/api/v1/strava/connection` | user | Deauthorizes on Strava (best effort) and deletes tokens; imported activities are kept |
+| POST | `/api/v1/strava/sync` | user | Incremental, paginated sync: `{imported, updated, skipped, complete}`. 409 if a sync is already running; 503 + `Retry-After` (`code: STRAVA_RATE_LIMITED`) while Strava's rate limit is paused; 400 `code: STRAVA_RECONNECT_REQUIRED` when access was revoked |
+| GET | `/api/v1/strava/activities/{userId}` | self/admin | Imported activities, paged |
+| DELETE | `/api/v1/strava/activities` | user | Purges all Strava-imported activities of the caller: `{deleted}` |
+| GET | `/api/v1/strava/webhook` | public | Strava subscription validation (`hub.challenge` echo when `hub.verify_token` matches) |
+| POST | `/api/v1/strava/webhook` | public | Event persisted (deduplicated on object/aspect/event time) and acknowledged immediately |
+| GET / POST | `/api/v1/strava/admin/subscription` | admin | List / create the app's single push subscription (callback `STRAVA_WEBHOOK_CALLBACK_URL`) |
+| DELETE | `/api/v1/strava/admin/subscription/{id}` | admin | Delete the push subscription |
+
+* **Webhook processing:** events are stored in `strava_webhook_events` and processed by a worker in every
+  replica. A conditional UPDATE claims each event (with a lease), so it is processed once. Retries back off at
+  1m, 5m, 15m, then hourly, and an event is FAILED after 6 attempts. Finished events are deleted after 30 days.
+  Events are hints: activity data is always fetched from Strava with the athlete's token, and deletes and
+  deauthorizations are confirmed with Strava first.
+* **Rate limits:** usage from `X-RateLimit-*` and `X-ReadRateLimit-*` is tracked on every response. At 90% of the
+  15-minute or daily budget, or on a 429, outbound calls pause until the window resets. Queued work is requeued
+  rather than failed.
+* **Tokens:** encrypted at rest with AES-256-GCM (`STRAVA_TOKEN_ENCRYPTION_KEY`), refreshed under a row lock so
+  rotated refresh tokens are never lost. Revoked access marks the connection `REVOKED`, clears the tokens and sends
+  the member an in-app `STRAVA_DISCONNECTED` notification.
+* **Activity fields from Strava:**
+  * `duration` = moving time; `elapsedTime` = total time including pauses
+  * `totalElevationGain`, `averageHeartrate`, `deviceName`
+  * `privateActivity`
+  * `startTime` = the athlete's local wall-clock start; `startTimeUtc`, `timeZone`
+* **Metrics:** `theclub_strava_api_calls_total{endpoint,outcome}`,
+  `theclub_strava_webhook_events_total{aspect,outcome}`, `theclub_strava_ratelimit_usage{window,kind}` and
+  `theclub_strava_ratelimit_limit{window,kind}`.

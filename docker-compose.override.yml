@@ -52,6 +52,8 @@ services:
     ports:
       - "127.0.0.1:${NOTIFICATION_SERVICE_PORT}:8087"
     environment:
+      # Mailpit by default; DEV_MAIL_PROVIDER=zeptomail in .env tries the real ZeptoMail API locally
+      MAIL_PROVIDER: ${DEV_MAIL_PROVIDER:-smtp}
       MAIL_ENABLED: "true"
       MAIL_HOST: mailpit
       MAIL_PORT: "1025"

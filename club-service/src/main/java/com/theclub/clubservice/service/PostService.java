@@ -1,5 +1,6 @@
 package com.theclub.clubservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.clubservice.client.ActivityClient;
 import com.theclub.clubservice.client.EventClient;
 import com.theclub.clubservice.dto.CreatePostRequest;
@@ -65,6 +66,8 @@ public class PostService {
             attachOwnerStravaActivity(post, club, request.activityId());
         }
         Post saved = posts.save(post);
+        BusinessMetrics.increment("clubs.posts", "type", type.name().toLowerCase(java.util.Locale.ROOT),
+                "strava_linked", String.valueOf(request.activityId() != null));
 
         List<UUID> recipients = clubService.memberIds(clubId).stream()
                 .filter(id -> !id.equals(caller.id()))

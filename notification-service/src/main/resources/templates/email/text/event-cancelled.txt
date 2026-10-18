@@ -1,0 +1,7 @@
+Sorry - [(${eventTitle})] on [(${when})] has been cancelled by the club.
+[# th:if="${refundNote}"][(${refundNote})]
+[/]
+Keep an eye on your club's page for future events.
+
+--
+You received this email because [(${footerReason})]

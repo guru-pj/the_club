@@ -1,0 +1,37 @@
+# OpenTelemetry Collector: services send spans over OTLP/HTTP (OTEL_EXPORTER_OTLP_ENDPOINT); the collector
+# batches them and forwards to Tempo. Swap the exporter to send traces to a managed backend instead.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+    spike_limit_mib: 50
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888

@@ -1,0 +1,187 @@
+{{- /*
+  One Deployment + Service per Spring service (services.<name> merged over serviceDefaults).
+  Secrets are projected as files under /run/secrets/<VARIABLE>; Spring reads them through
+  SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ — the same contract as docker-compose.
+*/ -}}
+{{- $root := . -}}
+{{- $secretName := include "theclub.secretName" . -}}
+{{- range $component, $raw := .Values.services }}
+{{- if $raw.enabled }}
+{{- $svc := fromYaml (include "theclub.serviceValues" (dict "root" $root "component" $component)) }}
+{{- $required := dict }}
+{{- range $path, $key := ($svc.secretFiles | default dict) }}{{ $_ := set $required $path $key }}{{ end }}
+{{- if $svc.database }}{{ $_ := set $required "SPRING_DATASOURCE_PASSWORD" $svc.database.passwordKey }}{{ end }}
+{{- $optional := $svc.optionalSecretFiles | default dict }}
+{{- $hasSecrets := or (gt (len $required) 0) (gt (len $optional) 0) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $root "component" $component) }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $root "component" $component) | nindent 4 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $root "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "theclub.labels" (dict "root" $root "component" $component) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "theclub.configChecksum" $root }}
+        {{- if and $root.Values.observability.metrics.podAnnotations (not $root.Values.observability.metrics.serviceMonitor.enabled) }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $svc.port | quote }}
+        prometheus.io/path: /actuator/prometheus
+        {{- end }}
+        {{- with $svc.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "theclub.serviceAccountName" $root }}
+      automountServiceAccountToken: false
+      {{- with $root.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+        # matches the 'app' user baked into the service images
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      terminationGracePeriodSeconds: 45
+      {{- if $root.Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "theclub.selectorLabels" (dict "root" $root "component" $component) | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "theclub.image" (dict "root" $root "image" $svc.image) }}
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "theclub.fullname" $root }}-env
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ printf "%s -Djava.io.tmpdir=/tmp" $root.Values.javaToolOptions | quote }}
+            {{- with $svc.database }}
+            {{- if eq .engine "postgres" }}
+            - name: SPRING_DATASOURCE_URL
+              value: {{ printf "jdbc:postgresql://%s:%v/%s%s" (include "theclub.postgresHost" $root) $root.Values.databases.postgres.port .name $root.Values.databases.postgres.params | quote }}
+            {{- else }}
+            - name: SPRING_DATASOURCE_URL
+              value: {{ printf "jdbc:mysql://%s:%v/%s%s" (include "theclub.mysqlHost" $root) $root.Values.databases.mysql.port .name $root.Values.databases.mysql.params | quote }}
+            {{- end }}
+            - name: SPRING_DATASOURCE_USERNAME
+              value: {{ .user | quote }}
+            {{- end }}
+            {{- range $key, $value := ($svc.env | default dict) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          startupProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: {{ $svc.startupProbe.periodSeconds }}
+            failureThreshold: {{ $svc.startupProbe.failureThreshold }}
+          livenessProbe:
+            httpGet: {path: /actuator/health/liveness, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /actuator/health/readiness, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            # let endpoints/ingress stop routing here before Spring's graceful shutdown starts
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $hasSecrets }}
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $hasSecrets }}
+        - name: secrets
+          projected:
+            defaultMode: 0440
+            sources:
+              {{- if gt (len $required) 0 }}
+              - secret:
+                  name: {{ $secretName }}
+                  items:
+                    {{- range $path, $key := $required }}
+                    - {key: {{ $key | quote }}, path: {{ $path }}}
+                    {{- end }}
+              {{- end }}
+              {{- if gt (len $optional) 0 }}
+              # third-party credentials: absent keys are simply not mounted (the feature stays disabled)
+              - secret:
+                  name: {{ $secretName }}
+                  optional: true
+                  items:
+                    {{- range $path, $key := $optional }}
+                    - {key: {{ $key | quote }}, path: {{ $path }}}
+                    {{- end }}
+              {{- end }}
+        {{- end }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $root "component" $component) }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $root "component" $component) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "theclub.selectorLabels" (dict "root" $root "component" $component) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+{{- end }}
+{{- end }}

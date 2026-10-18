@@ -1,5 +1,10 @@
 package com.theclub.common.config;
 
+import com.theclub.common.observability.ContextPropagatingTaskDecorator;
+import com.theclub.common.observability.NoiseFilteringObservationPredicate;
+import com.theclub.common.observability.RequestIdFilter;
+import com.theclub.common.observability.RequestIdProblemDetailAdvice;
+import com.theclub.common.observability.RequestIds;
 import com.theclub.common.security.InternalApiKeyFilter;
 import com.theclub.common.security.JwtAuthenticationFilter;
 import com.theclub.common.security.JwtProperties;
@@ -15,6 +20,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.core.Ordered;
+import org.springframework.core.task.TaskDecorator;
+import org.slf4j.MDC;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -38,13 +47,36 @@ import java.time.ZoneId;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties({JwtProperties.class, SecurityProperties.class})
 @EnableMethodSecurity
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, RequestIdProblemDetailAdvice.class})
 public class TheClubCommonAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
     public Clock clock(@Value("${theclub.time-zone:Asia/Kolkata}") String zone) {
         return Clock.system(ZoneId.of(zone));
+    }
+
+    /**
+     * Runs before security and tracing so every log line and every error response of the request carries the id.
+     */
+    @Bean
+    public FilterRegistrationBean<RequestIdFilter> requestIdFilter() {
+        FilterRegistrationBean<RequestIdFilter> registration = new FilterRegistrationBean<>(new RequestIdFilter());
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registration;
+    }
+
+    /** Applied by Spring Boot's ObservationRegistry: no traces for scrapes, probes, Eureka heartbeats. */
+    @Bean
+    public NoiseFilteringObservationPredicate noiseFilteringObservationPredicate() {
+        return new NoiseFilteringObservationPredicate();
+    }
+
+    /** Applied by Spring Boot to the auto-configured @Async executor. */
+    @Bean
+    @ConditionalOnMissingBean(TaskDecorator.class)
+    public TaskDecorator contextPropagatingTaskDecorator() {
+        return new ContextPropagatingTaskDecorator();
     }
 
     @Bean
@@ -70,7 +102,8 @@ public class TheClubCommonAutoConfiguration {
                 .exceptionHandling(e -> e.authenticationEntryPoint(problems).accessDeniedHandler(problems))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/internal/**").hasRole(Roles.INTERNAL);
-                    auth.requestMatchers("/actuator/health/**", "/actuator/info", "/error").permitAll();
+                    // /actuator/prometheus is for the in-network Prometheus scraper; nginx and the gateway never expose /actuator
+                    auth.requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus", "/error").permitAll();
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     properties.publicPaths().forEach(path -> auth.requestMatchers(path).permitAll());
                     auth.anyRequest().authenticated();
@@ -93,6 +126,11 @@ public class TheClubCommonAutoConfiguration {
             return template -> {
                 if (properties.internalApiKey() != null) {
                     template.header(InternalApiKeyFilter.HEADER, properties.internalApiKey());
+                }
+                // keep one request id across the whole call chain (trace context is propagated by Micrometer)
+                String requestId = MDC.get(RequestIds.MDC_KEY);
+                if (requestId != null) {
+                    template.header(RequestIds.HEADER, requestId);
                 }
             };
         }

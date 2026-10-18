@@ -18,3 +18,10 @@ theclub:
     public-key: classpath:jwt-test-public.pem
   security:
     internal-api-key: test-internal-key
+  mail:
+    provider: log
+    dispatcher:
+      # tests drive EmailDispatcher.dispatchOnce() themselves
+      enabled: false
+    webhook:
+      token: test-webhook-token

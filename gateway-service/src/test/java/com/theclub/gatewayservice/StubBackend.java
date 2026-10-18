@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 final class StubBackend {
 
     private final HttpServer server;
+    /** Every path the stub received, so tests can assert something was never forwarded. */
+    final java.util.List<String> receivedPaths = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     StubBackend() {
         try {
@@ -26,6 +28,13 @@ final class StubBackend {
             byte[] received;
             try (InputStream in = exchange.getRequestBody()) {
                 received = in.readAllBytes();
+            }
+            receivedPaths.add(exchange.getRequestURI().getPath());
+            String requestId = exchange.getRequestHeaders().getFirst("X-Request-Id");
+            if (requestId != null) {
+                exchange.getResponseHeaders().add("X-Received-Request-Id", requestId);
+                // like the real services (RequestIdFilter), echo the id back
+                exchange.getResponseHeaders().add("X-Request-Id", requestId);
             }
             String auth = exchange.getRequestHeaders().getFirst("Authorization");
             String internal = exchange.getRequestHeaders().getFirst("X-Internal-Key");

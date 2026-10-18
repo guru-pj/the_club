@@ -9,9 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -35,32 +35,18 @@ public class AccountMailer {
     }
 
     public void sendVerification(User user, String token) {
-        String link = link("/verify-email", token);
-        send(user, "EMAIL_VERIFICATION", "Please verify your email address",
-                "Verify your email for The Club",
-                paragraph("Hi " + user.getName() + ",")
-                        + paragraph("Welcome to The Club! Please confirm your email address to finish setting up your account.")
-                        + button(link, "Verify email address")
-                        + paragraph("This link expires in 48 hours. If you didn't create an account, you can ignore this email."));
+        send(user, "EMAIL_VERIFICATION", "Please verify your email address", "email-verification",
+                Map.of("name", user.getName(), "link", link("/verify-email", token)));
     }
 
     public void sendPasswordReset(User user, String token) {
-        String link = link("/reset-password", token);
-        send(user, "PASSWORD_RESET", "A password reset was requested for your account",
-                "Reset your The Club password",
-                paragraph("Hi " + user.getName() + ",")
-                        + paragraph("We received a request to reset your password. Choose a new one using the link below.")
-                        + button(link, "Reset password")
-                        + paragraph("This link expires in 30 minutes and can be used once. If you didn't ask for this, "
-                        + "you can ignore this email — your password stays the same."));
+        send(user, "PASSWORD_RESET", "A password reset was requested for your account", "password-reset",
+                Map.of("name", user.getName(), "link", link("/reset-password", token)));
     }
 
     public void sendPasswordChanged(User user) {
-        send(user, "PASSWORD_CHANGED", "Your password was changed",
-                "Your The Club password was changed",
-                paragraph("Hi " + user.getName() + ",")
-                        + paragraph("Your password was just changed and you were signed out on all devices.")
-                        + paragraph("If this wasn't you, reset your password immediately and contact the club admins."));
+        send(user, "PASSWORD_CHANGED", "Your password was changed", "password-changed",
+                Map.of("name", user.getName()));
     }
 
     public void revokeSessions(UUID userId) {
@@ -73,9 +59,10 @@ public class AccountMailer {
         });
     }
 
-    private void send(User user, String type, String message, String subject, String htmlBody) {
+    /** Emails use notification-service's branded templates; it renders and escapes the variables. */
+    private void send(User user, String type, String message, String template, Map<String, Object> variables) {
         var notification = new NotificationClient.Notification(user.getId(), type, message,
-                new NotificationClient.Email(user.getEmail(), subject, htmlBody));
+                new NotificationClient.Email(user.getEmail(), template, variables));
         afterCommit(() -> {
             try {
                 notifications.send(notification);
@@ -87,17 +74,6 @@ public class AccountMailer {
 
     private String link(String path, String token) {
         return UriComponentsBuilder.fromUriString(baseUrl + path).queryParam("token", token).build().toUriString();
-    }
-
-    private static String paragraph(String text) {
-        return "<p>" + HtmlUtils.htmlEscape(text) + "</p>";
-    }
-
-    private static String button(String href, String label) {
-        String url = HtmlUtils.htmlEscape(href);
-        return "<p><a href=\"" + url + "\" style=\"display:inline-block;padding:10px 18px;background:#0f766e;"
-                + "color:#ffffff;border-radius:8px;text-decoration:none;font-weight:600\">" + HtmlUtils.htmlEscape(label)
-                + "</a></p><p style=\"color:#5f6b65;font-size:13px\">Or paste this link into your browser: " + url + "</p>";
     }
 
     private static void afterCommit(Runnable action) {

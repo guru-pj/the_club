@@ -1,0 +1,26 @@
+{{- $sm := .Values.observability.metrics.serviceMonitor -}}
+{{- if $sm.enabled }}
+{{- $root := . -}}
+{{- range (fromYaml (include "theclub.workloads" .)).items }}
+{{- if .spring }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $root "component" .component) }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $root "component" .component) | nindent 4 }}
+    {{- with $sm.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $root "component" .component) | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: {{ $sm.interval }}
+{{- end }}
+{{- end }}
+{{- end }}

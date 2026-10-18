@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/layout :: layout('Verify your email', ~{::#content})}">
+<body>
+<div id="content">
+        <h1 style="font-size:22px;margin:0 0 16px;">Confirm your email address</h1>
+        <p>Hi <span th:text="${name}">there</span>,</p>
+        <p>Welcome to The Club! Please confirm your email address to finish setting up your account.</p>
+        <th:block th:replace="~{html/parts :: button(${link}, 'Verify email address')}"></th:block>
+        <p>This link expires in 48 hours. If you didn't create an account, you can ignore this email.</p>
+</div>
+</body>
+</html>

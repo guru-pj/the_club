@@ -252,6 +252,8 @@ try {
   const guest = await newUser('guest')
   await guest.goto(`${BASE}/login`)
   await guest.getByRole('link', { name: 'Forgot password?' }).click()
+  await guest.waitForURL(/\/forgot-password/)
+  await guest.getByRole('button', { name: 'Send reset link' }).waitFor()
   await guest.getByLabel('Email').fill(MEMBER.email)
   await guest.getByRole('button', { name: 'Send reset link' }).click()
   await guest.getByText('Check your email').waitFor()

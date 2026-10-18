@@ -1,0 +1,333 @@
+# Default values for The Club. Production overrides live in values-prod.yaml, local kind overrides in
+# values-dev.yaml. Every key is documented in docs/KUBERNETES.md.
+
+global:
+  # Images are <imageRegistry>/the-club-<service>:<imageTag>, as published by .github/workflows/ci.yml
+  imageRegistry: ghcr.io/guru-pj
+  # Defaults to the chart's appVersion; pin a commit SHA in production for reproducible rollbacks
+  imageTag: ""
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []   # e.g. [{name: ghcr-pull}]
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------------------------------------------
+# Non-secret configuration, rendered into one ConfigMap and loaded by every Spring service (same variables as
+# enviroinment_variables.env / docker-compose.yml).
+# ---------------------------------------------------------------------------------------------------------------
+config:
+  springProfilesActive: dev          # "prod" enables fail-fast checks (no placeholder secrets, no mock payments)
+  logLevel: INFO
+  timeZone: Asia/Kolkata
+  appBaseUrl: http://localhost:8088  # public URL of the web app (links in emails)
+  corsAllowedOrigins: http://localhost:8088
+  adminEmail: admin@theclub.local
+  jwt:
+    expiration: PT15M
+    refreshExpiration: P14D
+    keyId: k1
+  auth:
+    cookieSecure: true
+    requireEmailVerification: true
+  payments:
+    provider: razorpay               # razorpay | mock (development only)
+    razorpayKeyId: ""
+  mail:
+    provider: zeptomail              # zeptomail | smtp | log
+    enabled: true
+    from: "The Club <no-reply@theclub.local>"
+    replyTo: ""
+    # Staging safety net: deliver every email to this one address instead of the real recipient
+    redirectAllTo: ""
+    zeptomailApiUrl: https://api.zeptomail.in/v1.1/email   # .com region: https://api.zeptomail.com/v1.1/email
+    # outbox dispatcher (replica-safe: SELECT ... FOR UPDATE SKIP LOCKED)
+    dispatcherEnabled: true
+    dispatcherInterval: PT5S
+    smtp:
+      host: ""
+      port: 587
+      username: ""
+      starttls: true
+  strava:
+    clientId: ""
+    redirectUri: ""                  # https://<host>/strava/callback
+    webhookVerifyToken: ""
+    webhookCallbackUrl: ""           # https://<host>/api/v1/strava/webhook
+    initialSyncDays: 90
+    # webhook worker (replica-safe: rows are leased with a conditional UPDATE)
+    workerEnabled: true
+    workerBatchSize: 25
+  gateway:
+    # Per gateway POD and per client IP: the in-memory limiter is not shared between replicas, so the effective
+    # limit is (value x gateway replicas). Divide your intended limit by the replica count.
+    rateLimitStrictPerMinute: 10
+    rateLimitGeneralPerMinute: 300
+  # Any additional environment variables for every Spring service
+  extraEnv: {}
+
+observability:
+  logFormat: json                     # json (ECS, for Loki/Elastic) | text
+  tracing:
+    enabled: false
+    otlpEndpoint: ""                  # e.g. http://otel-collector.observability:4318/v1/traces
+    samplingProbability: "0.1"
+  metrics:
+    # Prometheus Operator ServiceMonitor per service (requires the monitoring.coreos.com CRDs)
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      labels: {}                      # e.g. {release: kube-prometheus-stack}
+    # prometheus.io/* pod annotations for annotation-based scraping
+    podAnnotations: true
+
+# ---------------------------------------------------------------------------------------------------------------
+# Secrets. Keys are the file names written by scripts/generate-secrets.sh, so production can run:
+#   kubectl create secret generic the-club-secrets --from-file=secrets/
+# Each service mounts only the keys it needs under /run/secrets/<VARIABLE>, read through
+# SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/ exactly like docker-compose.
+# ---------------------------------------------------------------------------------------------------------------
+secrets:
+  # Name of an existing Secret (created with kubectl, External Secrets Operator, Sealed Secrets, ...).
+  # Empty = <release fullname>-secrets.
+  name: ""
+  # Create the Secret from `data` below. Development only: values end up in Helm release history.
+  create: false
+  data: {}
+
+# ---------------------------------------------------------------------------------------------------------------
+# Databases. Production: managed MySQL 8 + PostgreSQL 15 (one database and least-privilege user per service,
+# see docs/KUBERNETES.md). Development: databases.embedded.enabled runs both in the cluster.
+# ---------------------------------------------------------------------------------------------------------------
+databases:
+  mysql:
+    host: ""                          # empty = embedded <fullname>-mysql
+    port: 3306
+    # appended to every MySQL JDBC URL, e.g. "?sslMode=REQUIRED"
+    params: ""
+  postgres:
+    host: ""                          # empty = embedded <fullname>-postgres
+    port: 5432
+    params: ""
+  embedded:
+    enabled: false
+    storageClass: ""                  # "" = cluster default
+    mysql:
+      image: mysql:8.0
+      storage: 10Gi
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {memory: 1Gi}
+    postgres:
+      image: postgres:15
+      storage: 5Gi
+      resources:
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {memory: 512Mi}
+
+# Nightly logical backups of the EMBEDDED databases (managed databases have their own backups/PITR).
+backups:
+  enabled: false
+  schedule: "02:30"                   # daily at HH:MM in timeZone (same format as BACKUP_SCHEDULE in .env)
+  timeZone: Asia/Kolkata
+  retentionDays: 14
+  storage: 20Gi                       # per engine
+  storageClass: ""
+
+# ---------------------------------------------------------------------------------------------------------------
+# Workloads
+# ---------------------------------------------------------------------------------------------------------------
+javaToolOptions: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+
+# Defaults merged into every Spring service below
+serviceDefaults:
+  replicaCount: 1
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {memory: 768Mi}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  startupProbe: {periodSeconds: 5, failureThreshold: 60}     # up to 5 minutes for the first start (Flyway)
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+services:
+  gateway:
+    enabled: true
+    image: gateway-service
+    port: 8080
+    resources:
+      requests: {cpu: 100m, memory: 384Mi}
+      limits: {memory: 512Mi}
+    calls: [user, auth, activity, club, event, notification]
+    secretFiles: {}
+  user:
+    enabled: true
+    image: user-service
+    port: 8081
+    database: {engine: mysql, name: userdb, user: theclub_user, passwordKey: db-user-password}
+    calls: [auth, notification]
+    secretFiles:
+      JWT_PUBLIC_KEY: theclub.jwt.public-key
+      INTERNAL_API_KEY: theclub.security.internal-api-key
+      ADMIN_PASSWORD: admin-password
+  auth:
+    enabled: true
+    image: auth-service
+    port: 8082
+    database: {engine: mysql, name: authdb, user: theclub_auth, passwordKey: db-auth-password}
+    calls: [user]
+    secretFiles:
+      JWT_PUBLIC_KEY: theclub.jwt.public-key
+      JWT_PRIVATE_KEY: theclub.jwt.private-key
+      INTERNAL_API_KEY: theclub.security.internal-api-key
+  activity:
+    enabled: true
+    image: activity-service
+    port: 8083
+    database: {engine: postgres, name: activitydb, user: theclub_activity, passwordKey: db-activity-password}
+    calls: [notification]
+    internetEgress: true              # Strava API
+    secretFiles:
+      JWT_PUBLIC_KEY: theclub.jwt.public-key
+      INTERNAL_API_KEY: theclub.security.internal-api-key
+      # encrypts stored Strava OAuth tokens (AES-GCM); generated by scripts/generate-secrets.sh
+      STRAVA_TOKEN_ENCRYPTION_KEY: strava-token-encryption-key
+    optionalSecretFiles:
+      STRAVA_CLIENT_SECRET: strava-client-secret
+  club:
+    enabled: true
+    image: club-service
+    port: 8084
+    database: {engine: mysql, name: clubdb, user: theclub_club, passwordKey: db-club-password}
+    calls: [user, activity, event, notification]
+    secretFiles:
+      JWT_PUBLIC_KEY: theclub.jwt.public-key
+      INTERNAL_API_KEY: theclub.security.internal-api-key
+  event:
+    enabled: true
+    image: event-service
+    port: 8086
+    database: {engine: mysql, name: eventdb, user: theclub_event, passwordKey: db-event-password}
+    calls: [club, user, notification]
+    internetEgress: true              # Razorpay API
+    secretFiles:
+      JWT_PUBLIC_KEY: theclub.jwt.public-key
+      INTERNAL_API_KEY: theclub.security.internal-api-key
+    optionalSecretFiles:
+      RAZORPAY_KEY_SECRET: razorpay-key-secret
+      RAZORPAY_WEBHOOK_SECRET: razorpay-webhook-secret
+  notification:
+    enabled: true
+    image: notification-service
+    port: 8087
+    database: {engine: mysql, name: notificationdb, user: theclub_notification, passwordKey: db-notification-password}
+    calls: []
+    internetEgress: true              # ZeptoMail API / SMTP
+    secretFiles:
+      JWT_PUBLIC_KEY: theclub.jwt.public-key
+      INTERNAL_API_KEY: theclub.security.internal-api-key
+      # authenticates ZeptoMail's bounce webhook; generated by scripts/generate-secrets.sh
+      ZEPTOMAIL_WEBHOOK_TOKEN: zeptomail-webhook-token
+    optionalSecretFiles:
+      MAIL_PASSWORD: smtp-password
+      ZEPTOMAIL_TOKEN: zeptomail-token
+  # Eureka and the config server are not needed on Kubernetes (Services provide discovery). Enable only if you
+  # really want them; enabling discovery switches the services back to Eureka-based routing.
+  discovery:
+    enabled: false
+    image: discovery-service
+    port: 8761
+    calls: []
+    secretFiles: {}
+  config:
+    enabled: false
+    image: config-service
+    port: 8888
+    calls: []
+    secretFiles: {}
+
+webApp:
+  enabled: true
+  image: web-app
+  port: 8080
+  replicaCount: 1
+  resources:
+    requests: {cpu: 20m, memory: 32Mi}
+    limits: {memory: 128Mi}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  # Address ranges whose X-Forwarded-For nginx trusts (the ingress controller / load balancer), so the gateway's
+  # per-client rate limits see real client IPs. Empty disables (every client then shares the proxy's IP).
+  realIpFrom: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+  # DNS server nginx uses to re-resolve the gateway Service (kube-dns in almost every cluster)
+  resolver: kube-dns.kube-system.svc.cluster.local
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Expose the web app (and through it /api) — the gateway and services stay internal
+ingress:
+  enabled: true
+  className: ""                       # "" = cluster default IngressClass (traefik, nginx, haproxy, alb, ...)
+  host: ""                            # "" = any host (development)
+  annotations: {}                     # e.g. cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: false
+    secretName: the-club-tls
+
+# Alternative to Ingress: Gateway API HTTPRoute (requires the gateway.networking.k8s.io CRDs and a Gateway)
+httpRoute:
+  enabled: false
+  parentRefs: []                      # e.g. [{name: public-gateway, namespace: gateway-system}]
+  hostnames: []
+
+# Development mail catcher (SMTP 1025, UI 8025). Point config.mail at it with values-dev.yaml.
+mailpit:
+  enabled: false
+  image: axllent/mailpit:v1.20
+
+networkPolicy:
+  enabled: true
+  # Namespace of the ingress controller allowed to reach the web app (label kubernetes.io/metadata.name).
+  # Empty = any source may reach the web app's port (it is the public entry point); everything else stays closed.
+  ingressControllerNamespace: ""
+  # Namespace allowed to scrape /actuator/prometheus (Prometheus); empty = no scrape access
+  prometheusNamespace: ""
+  # Egress for managed databases / OTLP collector outside the cluster (CIDRs). Defaults allow any address.
+  databaseCidrs: ["0.0.0.0/0"]
+  otlpCidrs: ["0.0.0.0/0"]
+  otlpPorts: [4317, 4318]
+  # Internet egress for services with internetEgress: true (Strava, Razorpay, ZeptoMail/SMTP)
+  internetCidrs: ["0.0.0.0/0"]
+  internetPorts: [443, 587, 465]
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1                     # rendered only for workloads with more than one replica / autoscaling
+
+topologySpread:
+  enabled: true                       # spread replicas across nodes (ScheduleAnyway)
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}                     # e.g. workload identity / IRSA for future cloud integrations
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile: {type: RuntimeDefault}
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}

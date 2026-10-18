@@ -56,11 +56,38 @@ jobs:
       - name: Build
         run: npm run build
 
+  helm:
+    name: Helm chart (lint, render, validate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Install kubeconform
+        run: |
+          curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin kubeconform
+      - name: Chart copies of the database init and backup scripts are up to date
+        run: |
+          diff docker/mysql/initdb/01-service-users.sh deploy/helm/the-club/files/mysql-01-service-users.sh
+          diff docker/postgres/initdb/01-service-user.sh deploy/helm/the-club/files/postgres-01-service-user.sh
+          diff scripts/backup.sh deploy/helm/the-club/files/backup.sh
+      - name: Lint and validate (defaults, dev, prod)
+        run: |
+          chart=deploy/helm/the-club
+          for values in "" "-f $chart/values-dev.yaml" "-f $chart/values-prod.yaml"; do
+            helm lint --strict $chart $values
+            helm template the-club $chart -n the-club $values \
+              | kubeconform -strict -summary -kubernetes-version 1.30.0 \
+                  -schema-location default \
+                  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+
   images:
     name: Image ${{ matrix.service }}
     # Publish only from main, after everything is green
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [backend, web]
+    needs: [backend, web, helm]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

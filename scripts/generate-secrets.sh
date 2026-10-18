@@ -74,11 +74,21 @@ for service in user auth club event notification activity; do
     write_secret "db-${service}-password" "$(random_value 24)"
 done
 
+# --- shared secret the ZeptoMail bounce webhook presents (?token=...); see docs/EMAIL_SETUP.md
+write_secret "zeptomail-webhook-token" "$(random_value 32)"
+
 # --- first platform admin
 write_secret "admin-password" "$(random_value 12)"
 
+# --- Grafana admin (observability stack, docker-compose.observability.yml); user name: admin
+write_secret "grafana-admin-password" "$(random_value 20)"
+
+# --- AES-256 key for Strava OAuth tokens at rest (base64 of 32 random bytes; keep it: losing it means members
+#     must reconnect Strava)
+write_secret "strava-token-encryption-key" "$(openssl rand -base64 32 | tr -d '\n')"
+
 # --- third-party credentials: created empty, fill in for production
-for optional in smtp-password razorpay-key-secret razorpay-webhook-secret strava-client-secret; do
+for optional in smtp-password razorpay-key-secret razorpay-webhook-secret strava-client-secret zeptomail-token; do
     if [ ! -f "$SECRETS_DIR/$optional" ]; then
         : > "$SECRETS_DIR/$optional"
         chmod 644 "$SECRETS_DIR/$optional"

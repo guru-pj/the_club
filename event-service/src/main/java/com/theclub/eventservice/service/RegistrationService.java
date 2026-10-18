@@ -1,5 +1,6 @@
 package com.theclub.eventservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.dto.CheckoutInfo;
@@ -79,12 +80,14 @@ public class RegistrationService {
             ticketIssuer.confirm(registration, now);
             registrations.save(registration);
             notifier.registrationConfirmed(caller.id(), caller.email(), event, registration.getTicketCode());
+            BusinessMetrics.increment("events.registrations", "type", "free");
             return new RegisterResponse(registration.getId(), registration.getStatus(), null);
         }
         registration.setStatus(RegistrationStatus.PENDING_PAYMENT);
         registrations.save(registration);
         Payment payment = paymentService.createFor(registration, event);
         CheckoutInfo checkout = CheckoutInfo.of(payment, paymentService.providerKeyId());
+        BusinessMetrics.increment("events.registrations", "type", "paid");
         return new RegisterResponse(registration.getId(), registration.getStatus(), checkout);
     }
 

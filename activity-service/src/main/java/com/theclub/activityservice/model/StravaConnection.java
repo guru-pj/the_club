@@ -3,6 +3,8 @@ package com.theclub.activityservice.model;
 import com.theclub.common.util.UuidGenerator;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -38,10 +40,12 @@ public class StravaConnection {
     @Column(name = "athlete_id", nullable = false, unique = true)
     private long athleteId;
 
-    @Column(name = "access_token", nullable = false, length = 255)
+    /** Encrypted at rest (see StravaTokenCipher); null once access was revoked. */
+    @Column(name = "access_token", length = 512)
     private String accessToken;
 
-    @Column(name = "refresh_token", nullable = false, length = 255)
+    /** Encrypted at rest; rotates on every refresh, so always persist the latest value. */
+    @Column(name = "refresh_token", length = 512)
     private String refreshToken;
 
     @Column(name = "expires_at", nullable = false)
@@ -49,6 +53,25 @@ public class StravaConnection {
 
     @Column(length = 255)
     private String scope;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private StravaConnectionStatus status = StravaConnectionStatus.ACTIVE;
+
+    /** Whether the athlete's private Strava activities count towards club leaderboards. */
+    @Column(name = "include_private", nullable = false)
+    private boolean includePrivate;
+
+    /** Start of the last fully completed sync; the next sync fetches from here (minus an overlap). */
+    @Column(name = "last_synced_at")
+    private Instant lastSyncedAt;
+
+    /** Set while a sync runs (any replica); stale values are reclaimed after a timeout. */
+    @Column(name = "sync_started_at")
+    private Instant syncStartedAt;
+
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

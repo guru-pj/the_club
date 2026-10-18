@@ -1,0 +1,20 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $root := . -}}
+{{- range (fromYaml (include "theclub.workloads" .)).items }}
+{{- /* A PDB on a single replica would block node drains, so only multi-replica workloads get one */}}
+{{- if or .autoscaling.enabled (gt (int .replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $root "component" .component) }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $root "component" .component) | nindent 4 }}
+spec:
+  minAvailable: {{ $root.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $root "component" .component) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

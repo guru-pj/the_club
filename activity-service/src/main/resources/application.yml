@@ -37,7 +37,36 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # /actuator is never reachable from outside: nginx proxies only /api and the gateway never routes /actuator.
+        # Prometheus scrapes /actuator/prometheus over the internal network.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # /actuator/health/liveness and /actuator/health/readiness for Docker and Kubernetes probes
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        http.client.requests: true
+      slo:
+        http.server.requests: 100ms,300ms,1s,3s
+  tracing:
+    # Spans are exported only where an OpenTelemetry collector runs (docker-compose.observability.yml, Helm chart)
+    enabled: ${TRACING_ENABLED:false}
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 theclub:
   time-zone: ${APP_TIME_ZONE:Asia/Kolkata}
@@ -58,3 +87,23 @@ theclub:
     webhook-verify-token: ${STRAVA_WEBHOOK_VERIFY_TOKEN:}
     api-base-url: ${STRAVA_API_BASE_URL:https://www.strava.com/api/v3}
     oauth-base-url: ${STRAVA_OAUTH_BASE_URL:https://www.strava.com/oauth}
+    # Public HTTPS URL Strava pushes events to (used when creating the push subscription), e.g.
+    # https://club.example.com/api/v1/strava/webhook
+    webhook-callback-url: ${STRAVA_WEBHOOK_CALLBACK_URL:}
+    # How far back the first sync of a newly connected athlete imports
+    initial-sync-days: ${STRAVA_INITIAL_SYNC_DAYS:90}
+    # base64 of 32 random bytes (AES-256-GCM) for OAuth tokens at rest; secrets/strava-token-encryption-key
+    token-encryption-key: ${STRAVA_TOKEN_ENCRYPTION_KEY:}
+    # Webhook queue worker (every replica polls; events are claimed atomically)
+    worker-enabled: ${STRAVA_WORKER_ENABLED:true}
+    worker-batch-size: ${STRAVA_WORKER_BATCH_SIZE:25}
+  clients:
+    notification-service:
+      url: ${NOTIFICATION_SERVICE_URL:}
+
+# --- Operations: graceful shutdown on SIGTERM (rolling deploys), connection pool, outbound timeouts ---
+# Logs are plain text locally; set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs for JSON (the observability stack does).
+server.shutdown: graceful
+spring.lifecycle.timeout-per-shutdown-phase: 20s
+spring.datasource.hikari.maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+spring.datasource.hikari.connection-timeout: 5000

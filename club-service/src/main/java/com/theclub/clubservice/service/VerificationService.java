@@ -1,5 +1,6 @@
 package com.theclub.clubservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.clubservice.client.UserClient;
 import com.theclub.clubservice.dto.ApplyVerificationRequest;
 import com.theclub.clubservice.dto.ApproveVerificationRequest;
@@ -197,6 +198,7 @@ public class VerificationService {
     }
 
     private void audit(VerificationRequest request, UUID actorId, String action, String note) {
+        BusinessMetrics.increment("clubs.owner_verifications", "action", action.toLowerCase(java.util.Locale.ROOT));
         audits.save(new VerificationAudit(request.getId(), actorId, action, note));
     }
 

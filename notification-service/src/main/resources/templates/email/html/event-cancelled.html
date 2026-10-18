@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/layout :: layout('Event cancelled', ~{::#content})}">
+<body>
+<div id="content">
+        <h1 style="font-size:22px;margin:0 0 16px;">Event cancelled</h1>
+        <p>Sorry &mdash; <strong th:text="${eventTitle}">the event</strong> on <span th:text="${when}">date</span> has been cancelled by the club.</p>
+        <p th:if="${refundNote}" th:text="${refundNote}">Paid registrations are refunded automatically.</p>
+        <p>Keep an eye on your club's page for future events.</p>
+</div>
+</body>
+</html>

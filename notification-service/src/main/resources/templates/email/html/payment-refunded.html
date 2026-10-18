@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/layout :: layout('Your refund', ~{::#content})}">
+<body>
+<div id="content">
+        <h1 style="font-size:22px;margin:0 0 16px;">Your refund is on its way</h1>
+        <p>We've refunded <strong th:text="${amount}">amount</strong> for <strong th:text="${eventTitle}">the event</strong>.</p>
+        <p th:if="${reason}">Reason: <span th:text="${reason}">reason</span></p>
+        <p>Refunds usually reach your account within 5&ndash;7 working days, back to the original payment method.</p>
+</div>
+</body>
+</html>

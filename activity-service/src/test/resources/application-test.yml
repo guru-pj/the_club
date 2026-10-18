@@ -22,3 +22,7 @@ theclub:
     client-id: "12345"
     client-secret: test-client-secret
     webhook-verify-token: test-verify-token
+    # base64 of 32 bytes, test-only
+    token-encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    # tests call StravaWebhookWorker.runOnce() directly
+    worker-enabled: false

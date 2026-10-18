@@ -46,7 +46,36 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # /actuator is never reachable from outside: nginx proxies only /api and the gateway never routes /actuator.
+        # Prometheus scrapes /actuator/prometheus over the internal network.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # /actuator/health/liveness and /actuator/health/readiness for Docker and Kubernetes probes
+        enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        http.client.requests: true
+      slo:
+        http.server.requests: 100ms,300ms,1s,3s
+  tracing:
+    # Spans are exported only where an OpenTelemetry collector runs (docker-compose.observability.yml, Helm chart)
+    enabled: ${TRACING_ENABLED:false}
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   # Keep the service healthy when SMTP is down: email is best-effort.
   health:
     mail:
@@ -61,6 +90,34 @@ theclub:
     expiration: ${JWT_EXPIRATION:PT15M}
   security:
     internal-api-key: ${INTERNAL_API_KEY}
+    public-paths:
+      # ZeptoMail bounce webhook; authenticated by the ZEPTOMAIL_WEBHOOK_TOKEN shared secret
+      - /api/v1/notifications/webhooks/zeptomail
   mail:
+    # zeptomail | smtp | log. Blank = legacy behaviour: MAIL_ENABLED=true -> smtp, false -> log. See docs/EMAIL_SETUP.md
+    provider: ${MAIL_PROVIDER:}
     enabled: ${MAIL_ENABLED:false}
     from: ${MAIL_FROM:The Club <no-reply@theclub.local>}
+    reply-to: ${MAIL_REPLY_TO:}
+    # Staging safety net: deliver every email to this one address instead of the real recipient
+    redirect-all-to: ${MAIL_REDIRECT_ALL_TO:}
+    zeptomail:
+      api-url: ${ZEPTOMAIL_API_URL:https://api.zeptomail.in/v1.1/email}
+      token: ${ZEPTOMAIL_TOKEN:}
+      connect-timeout: 5s
+      read-timeout: 15s
+    dispatcher:
+      enabled: ${MAIL_DISPATCHER_ENABLED:true}
+      interval: ${MAIL_DISPATCHER_INTERVAL:PT5S}
+      batch-size: 20
+      max-attempts: 8
+      stuck-after: PT10M
+    webhook:
+      token: ${ZEPTOMAIL_WEBHOOK_TOKEN:}
+
+# --- Operations: graceful shutdown on SIGTERM (rolling deploys), connection pool, outbound timeouts ---
+# Logs are plain text locally; set LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs for JSON (the observability stack does).
+server.shutdown: graceful
+spring.lifecycle.timeout-per-shutdown-phase: 20s
+spring.datasource.hikari.maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+spring.datasource.hikari.connection-timeout: 5000

@@ -1,0 +1,12 @@
+# Local Kubernetes for The Club (deploy/kind/up.sh). One node; the ingress controller (Traefik) listens on
+# NodePort 30080, published on the host as 127.0.0.1:${KIND_HTTP_PORT:-8088} by up.sh.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: theclub
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8088          # replaced by up.sh when KIND_HTTP_PORT is set
+        listenAddress: 127.0.0.1
+        protocol: TCP

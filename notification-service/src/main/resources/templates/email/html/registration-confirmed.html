@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:replace="~{html/layout :: layout('Your ticket', ~{::#content})}">
+<body>
+<div id="content">
+        <h1 style="font-size:22px;margin:0 0 16px;">You're in! &#127881;</h1>
+        <p>Your registration for <strong th:text="${eventTitle}">the event</strong> is confirmed.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0;font-size:15px;">
+          <tr><td style="color:#5f6b65;padding:4px 16px 4px 0;">When</td><td th:text="${when}">date</td></tr>
+          <tr th:if="${location}"><td style="color:#5f6b65;padding:4px 16px 4px 0;">Where</td><td th:text="${location}">place</td></tr>
+        </table>
+        <p>Show this QR code to the club owner at check-in:</p>
+        <p style="text-align:center;margin:20px 0;" th:if="${qrCid}">
+          <img th:src="${'cid:' + qrCid}" alt="Ticket QR code" width="240" height="240" style="display:inline-block;border:1px solid #e2e5e0;border-radius:8px;padding:8px;background:#ffffff;">
+        </p>
+        <p style="text-align:center;">Ticket code<br><code style="font-size:14px;background:#f0f2ef;padding:4px 8px;border-radius:6px;" th:text="${ticketCode}">CODE</code></p>
+</div>
+</body>
+</html>

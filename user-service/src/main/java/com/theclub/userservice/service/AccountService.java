@@ -1,5 +1,6 @@
 package com.theclub.userservice.service;
 
+import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.common.web.ApiException;
 import com.theclub.userservice.model.TokenPurpose;
 import com.theclub.userservice.model.User;
@@ -47,6 +48,7 @@ public class AccountService {
         User user = users.findById(token.getUserId()).orElseThrow(() -> ApiException.badRequest(AccountTokens.INVALID));
         tokens.markUsed(token);
         user.setEmailVerified(true);
+        BusinessMetrics.increment("users.email_verifications");
     }
 
     @Transactional
@@ -62,6 +64,7 @@ public class AccountService {
                 .filter(User::isActive)
                 .ifPresent(user -> tokens.issue(user.getId(), TokenPurpose.PASSWORD_RESET)
                         .ifPresent(t -> mailer.sendPasswordReset(user, t)));
+        BusinessMetrics.increment("users.password_resets", "stage", "requested");
     }
 
     /**
@@ -80,6 +83,7 @@ public class AccountService {
         user.setEmailVerified(true);
         mailer.revokeSessions(user.getId());
         mailer.sendPasswordChanged(user);
+        BusinessMetrics.increment("users.password_resets", "stage", "completed");
     }
 
     @Transactional
@@ -97,6 +101,7 @@ public class AccountService {
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         mailer.revokeSessions(user.getId());
         mailer.sendPasswordChanged(user);
+        BusinessMetrics.increment("users.password_changes");
     }
 
     private Optional<User> findByEmail(String email) {

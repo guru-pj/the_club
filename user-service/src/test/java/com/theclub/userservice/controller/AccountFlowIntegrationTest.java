@@ -59,7 +59,7 @@ class AccountFlowIntegrationTest extends IntegrationTestBase {
     }
 
     private static String tokenIn(NotificationClient.Notification notification) {
-        Matcher m = TOKEN.matcher(notification.email().body());
+        Matcher m = TOKEN.matcher(String.valueOf(notification.email().variables().get("link")));
         assertThat(m.find()).as("email contains a token link").isTrue();
         return m.group(1);
     }
@@ -81,7 +81,8 @@ class AccountFlowIntegrationTest extends IntegrationTestBase {
         assertThat(email.userId().toString()).isEqualTo(id);
         assertThat(email.type()).isEqualTo("EMAIL_VERIFICATION");
         assertThat(email.email().to()).isEqualTo("verify@example.com");
-        assertThat(email.email().body()).contains("http://localhost:3000/verify-email?token=");
+        assertThat(email.email().template()).isEqualTo("email-verification");
+        assertThat(email.email().variables().get("link").toString()).startsWith("http://localhost:3000/verify-email?token=");
         assertThat(credentials("verify@example.com").get("emailVerified").asBoolean()).isFalse();
 
         String token = tokenIn(email);
@@ -132,7 +133,8 @@ class AccountFlowIntegrationTest extends IntegrationTestBase {
         postJson("/api/v1/users/password-reset/request", "{\"email\":\"reset@example.com\"}").andExpect(status().isAccepted());
         NotificationClient.Notification resetEmail = sent(2).get(1);
         assertThat(resetEmail.type()).isEqualTo("PASSWORD_RESET");
-        assertThat(resetEmail.email().body()).contains("http://localhost:3000/reset-password?token=");
+        assertThat(resetEmail.email().template()).isEqualTo("password-reset");
+        assertThat(resetEmail.email().variables().get("link").toString()).startsWith("http://localhost:3000/reset-password?token=");
         String token = tokenIn(resetEmail);
 
         // a rejected password doesn't burn the link

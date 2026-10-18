@@ -37,6 +37,8 @@
         <jjwt.version>0.12.6</jjwt.version>
         <uuid-generator.version>5.0.0</uuid-generator.version>
         <zxing.version>3.5.3</zxing.version>
+        <!-- 6.x targets Spring Framework 6.2 (Boot 3.5); 7.x requires Spring 7 -->
+        <shedlock.version>6.10.0</shedlock.version>
         <!-- 1.21.3 (Spring Boot's default) speaks Docker API 1.32, which Docker 29+ rejects; 1.21.4 negotiates a newer API -->
         <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
@@ -74,6 +76,16 @@
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-jackson</artifactId>
                 <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.javacrumbs.shedlock</groupId>
+                <artifactId>shedlock-spring</artifactId>
+                <version>${shedlock.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.javacrumbs.shedlock</groupId>
+                <artifactId>shedlock-provider-jdbc-template</artifactId>
+                <version>${shedlock.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.google.zxing</groupId>

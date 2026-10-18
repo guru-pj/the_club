@@ -10,15 +10,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.web.util.HtmlUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -39,10 +40,13 @@ public class ConfirmationNotifier {
 
     private final NotificationClient notificationClient;
     private final QrCodeService qrCodeService;
+    private final MemberEmails memberEmails;
 
-    public ConfirmationNotifier(NotificationClient notificationClient, QrCodeService qrCodeService) {
+    public ConfirmationNotifier(NotificationClient notificationClient, QrCodeService qrCodeService,
+                                MemberEmails memberEmails) {
         this.notificationClient = notificationClient;
         this.qrCodeService = qrCodeService;
+        this.memberEmails = memberEmails;
     }
 
     public void registrationConfirmed(UUID userId, String email, Event event, String ticketCode) {
@@ -62,20 +66,36 @@ public class ConfirmationNotifier {
             String to = email.get();
             if (to != null && !to.isBlank()) {
                 String png = Base64.getEncoder().encodeToString(qrCodeService.ticketPng(ticketCode));
-                emailMessage = new EmailMessage(to, "Your ticket: " + title,
-                        ticketEmailHtml(title, startTime, location, ticketCode),
+                emailMessage = new EmailMessage(to, "registration-confirmed",
+                        ticketEmailVariables(title, startTime, location, ticketCode),
                         List.of(new EmailAttachment("ticket.png", "image/png", png, true, QR_CONTENT_ID)));
             }
             notificationClient.create(new NotificationRequest(userId, TYPE_REGISTRATION_CONFIRMED, message, emailMessage));
         });
     }
 
+    /**
+     * In-app notice plus an email to every affected member (emails looked up after commit; best effort).
+     */
     public void eventCancelled(Event event, Collection<UUID> userIds) {
-        String message = event.getTitle() + " on " + DATE_FORMAT.format(event.getStartTime()) + " has been cancelled";
+        String title = event.getTitle();
+        String when = DATE_FORMAT.format(event.getStartTime());
+        String message = title + " on " + when + " has been cancelled";
+        boolean paid = event.getPrice() != null && event.getPrice().signum() > 0;
         List<UUID> recipients = List.copyOf(userIds);
         afterCommit(() -> recipients.forEach(userId -> {
             try {
-                notificationClient.create(new NotificationRequest(userId, TYPE_EVENT_CANCELLED, message, null));
+                EmailMessage emailMessage = null;
+                String to = memberEmails.emailOf(userId);
+                if (to != null && !to.isBlank()) {
+                    Map<String, Object> variables = new HashMap<>(Map.of("eventTitle", title, "when", when));
+                    if (paid) {
+                        variables.put("refundNote", "If you paid for this event, your payment is refunded automatically "
+                                + "to the original payment method.");
+                    }
+                    emailMessage = new EmailMessage(to, "event-cancelled", variables, null);
+                }
+                notificationClient.create(new NotificationRequest(userId, TYPE_EVENT_CANCELLED, message, emailMessage));
             } catch (RuntimeException e) {
                 log.warn("Could not notify user {} about cancellation: {}", userId, e.getMessage());
             }
@@ -95,31 +115,24 @@ public class ConfirmationNotifier {
             EmailMessage emailMessage = null;
             String to = email.get();
             if (to != null && !to.isBlank()) {
-                emailMessage = new EmailMessage(to, "Refund for " + title, """
-                        <h2>Your refund is on its way</h2>
-                        <p>We've refunded <strong>%s</strong> for <strong>%s</strong>.</p>
-                        %s
-                        <p>Refunds usually reach your account within 5–7 working days.</p>
-                        """.formatted(HtmlUtils.htmlEscape(money), HtmlUtils.htmlEscape(title),
-                        reason == null || reason.isBlank() ? "" : "<p>Reason: " + HtmlUtils.htmlEscape(reason) + "</p>"),
-                        null);
+                Map<String, Object> variables = new HashMap<>(Map.of("eventTitle", title, "amount", money));
+                if (reason != null && !reason.isBlank()) {
+                    variables.put("reason", reason);
+                }
+                emailMessage = new EmailMessage(to, "payment-refunded", variables, null);
             }
             notificationClient.create(new NotificationRequest(userId, TYPE_PAYMENT_REFUNDED, message, emailMessage));
         });
     }
 
-    static String ticketEmailHtml(String title, LocalDateTime startTime, String location, String ticketCode) {
-        String where = location == null ? "" : "<p><strong>Where:</strong> " + HtmlUtils.htmlEscape(location) + "</p>";
-        return """
-                <h2>You're in! 🎉</h2>
-                <p>Your registration for <strong>%s</strong> is confirmed.</p>
-                <p><strong>When:</strong> %s</p>
-                %s
-                <p>Show this QR code to the club owner at check-in:</p>
-                <p><img src="cid:%s" alt="Ticket QR code" width="240" height="240"/></p>
-                <p>Ticket code: <code>%s</code></p>
-                """.formatted(HtmlUtils.htmlEscape(title), DATE_FORMAT.format(startTime), where, QR_CONTENT_ID,
-                ticketCode);
+    static Map<String, Object> ticketEmailVariables(String title, LocalDateTime startTime, String location,
+                                                    String ticketCode) {
+        Map<String, Object> variables = new HashMap<>(Map.of("eventTitle", title, "when", DATE_FORMAT.format(startTime),
+                "ticketCode", ticketCode, "qrCid", QR_CONTENT_ID));
+        if (location != null && !location.isBlank()) {
+            variables.put("location", location);
+        }
+        return variables;
     }
 
     private static void afterCommit(Runnable task) {

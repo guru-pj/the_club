@@ -2,6 +2,7 @@ package com.theclub.gatewayservice.ratelimit;
 
 import com.theclub.gatewayservice.config.ClientIpResolver;
 import com.theclub.gatewayservice.config.GatewayHardeningProperties;
+import io.micrometer.core.instrument.Metrics;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -56,14 +57,21 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         if (exchange.getRequest().getMethod() == HttpMethod.POST && isStrict(path)) {
             long wait = strict.tryAcquire(ip);
             if (wait > 0) {
+                rejected("strict");
                 return tooManyRequests(exchange.getResponse(), wait);
             }
         }
         long wait = general.tryAcquire(ip);
         if (wait > 0) {
+            rejected("general");
             return tooManyRequests(exchange.getResponse(), wait);
         }
         return chain.filter(exchange);
+    }
+
+    /** theclub_gateway_rate_limited_total{bucket} — spikes mean brute force, scraping or a misbehaving client. */
+    private static void rejected(String bucket) {
+        Metrics.counter("theclub.gateway.rate_limited", "bucket", bucket).increment();
     }
 
     private boolean isStrict(String path) {
