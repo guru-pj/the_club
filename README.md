@@ -113,26 +113,58 @@ These steps run the whole backend plus the web UI with Docker.
 
 ### 1. Install prerequisites
 
+**Machine:** 64-bit Linux, macOS or Windows; at least 8 GB RAM (the full stack uses about 4–6 GB) and 10 GB free disk.
+
+**Required to build and run the backend and web app (all in Docker):**
+
+| Tool | Version | Used for |
+|---|---|---|
+| Git | any | cloning the repository |
+| Java **JDK** | 21 (a JRE alone is not enough) | compiling the services |
+| Maven | 3.6+ (3.9 recommended) | building the services |
+| Docker Engine + Compose v2 plugin | Docker 24+ | running every container |
+| bash, openssl | any | `scripts/generate-secrets.sh` creates keys and passwords |
+| curl, jq | any | `scripts/smoke-test.sh` and Docker install |
+
 **Ubuntu / Debian**
 ```bash
-# Git, Java 21 JDK (the full JDK, not just the runtime) and Maven
 sudo apt update
-sudo apt install -y git openjdk-21-jdk maven curl jq
+sudo apt install -y git openjdk-21-jdk maven curl jq openssl
 
 # Docker Engine + Compose v2
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER      # log out and back in so docker works without sudo
+sudo usermod -aG docker $USER
+newgrp docker                      # or log out and back in, so docker works without sudo
 ```
 
-**macOS / Windows:** install Docker Desktop, Temurin JDK 21 and Maven 3.9+.
+**macOS:** `brew install git openjdk@21 maven jq`, plus Docker Desktop.
 
-Check the installs:
+**Windows:** install Git for Windows (it includes Git Bash with bash and openssl), Temurin JDK 21, Maven 3.9+ and Docker Desktop with the WSL 2 backend. Run the `.sh` scripts from Git Bash or WSL.
+
+**Optional, only for web-app development and browser tests:**
+
+| Tool | Version | Used for |
+|---|---|---|
+| Node.js + npm | 22 | `npm run dev`, `npm test` in `web-app/` |
+| Google Chrome or Chromium | recent | `npm run e2e` browser test |
+
 ```bash
-java -version          # 21.x
-javac -version         # must exist; if missing, only a JRE is installed
-mvn -v                 # 3.6+
-docker compose version
+# Node.js 22 on Ubuntu
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
 ```
+
+**Check the installs:**
+```bash
+git --version
+java -version          # 21.x
+javac -version         # must print 21.x; if missing, only a JRE is installed: install openjdk-21-jdk
+mvn -v                 # 3.6+ and "Java version: 21"
+docker compose version # v2.x
+docker run --rm hello-world   # confirms docker works without sudo
+openssl version
+```
+
+**Ports:** the local setup publishes port 3000 (web app). It also binds these ports on localhost only: 8025 (Mailpit), 8080 (gateway), 8081–8084, 8086, 8087 (services), 8761, 8888, 3306 (MySQL), 5432 (PostgreSQL) and 8085 (Trino). Stop anything already using them, such as a local MySQL or PostgreSQL, or change the ports in `.env`.
 
 ### 2. Clone and configure
 ```bash
