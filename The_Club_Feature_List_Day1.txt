@@ -3,26 +3,26 @@
 
 MVP (Phase 1)
 --------------
-☐ User signup/login (JWT-secured)
-☐ Create/join clubs
-☐ Log activities (manual entry)
-☐ Club feed (basic posts from owners)
-☐ Simple club leaderboard (distance, time, sessions)
+☑ User signup/login (JWT-secured)
+☑ Create/join clubs
+☑ Log activities (manual entry)
+☑ Club feed (basic posts from owners)
+☑ Simple club leaderboard (distance, time, sessions)
 
 Extended MVP (Phase 2+)
 ------------------------
-☐ Club owners create events (e.g., weekend runs)
-☐ Set registration opening time in-app
-☐ Users register inside the app
-☐ In-app payment for events
-☐ Confirmation message + email + QR code ticket
-☐ Club owner scans QR code on event day for check-in
-☐ Event posts with photos + recap
-☐ Strava integration: only club owner’s activity linked to posts
-☐ Individual members’ Strava activities stored in their account
-☐ Track member participation count in club events
-☐ Award points/stars for participation
-☐ Monthly leaderboard: top individuals + top clubs
+☑ Club owners create events (e.g., weekend runs)
+☑ Set registration opening time in-app
+☑ Users register inside the app
+☑ In-app payment for events
+☑ Confirmation message + email + QR code ticket
+☑ Club owner scans QR code on event day for check-in
+☑ Event posts with photos + recap
+☑ Strava integration: only club owner’s activity linked to posts
+☑ Individual members’ Strava activities stored in their account
+☑ Track member participation count in club events
+☑ Award points/stars for participation
+☑ Monthly leaderboard: top individuals + top clubs
 
 Future Features (Later Roadmap)
 -------------------------------

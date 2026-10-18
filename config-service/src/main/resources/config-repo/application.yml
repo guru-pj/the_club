@@ -1,0 +1,5 @@
+# Shared defaults served to every service that imports config from config-service.
+# Services currently ship their own application.yml and work without the config server;
+# move environment-specific overrides here (or to the git backend) as the platform grows.
+theclub:
+  time-zone: Asia/Kolkata

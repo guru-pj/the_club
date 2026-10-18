@@ -1,4 +1,20 @@
-version: '3.9'
+# Usage: cp enviroinment_variables.env .env && mvn clean install -DskipTests && docker compose up -d --build
+# (or simply ./project-setup.sh up)
+
+x-spring-service: &spring-service
+  restart: unless-stopped
+  depends_on:
+    discovery-service:
+      condition: service_started
+
+x-common-env: &common-env
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+  LOGGING_LEVEL_ROOT: ${LOGGING_LEVEL_ROOT}
+  APP_TIME_ZONE: ${APP_TIME_ZONE}
+  EUREKA_SERVER_URL: ${EUREKA_SERVER_URL}
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_EXPIRATION: ${JWT_EXPIRATION}
+  INTERNAL_API_KEY: ${INTERNAL_API_KEY}
 
 services:
   # ===================== DATABASES =====================
@@ -12,6 +28,11 @@ services:
       - "${MYSQL_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   postgres:
     image: postgres:15
@@ -24,6 +45,11 @@ services:
       - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   trino:
     image: trinodb/trino
@@ -34,76 +60,160 @@ services:
       - mysql
       - postgres
 
+  # Local SMTP catcher for confirmation emails / QR tickets — UI at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
   # ===================== SPRING SERVICES =====================
   discovery-service:
     build: ./discovery-service
     container_name: discovery-service
+    restart: unless-stopped
     ports:
       - "${DISCOVERY_SERVICE_PORT}:8761"
-    environment:
-      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
-      - EUREKA_CLIENT_FETCH_REGISTRY=false
 
   config-service:
     build: ./config-service
     container_name: config-service
+    restart: unless-stopped
     ports:
       - "${CONFIG_SERVICE_PORT}:8888"
     environment:
-      - SPRING_CLOUD_CONFIG_SERVER_GIT_URI=${CONFIG_GIT_URI}
-      - SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_ON_START=true
+      - CONFIG_PROFILE=${CONFIG_PROFILE}
+      - CONFIG_GIT_URI=${CONFIG_GIT_URI}
 
   gateway-service:
+    <<: *spring-service
     build: ./gateway-service
     container_name: gateway-service
     ports:
       - "${GATEWAY_SERVICE_PORT}:8080"
-    depends_on:
-      - discovery-service
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=${EUREKA_SERVER_URL}
+      EUREKA_SERVER_URL: ${EUREKA_SERVER_URL}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
 
   user-service:
+    <<: *spring-service
     build: ./user-service
     container_name: user-service
     ports:
       - "${USER_SERVICE_PORT}:8081"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_USER_DB}
-      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER}
-      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD}
+      <<: *common-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_USER_DB}?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     depends_on:
-      - mysql
+      discovery-service:
+        condition: service_started
+      mysql:
+        condition: service_healthy
 
   auth-service:
+    <<: *spring-service
     build: ./auth-service
     container_name: auth-service
     ports:
       - "${AUTH_SERVICE_PORT}:8082"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_AUTH_DB}
-      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER}
-      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD}
-      - JWT_SECRET=${JWT_SECRET}
+      <<: *common-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_AUTH_DB}?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
     depends_on:
-      - mysql
+      discovery-service:
+        condition: service_started
+      mysql:
+        condition: service_healthy
 
   activity-service:
+    <<: *spring-service
     build: ./activity-service
     container_name: activity-service
     ports:
       - "${ACTIVITY_SERVICE_PORT}:8083"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_ACTIVITY_DB}
-      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
-      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      <<: *common-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST}:5432/${POSTGRES_ACTIVITY_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
+      STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI}
+      STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN}
     depends_on:
-      - postgres
+      discovery-service:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
+  club-service:
+    <<: *spring-service
+    build: ./club-service
+    container_name: club-service
+    ports:
+      - "${CLUB_SERVICE_PORT}:8084"
+    environment:
+      <<: *common-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_CLUB_DB}?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+    depends_on:
+      discovery-service:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+
+  event-service:
+    <<: *spring-service
+    build: ./event-service
+    container_name: event-service
+    ports:
+      - "${EVENT_SERVICE_PORT}:8086"
+    environment:
+      <<: *common-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_EVENT_DB}?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
+    depends_on:
+      discovery-service:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+
+  notification-service:
+    <<: *spring-service
+    build: ./notification-service
+    container_name: notification-service
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT}:8087"
+    environment:
+      <<: *common-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://${MYSQL_HOST}:3306/${MYSQL_NOTIFICATION_DB}?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      MAIL_ENABLED: ${MAIL_ENABLED}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_FROM: ${MAIL_FROM}
+    depends_on:
+      discovery-service:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
 
 volumes:
   mysql_data:
   postgres_data:
-
-# Load environment variables
-env_file:
-  - .env

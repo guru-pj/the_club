@@ -1,0 +1,45 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: activity-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/activitydb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+theclub:
+  time-zone: ${APP_TIME_ZONE:Asia/Kolkata}
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration: ${JWT_EXPIRATION:PT1H}
+  security:
+    internal-api-key: ${INTERNAL_API_KEY}
+    public-paths:
+      - /api/v1/strava/callback
+      - /api/v1/strava/webhook
+  strava:
+    client-id: ${STRAVA_CLIENT_ID:}
+    client-secret: ${STRAVA_CLIENT_SECRET:}
+    redirect-uri: ${STRAVA_REDIRECT_URI:http://localhost:8080/api/v1/strava/callback}
+    webhook-verify-token: ${STRAVA_WEBHOOK_VERIFY_TOKEN:}
+    api-base-url: ${STRAVA_API_BASE_URL:https://www.strava.com/api/v3}
+    oauth-base-url: ${STRAVA_OAUTH_BASE_URL:https://www.strava.com/oauth}
