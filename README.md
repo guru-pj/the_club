@@ -146,6 +146,12 @@ The app alone needs 8 GB of RAM. **Monitoring** (Prometheus/Grafana/Tempo/Loki) 
 
 ### Step 1A — Install the tools on Linux (Ubuntu / Debian)
 
+**Debian only: if `sudo` says "command not found".** A Debian install with a root password has no `sudo`. Run this once, entering the **root** password when asked, then **log out and back in**:
+```bash
+su -c "apt update && apt install -y sudo && /usr/sbin/usermod -aG sudo $USER"
+```
+Check it with `sudo true`. It should ask for *your* password and print nothing else.
+
 ```bash
 sudo apt update
 sudo apt install -y git maven curl jq openssl ca-certificates
@@ -252,7 +258,15 @@ cd ~
 git clone https://github.com/guru-pj/the_club.git
 cd the_club
 ```
-If the repository is private, git asks for your GitHub username and a **personal access token** as the password. Create one at github.com → Settings → Developer settings → Personal access tokens, with `repo` scope.
+The repository is **private**. You need a GitHub account that the owner has added as a collaborator (accept the email invitation first). When git asks:
+- **Username:** your GitHub username
+- **Password:** a **personal access token**, not your GitHub password. Create one at github.com → Settings → Developer settings → Personal access tokens → *Fine-grained*, with read access to this repository's *Contents*. Never paste a token into chats or files in the repo.
+
+To avoid typing the token on every `git pull`, let git remember it in memory for 8 hours:
+```bash
+git config --global credential.helper 'cache --timeout=28800'
+```
+Using SSH instead? After [adding an SSH key to GitHub](https://docs.github.com/en/authentication/connecting-to-github-with-ssh), clone with `git clone git@github.com:guru-pj/the_club.git`.
 
 ### Step 3 — Configure
 

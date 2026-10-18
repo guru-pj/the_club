@@ -77,7 +77,8 @@ class ZeptoMailEmailProviderTest {
     }
 
     @Test
-    void clientErrorsArePermanentAndReportTheZeptoMailCodeNotTheToken() {
+    void authErrorsStayQueuedAndReportTheZeptoMailCodeNotTheToken() {
+        // A bad/expired token is an operator problem: the email must survive until the token is fixed.
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.UNAUTHORIZED)
                 .contentType(MediaType.APPLICATION_JSON).body("""
                         {"error":{"code":"TM_3501","details":[{"code":"SERR_157","message":"Invalid API Token found","target":"Authorization"}],
@@ -85,8 +86,27 @@ class ZeptoMailEmailProviderTest {
 
         assertThatThrownBy(() -> provider.send(email))
                 .isInstanceOfSatisfying(EmailDeliveryException.class, e -> {
-                    assertThat(e.isRetryable()).isFalse();
+                    assertThat(e.isRetryable()).isTrue();
                     assertThat(e.getMessage()).contains("HTTP 401", "TM_3501", "SERR_157").doesNotContain("secret-token");
+                });
+
+        server.reset();
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.FORBIDDEN));
+        assertThatThrownBy(() -> provider.send(email))
+                .isInstanceOfSatisfying(EmailDeliveryException.class, e -> assertThat(e.isRetryable()).isTrue());
+    }
+
+    @Test
+    void invalidEmailRequestsArePermanent() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON).body("""
+                        {"error":{"code":"TM_3201","details":[{"code":"GE_102","message":"Mandatory Field 'to' was set as Empty Value.","target":"to"}],
+                          "message":"Mandatory Field 'to' was set as Empty Value.","request_id":"y"}}"""));
+
+        assertThatThrownBy(() -> provider.send(email))
+                .isInstanceOfSatisfying(EmailDeliveryException.class, e -> {
+                    assertThat(e.isRetryable()).isFalse();
+                    assertThat(e.getMessage()).contains("HTTP 400", "TM_3201");
                 });
     }
 

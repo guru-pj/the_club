@@ -4,6 +4,117 @@ This guide covers running The Club on a single Docker host: a VM or bare-metal s
 
 ---
 
+## 0. From zero to live: the complete checklist
+
+This section takes a **fresh Debian 12 / Ubuntu 22.04+ server** to a live HTTPS deployment. Part A is what only you can do: create accounts, get keys, set DNS. Part B is copy-paste commands. The numbered sections after it explain each part in depth.
+
+### Part A: accounts and values you must prepare first
+
+| # | What | Where | You'll end up with |
+|---|---|---|---|
+| A1 | A Linux server: 4 vCPU, 8 GB RAM, 40 GB disk, public IP, ports 80 and 443 open in its firewall / security group | Any cloud or VPS | SSH access as a user with `sudo` |
+| A2 | A domain name with an **A record** pointing to the server's IP (e.g. `club.example.com`) | Your DNS provider | `<your-host>` |
+| A3 | Access to the private GitHub repo plus a personal access token | Ask the repo owner; github.com → Settings → Developer settings | A token for `git clone` |
+| A4 | **Zoho ZeptoMail** account, a verified sending domain (SPF/DKIM DNS records) and a Send Mail token | [`EMAIL_SETUP.md`](EMAIL_SETUP.md) | Token and a `From` address on your domain |
+| A5 | **Razorpay** account with live API keys, plus a webhook for `https://<your-host>/api/v1/payments/webhooks/razorpay` | Razorpay Dashboard → Settings → API Keys / Webhooks | Key ID, key secret and webhook secret |
+| A6 | *(optional)* **Strava** API application | [`STRAVA_SETUP.md`](STRAVA_SETUP.md) | Client ID and client secret |
+| A7 | An admin mailbox you control | n/a | `ADMIN_EMAIL` |
+
+### Part B: commands (run on the server, in order)
+
+**B1. Install the tools.** Follow the README's [Step 1A](../README.md#step-1a--install-the-tools-on-linux-ubuntu--debian), including the Debian "no `sudo`" note, then log out and back in. Check:
+```bash
+java -version && javac -version && mvn -v && docker compose version && docker run --rm hello-world
+```
+
+**B2. Clone and generate secrets.** git asks for your GitHub username and the token from A3:
+```bash
+cd ~ && git clone https://github.com/guru-pj/the_club.git && cd the_club
+cp enviroinment_variables.env .env
+./scripts/generate-secrets.sh
+```
+Save the printed admin password, and back up the whole `secrets/` folder to a password manager or secret store.
+
+**B3. Put your third-party secrets in place.** Each `read -rs` asks you to paste a value. Nothing is echoed or saved in your shell history:
+```bash
+read -rsp "ZeptoMail Send Mail token: " v && printf %s "$v" > secrets/zeptomail-token; echo
+read -rsp "Razorpay key secret: " v && printf %s "$v" > secrets/razorpay-key-secret; echo
+read -rsp "Razorpay webhook secret: " v && printf %s "$v" > secrets/razorpay-webhook-secret; echo
+# optional, only if you use Strava:
+read -rsp "Strava client secret: " v && printf %s "$v" > secrets/strava-client-secret; echo
+unset v
+```
+
+**B4. Switch `.env` to production.** Edit the first three lines to match your values, then paste the whole block:
+```bash
+HOST=club.example.com                 # A2: your domain
+ADMIN=admin@example.com               # A7: your admin mailbox
+FROM="The Club <no-reply@example.com>"  # A4: an address on your verified ZeptoMail domain
+RAZORPAY_ID=rzp_live_xxxxxxxxxxxx     # A5: Razorpay key ID (not secret)
+
+set_env() { if grep -q "^$1=" .env; then sed -i.bak "s|^$1=.*|$1=$2|" .env && rm -f .env.bak; else echo "$1=$2" >> .env; fi; }
+set_env SPRING_PROFILES_ACTIVE prod
+set_env APP_BASE_URL "https://$HOST"
+set_env CORS_ALLOWED_ORIGINS "https://$HOST"
+set_env AUTH_COOKIE_SECURE true
+set_env REQUIRE_EMAIL_VERIFICATION true
+set_env ADMIN_EMAIL "$ADMIN"
+set_env MAIL_PROVIDER zeptomail
+set_env MAIL_FROM "$FROM"
+set_env PAYMENT_PROVIDER razorpay
+set_env RAZORPAY_KEY_ID "$RAZORPAY_ID"
+set_env STRAVA_REDIRECT_URI "https://$HOST/strava/callback"
+set_env STRAVA_WEBHOOK_CALLBACK_URL "https://$HOST/api/v1/strava/webhook"
+set_env WEB_APP_PORT 127.0.0.1:3000
+set_env REAL_IP_FROM 172.16.0.0/12
+grep -E "^(SPRING_PROFILES_ACTIVE|APP_BASE_URL|PAYMENT_PROVIDER|MAIL_PROVIDER|WEB_APP_PORT|REAL_IP_FROM)=" .env
+```
+Using Strava? Also set `STRAVA_CLIENT_ID` in `.env`. ZeptoMail outside India? Change `ZEPTOMAIL_API_URL`; see [`EMAIL_SETUP.md`](EMAIL_SETUP.md).
+
+**B5. HTTPS with Caddy.** Caddy obtains and renews Let's Encrypt certificates automatically:
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+printf '%s {\n    reverse_proxy 127.0.0.1:3000\n}\n' "$HOST" | sudo tee /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+**B6. Build and start.** Pass `-f docker-compose.yml` to use the production file only, without the dev extras:
+```bash
+mvn clean install -DskipTests
+docker compose -f docker-compose.yml up -d --build
+echo "Waiting for healthy services..."; end=$((SECONDS+600)); until ! docker compose -f docker-compose.yml ps --format '{{.Status}}' | grep -qE 'starting|unhealthy|Restarting'; do [ $SECONDS -gt $end ] && echo "Not healthy after 10 min - check: docker compose -f docker-compose.yml logs" && break; sleep 5; done; docker compose -f docker-compose.yml ps --format 'table {{.Service}}\t{{.Status}}'
+```
+With `SPRING_PROFILES_ACTIVE=prod`, a service **refuses to start** if something is still a placeholder, for example mock payments, a missing ZeptoMail token or a missing Razorpay secret. If one keeps restarting, its log says exactly what's missing: `docker compose -f docker-compose.yml logs --tail=50 <service>`.
+
+**B7. Verify.**
+```bash
+curl -sI "https://$HOST" | head -1                                         # HTTP/2 200
+curl -s "https://$HOST/api/v1/auth/.well-known/jwks.json" | head -c 80; echo  # {"keys":[...
+```
+Then in a browser:
+1. Open `https://<your-host>` and register with a real mailbox. The verification email should arrive via ZeptoMail.
+2. Log in as `ADMIN_EMAIL` with the password from `cat secrets/admin-password`.
+3. Make a small real payment for a test event and refund it from the event page.
+
+(`scripts/smoke-test.sh` is for development stacks only, because it needs mock payments.)
+
+**B8. Turn on the remaining production features.**
+- **Monitoring:** see [`OBSERVABILITY.md`](OBSERVABILITY.md). Run `docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d`, then open Grafana through an SSH tunnel: `ssh -L 3001:127.0.0.1:3001 <server>`.
+- **HSTS:** once HTTPS works, uncomment the `Strict-Transport-Security` line in `web-app/security-headers.conf` and run `docker compose -f docker-compose.yml up -d --build web-app`.
+- **Strava webhook subscription** (if you use Strava): [`STRAVA_SETUP.md`](STRAVA_SETUP.md).
+- **Offsite backups:** copy the `backups` volume off the server regularly (§7).
+
+**Updating later:**
+```bash
+cd ~/the_club && git pull && ./scripts/generate-secrets.sh && mvn clean install -DskipTests && docker compose -f docker-compose.yml up -d --build
+```
+`generate-secrets.sh` only adds secrets that new versions need; existing ones are never changed. After pulling, compare `.env` with `enviroinment_variables.env` for new settings: `diff <(grep -oE '^[A-Z_]+=' enviroinment_variables.env | sort) <(grep -oE '^[A-Z_]+=' .env | sort)`. Lines starting with `<` are missing from your `.env`.
+
+---
+
 ## 1. Architecture at the edge
 
 ```
@@ -44,7 +155,8 @@ This creates `./secrets/`. The directory is mode 700 and gitignored, and each fi
 | `mysql-root-password`, `postgres-password` | DB containers, backups | Database administrators |
 | `db-<service>-password` | one service each | Least-privilege DB user (`theclub_<service>`) that can only access its own database |
 | `admin-password` | user-service | First platform admin; printed once by the generator |
-| `smtp-password`, `razorpay-key-secret`, `razorpay-webhook-secret`, `strava-client-secret` | notification / event / activity | Created empty. Fill them in. |
+| `zeptomail-token`, `smtp-password`, `razorpay-key-secret`, `razorpay-webhook-secret`, `strava-client-secret` | notification / event / activity | Created empty. Fill in the ones you use (§0 B3). |
+| `zeptomail-webhook-token`, `strava-token-encryption-key`, `grafana-admin-password` | notification / activity / grafana | Generated. Bounce-webhook secret, Strava token encryption key, Grafana login. |
 
 Spring loads these through `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`. Each file is mounted under the name of the placeholder the service resolves (for example `/run/secrets/JWT_PUBLIC_KEY` for `${JWT_PUBLIC_KEY}`), so no secret ever appears in environment variables, `docker inspect` output or `.env`.
 
@@ -65,7 +177,10 @@ For production, change these values from the development defaults:
 | `AUTH_COOKIE_SECURE` | `true` (the refresh cookie is sent over HTTPS only) |
 | `REQUIRE_EMAIL_VERIFICATION` | `true` |
 | `PAYMENT_PROVIDER` | `razorpay`, plus `RAZORPAY_KEY_ID` and the two Razorpay secret files |
-| `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_STARTTLS` / `MAIL_FROM` | Your SMTP provider; the password goes in `secrets/smtp-password` |
+| `MAIL_PROVIDER` | `zeptomail`. The token goes in `secrets/zeptomail-token`; see [`EMAIL_SETUP.md`](EMAIL_SETUP.md). `log` is refused in prod. |
+| `MAIL_FROM` | `Name <address@your-verified-domain>` |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_STARTTLS` | Only if `MAIL_PROVIDER=smtp` (any SMTP provider); the password goes in `secrets/smtp-password` |
+| `WEB_APP_PORT` / `REAL_IP_FROM` | `127.0.0.1:3000` / `172.16.0.0/12` when a TLS proxy such as Caddy runs on the same host (§4) |
 | `ADMIN_EMAIL` | A real mailbox you control |
 | `CORS_ALLOWED_ORIGINS` | `https://<your-host>`, or leave as is: the web app is same-origin |
 | `STRAVA_*` | If you use Strava: `STRAVA_REDIRECT_URI=https://<your-host>/strava/callback` |
@@ -88,7 +203,11 @@ Terminate HTTPS in front of the `web-app` container and forward plain HTTP to `W
   Set `WEB_APP_PORT=127.0.0.1:3000` in `.env` so that only Caddy can reach the container.
 - **nginx or Traefik** with Let's Encrypt.
 
-If the TLS proxy adds `X-Forwarded-For`, uncomment the `set_real_ip_from` / `real_ip_header` lines in `web-app/nginx.conf` with the proxy's address range. Otherwise every client appears to come from the proxy's IP and they all share one rate-limit bucket.
+If the TLS proxy adds `X-Forwarded-For` (Caddy, nginx, Traefik and cloud load balancers do), set **`REAL_IP_FROM`** in `.env` to the proxy's address range, comma-separated if there are several:
+- for a proxy on the same host, use `172.16.0.0/12` (the Docker bridge);
+- for a load balancer, use its subnet.
+
+Then recreate the web app with `docker compose -f docker-compose.yml up -d web-app`. Without this, every client appears to come from the proxy's IP, and **all users share one rate-limit bucket**: 10 login attempts per minute for the whole site.
 
 Once the site is HTTPS-only, enable HSTS by uncommenting the `Strict-Transport-Security` line in `web-app/security-headers.conf`.
 

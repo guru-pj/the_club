@@ -358,6 +358,9 @@ services:
     restart: unless-stopped
     ports:
       - "${WEB_APP_PORT}:8080"
+    environment:
+      # Proxy address ranges whose X-Forwarded-For is trusted (e.g. Caddy on this host: 172.16.0.0/12)
+      REAL_IP_FROM: ${REAL_IP_FROM:-}
     depends_on:
       gateway-service:
         condition: service_healthy

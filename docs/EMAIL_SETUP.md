@@ -22,7 +22,7 @@ user-service / event-service ──POST /internal/notifications──▶ notific
 
 - **Never lost:** the email is stored with the notification before the API answers `202`. If ZeptoMail is
   down or rate-limits us, the dispatcher retries after 1 min, 5 min, 15 min, 1 h, then every 6 h, up to 8
-  attempts. Permanent errors (bad address, unverified domain, invalid token) are marked `FAILED` immediately.
+  attempts. Permanent errors, such as a bad address or an unverified sending domain, are marked `FAILED` immediately. **Authentication errors (invalid or expired token, HTTP 401/403) stay queued and keep retrying**, so emails sent while the token is wrong go out on their own once you fix it.
 - **Safe with many replicas:** each dispatcher claims different rows with `SKIP LOCKED`, so running several
   notification-service pods sends faster and never sends the same email twice. If a pod dies mid-send, its
   emails return to the queue after 10 minutes. That can, rarely, mean one duplicate: delivery is
@@ -190,7 +190,7 @@ Email bodies and tokens are never logged or returned by these endpoints.
 | notification-service won't start: "MAIL_PROVIDER=zeptomail needs a ZeptoMail Send Mail token" | `secrets/zeptomail-token` is empty or not mounted. Fill it in (step 4) and restart. |
 | Won't start: "MAIL_PROVIDER=log would silently drop every email" | You run with `SPRING_PROFILES_ACTIVE=prod`; set `MAIL_PROVIDER=zeptomail`. |
 | `docker compose` error: secret file `./secrets/zeptomail-token` not found | Your `secrets/` predates email support. Run `./scripts/generate-secrets.sh` (keeps existing secrets). |
-| Emails `FAILED` with `HTTP 401 … TM_3501 … Invalid API Token` | Wrong token, a token from another Mail Agent, or the **wrong region URL** (an India token only works against `api.zeptomail.in`). Fix it, restart, then retry the failed emails via the admin API. |
+| Emails stuck as `PENDING`, log shows `HTTP 401 … TM_3501 … Invalid API Token` | Wrong token, a token from another Mail Agent, or the **wrong region URL** (an India token only works against `api.zeptomail.in`). Fix `secrets/zeptomail-token` (and `ZEPTOMAIL_API_URL`), then run `docker compose up -d notification-service`. Queued emails are sent on the next retry; anything that already reached `FAILED` can be retried via the admin API. |
 | `FAILED` with a 4xx mentioning the sender/from address or domain | `MAIL_FROM` isn't on a domain verified in ZeptoMail (step 2), or the domain lost verification after a DNS change. |
 | Emails stay `PENDING` with `HTTP 429` or `5xx` in `lastError` | ZeptoMail is rate-limiting or briefly unavailable; retries happen automatically. Check your ZeptoMail credits and quota if it persists. |
 | Nothing is sent and the outbox grows | Check `MAIL_DISPATCHER_ENABLED` isn't `false` and look for `Email dispatch run failed` in the logs. |

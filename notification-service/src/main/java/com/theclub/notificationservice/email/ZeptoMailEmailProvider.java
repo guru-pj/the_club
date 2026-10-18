@@ -58,7 +58,9 @@ public class ZeptoMailEmailProvider implements EmailProvider {
                         if (status >= 200 && status < 300) {
                             return text(raw, "request_id");
                         }
-                        boolean retryable = status == 429 || status >= 500;
+                        // 401/403 mean our token or account is misconfigured, not that this email is bad: keep the email
+                        // queued (with backoff) so it goes out once an operator fixes the token instead of being lost.
+                        boolean retryable = status == 429 || status >= 500 || status == 401 || status == 403;
                         throw new EmailDeliveryException("ZeptoMail rejected the email (HTTP " + status + "): "
                                 + describeError(raw), retryable);
                     });
