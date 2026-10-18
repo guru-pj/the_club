@@ -209,6 +209,52 @@ cd web-app && npm test         # web app unit tests
 
 ---
 
+## 📖 User Guide
+
+Open the web app: http://localhost:3000 locally, or your domain in production.
+
+### Admin
+1. Log in as the bootstrap admin: `ADMIN_EMAIL` from `.env`, with the password in `secrets/admin-password`.
+2. Open the avatar menu → **Owner applications**. Review requests from people who want to run a club.
+3. **Approve** them, ticking "Create the club now" to set up their club. You can also **Reject** with a reason, or **Request info** to ask for more proof.
+
+### Club owner
+1. **Sign up.** When email verification is on, click the link in the verification email first.
+2. **Avatar menu → Become a club owner.** Submit your club's name, city, social links and proof documents, then wait for an admin to approve.
+3. **Log in again** after approval. **Clubs** → your club now shows the owner tools:
+   - **Feed:** post announcements and event recaps with photo links. You can attach one of your Strava activities.
+   - **Create event:** set the date, when registration opens and closes, capacity, price (0 = free) and points for attending.
+   - **Members**, **Leaderboard** and **Participation** tabs show who is active.
+4. **Event page** (owner panel):
+   - See every registration with its payment status.
+   - **Refund** a payment.
+   - **Cancel event**: everyone who paid is refunded automatically.
+5. **On event day:** Event page → **Check-in scanner** → **Start camera** and scan each member's QR ticket, or type the ticket code. Check-in opens 6 hours before the start.
+
+### Member
+1. **Sign up** and verify your email.
+2. **Clubs** → search for a club → **Join club**.
+3. **Activities** → **Log activity** for runs, rides and more, or **Connect with Strava** to import them automatically. They count toward the club's **Leaderboard** (distance, time, sessions).
+4. Open an event from the club's **Events** tab → **Register**.
+   - For a paid event, complete the payment.
+   - You get an in-app notification and a confirmation email with your QR ticket.
+5. **Tickets** → open your ticket and show the QR code at the event.
+6. Each check-in earns points, and every 5 events attended earns a ⭐. **Leaderboard** shows the month's top members and top clubs.
+
+### Your account
+- **Forgot password?** is on the login page. The reset link is valid for 30 minutes.
+- **Profile** has:
+  - your name, city, bio and photo
+  - **Change password**
+  - **Sign out of all devices**
+  - **Resend verification email** if your email isn't verified
+- 🔔 **Notifications** lists club posts, registration confirmations, refunds and owner-application updates.
+- After 5 wrong passwords, login is locked for 15 minutes.
+
+> **Local trial:** payments run in test mode (no real money). Emails are caught by Mailpit at http://localhost:8025, and email verification is off.
+
+---
+
 ## 🧠 Developer Notes
 
 - **Going to production:** follow [`docs/PRODUCTION.md`](docs/PRODUCTION.md). It covers TLS, `SPRING_PROFILES_ACTIVE=prod`, secrets, backups, key rotation and the deploy command. In production only the web app is exposed; the gateway listens on localhost behind nginx.
