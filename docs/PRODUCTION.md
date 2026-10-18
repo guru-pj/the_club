@@ -2,6 +2,8 @@
 
 This guide covers running The Club on a single Docker host: a VM or bare-metal server with Docker Engine and Compose v2. The [roadmap](#10-roadmap-beyond-a-single-host) lists what changes for multi-host or Kubernetes deployments.
 
+For a guided walkthrough from a machine with nothing installed, see [DEPLOY_LINUX.md](DEPLOY_LINUX.md) or [DEPLOY_MACOS.md](DEPLOY_MACOS.md). This guide is the reference behind them.
+
 ---
 
 ## 0. From zero to live: the complete checklist

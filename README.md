@@ -113,6 +113,8 @@ Follow these steps in order on a fresh machine. Every command block is copy-past
 
 **At a glance:** install the tools (step 1) → clone (step 2) → generate secrets (step 3) → build and start (step 4) → open http://localhost:3000.
 
+> **Full step-by-step deployment guides**, from a machine with nothing installed to a live HTTPS site: [`docs/DEPLOY_LINUX.md`](docs/DEPLOY_LINUX.md) (Debian/Ubuntu/Fedora) and [`docs/DEPLOY_MACOS.md`](docs/DEPLOY_MACOS.md).
+
 ### What you need
 
 | | Minimum | Recommended |
@@ -335,7 +337,8 @@ Then follow the [User Guide](#-user-guide) below.
 | Connect real Strava accounts | [`docs/STRAVA_SETUP.md`](docs/STRAVA_SETUP.md) |
 | Dashboards, traces, logs and alerts | the monitoring command under [Day-to-day commands](#day-to-day-commands), then [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) |
 | Run on Kubernetes, locally with kind or in the cloud | [`docs/KUBERNETES.md`](docs/KUBERNETES.md) |
-| Deploy to a production server | [`docs/PRODUCTION.md`](docs/PRODUCTION.md) |
+| Deploy to a production server | [`docs/DEPLOY_LINUX.md`](docs/DEPLOY_LINUX.md) (step by step), [`docs/PRODUCTION.md`](docs/PRODUCTION.md) (reference) |
+| Serve the app from a Mac | [`docs/DEPLOY_MACOS.md`](docs/DEPLOY_MACOS.md) |
 
 ---
 
