@@ -21,6 +21,8 @@
 
 ## 🧩 Microservices Overview
 
+> **New to the project or not technical?** Read [`docs/ARCHITECTURE_OVERVIEW.md`](docs/ARCHITECTURE_OVERVIEW.md): a plain-language tour of how The Club works, written for product managers.
+
 | Service | Description | Port | Database |
 |----------|--------------|------|----------|
 | 🌐 Gateway Service | Single entry point; routes `/api/v1/**`, blocks `/internal/**` | 8080 | — |
