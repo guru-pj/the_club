@@ -33,10 +33,10 @@
 
     <properties>
         <java.version>21</java.version>
-        <spring-cloud.version>2025.0.0</spring-cloud.version>
-        <jjwt.version>0.12.6</jjwt.version>
-        <uuid-generator.version>5.0.0</uuid-generator.version>
-        <zxing.version>3.5.3</zxing.version>
+        <spring-cloud.version>2025.1.3</spring-cloud.version>
+        <jjwt.version>0.13.0</jjwt.version>
+        <uuid-generator.version>5.2.0</uuid-generator.version>
+        <zxing.version>3.5.4</zxing.version>
         <!-- 6.x targets Spring Framework 6.2 (Boot 3.5); 7.x requires Spring 7 -->
         <shedlock.version>6.10.0</shedlock.version>
         <!-- 1.21.3 (Spring Boot's default) speaks Docker API 1.32, which Docker 29+ rejects; 1.21.4 negotiates a newer API -->
