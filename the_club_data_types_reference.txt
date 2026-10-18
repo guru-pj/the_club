@@ -1,0 +1,80 @@
+
+🧱 The Club App — Data Type & Size Reference Sheet
+
+------------------------------------------------------
+LAYER 1: Java Bean (Entity / DTO)
+LAYER 2: Database (MySQL / PostgreSQL)
+------------------------------------------------------
+
+USER SERVICE
+------------------------------------------------------
+id: UUID | CHAR(36)
+name: String | VARCHAR(100)
+email: String | VARCHAR(254)
+password: String | VARCHAR(255)
+createdAt: LocalDateTime | TIMESTAMP
+updatedAt: LocalDateTime | TIMESTAMP
+isActive: boolean | BOOLEAN
+role: String | VARCHAR(20)
+
+AUTH SERVICE
+------------------------------------------------------
+id: UUID | CHAR(36)
+userId: UUID | CHAR(36)
+accessToken: String | VARCHAR(512)
+refreshToken: String | VARCHAR(512)
+expiry: LocalDateTime | TIMESTAMP
+
+ACTIVITY SERVICE
+------------------------------------------------------
+id: UUID | CHAR(36)
+userId: UUID | CHAR(36)
+title: String | VARCHAR(100)
+type: String | VARCHAR(30)
+distance: double | DOUBLE PRECISION
+duration: int | INT
+calories: int | INT
+startTime: LocalDateTime | TIMESTAMP
+endTime: LocalDateTime | TIMESTAMP
+
+PROFILE / QR SERVICE
+------------------------------------------------------
+id: UUID | CHAR(36)
+userId: UUID | CHAR(36)
+bio: String | VARCHAR(255)
+profilePicUrl: String | VARCHAR(500)
+qrCodeUrl: String | VARCHAR(500)
+followersCount: int | INT
+followingCount: int | INT
+
+NOTIFICATION SERVICE
+------------------------------------------------------
+id: UUID | CHAR(36)
+userId: UUID | CHAR(36)
+type: String | VARCHAR(50)
+message: String | VARCHAR(255)
+isRead: boolean | BOOLEAN
+createdAt: LocalDateTime | TIMESTAMP
+
+------------------------------------------------------
+GENERAL DATA TYPE REFERENCE
+------------------------------------------------------
+UUID        → CHAR(36)
+String      → VARCHAR(50–255)
+Text        → TEXT (64KB)
+int         → INT (4 bytes)
+long        → BIGINT (8 bytes)
+double      → DOUBLE PRECISION
+boolean     → BOOLEAN
+LocalDateTime → TIMESTAMP
+
+------------------------------------------------------
+CONVENTIONS
+------------------------------------------------------
+- Use UUIDs for all IDs (distributed-safe)
+- VARCHAR(254) for emails
+- VARCHAR(255) for standard text fields
+- TEXT for large content (bios, messages)
+- TIMESTAMP for all time/date fields
+- INT for counters; DOUBLE for numeric values
+------------------------------------------------------

@@ -1,0 +1,233 @@
+
+THE CLUB — COMPLETE TEST STRATEGY (BACKEND MICROSERVICES)
+============================================================
+
+1. PURPOSE OF THIS DOCUMENT
+----------------------------
+This document defines the complete testing approach for *The Club* backend microservices.
+It explains what to test, how to test, tools, coverage targets, and folder structure.
+
+Services covered:
+- User Service
+- Auth Service
+- Activity Service
+- Gateway Service
+- Discovery Service
+- Config Service
+- Strava Webhook Module (optional later)
+
+------------------------------------------------------------
+2. TEST LEVELS
+------------------------------------------------------------
+
+A) UNIT TESTS (MANDATORY)
+--------------------------
+• Fast tests that check business logic inside service classes and util classes.
+• No DB calls, no external calls.
+
+Tools:
+- JUnit 5
+- Mockito
+- AssertJ (optional)
+
+What to unit test:
+- User creation rules (email unique, validation)
+- Password hashing logic (mock encoder)
+- Auth JWT logic (expiry, signature)
+- Refresh token rules
+- Activity validation (distance, duration)
+- UuidGenerator (must test uniqueness + monotonic order)
+
+Coverage goal: 
+- 70% minimum  
+- 100% for UuidGenerator
+
+------------------------------------------------------------
+
+B) INTEGRATION TESTS (SERVICE-LEVEL ENDPOINT TESTS)
+----------------------------------------------------
+• Tests that run Spring Boot app with MockMvc.
+• Real endpoints, real validation, real controllers.
+
+Tools:
+- @SpringBootTest
+- @AutoConfigureMockMvc
+- MockMvc
+- H2 in-memory DB for integration tests
+
+Endpoints to test:
+
+USER SERVICE
+- POST /api/v1/users/register
+- GET  /api/v1/users/{id}
+- GET  /api/v1/users/email/{email}
+
+AUTH SERVICE
+- POST /api/v1/auth/login
+- POST /api/v1/auth/refresh-token
+- GET  /api/v1/auth/validate-token
+
+ACTIVITY SERVICE
+- POST /api/v1/activity/create
+- GET  /api/v1/activity/user/{id}
+- GET  /api/v1/activity/{id}
+
+What to verify:
+- Status codes
+- JSON response formats
+- DB persistence (via H2)
+- Authentication required flows
+- Error responses
+
+Coverage goal:
+- Core endpoints must have IT tests
+
+------------------------------------------------------------
+
+C) TESTCONTAINERS TESTS (LATER)
+-------------------------------
+Purpose:
+- Spin real MySQL/PostgreSQL inside Docker for full production-like tests.
+
+Use when:
+- Activity service needs real Postgres
+- User/Auth need real MySQL
+- You add cross-service flows
+
+Tools:
+- Testcontainers Java libraries
+
+------------------------------------------------------------
+
+D) GATEWAY TESTING
+-------------------
+Test that:
+- Requests route to correct microservice
+- 404 is returned for missing routes
+- Authorization header is forwarded correctly
+
+Tools:
+- WebTestClient
+- Spring Cloud Gateway test utilities
+
+------------------------------------------------------------
+
+E) CONTRACT TESTS (OPTIONAL)
+-----------------------------
+Purpose: Ensure microservices return consistent response formats.
+
+Use:
+- Spring Cloud Contract
+
+------------------------------------------------------------
+
+F) PERFORMANCE TESTS (LATER STAGE)
+----------------------------------
+Tools:
+- JMeter
+- Locust
+
+Test scenarios:
+- Concurrent logins
+- Activity list heavy load
+- DB connection pool stability
+
+------------------------------------------------------------
+3. TEST PRIORITY MATRIX
+------------------------------------------------------------
+
+HIGH PRIORITY
+-------------
+- User registration flow
+- Login + JWT validation
+- Token refresh
+- Activity creation/list
+- UUID generator correctness
+
+MEDIUM PRIORITY
+---------------
+- Profile updates
+- Notifications
+- Leaderboards
+
+LOW PRIORITY
+------------
+- Health endpoints
+- Simple static GET endpoints
+
+------------------------------------------------------------
+4. TEST FOLDER STRUCTURE
+------------------------------------------------------------
+
+src/test/java/com/theclub/userservice/
+    controller/
+    service/
+    repository/
+    util/
+
+src/test/java/com/theclub/authservice/
+    controller/
+    service/
+    jwt/
+
+src/test/java/com/theclub/activityservice/
+    controller/
+    service/
+
+Naming conventions:
+- <ClassName>Test.java  (unit test)
+- <EndpointName>IT.java (integration test)
+
+------------------------------------------------------------
+5. MOCKING RULES
+------------------------------------------------------------
+Use Mockito for:
+- UserRepository, AuthRepository, ActivityRepository
+- FeignClients (UserService → AuthService communication)
+
+Do NOT mock:
+- UuidGenerator (test for real)
+- Controllers (use MockMvc instead)
+
+------------------------------------------------------------
+6. TEST EXECUTION
+------------------------------------------------------------
+
+Run unit tests:
+    mvn test
+
+Skip tests:
+    mvn clean package -DskipTests
+
+Run integration tests:
+    mvn verify
+
+------------------------------------------------------------
+7. CODE COVERAGE TARGETS
+------------------------------------------------------------
+- Overall minimum: 70%
+- Business logic: 90%
+- UUID generator: 100%
+- Endpoint tests: 80%
+
+------------------------------------------------------------
+8. CI TESTING POLICY (GITHUB ACTIONS)
+------------------------------------------------------------
+Later add:
+- Maven build + test workflow
+- Block merging PR if tests fail
+- Coverage threshold checks
+
+------------------------------------------------------------
+9. FINAL CHECKLIST
+------------------------------------------------------------
+[ ] Unit test all services  
+[ ] Integration test critical endpoints  
+[ ] Add Testcontainers for DB  
+[ ] Create gateway routing tests  
+[ ] Add GitHub Actions CI  
+[ ] Keep .env out of tests  
+
+------------------------------------------------------------
+END OF FILE
+------------------------------------------------------------

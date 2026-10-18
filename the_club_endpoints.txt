@@ -1,0 +1,188 @@
+THE CLUB — FULL ENDPOINT SPECIFICATION (MVP + BASE SERVICES)
+=========================================================
+Format:
+<HTTP METHOD> <URL>
+Description
+Request Body (if any)
+Response (summary)
+
+---------------------------------------------------------
+USER SERVICE (Port 8081)
+Base URL: /api/v1/users
+---------------------------------------------------------
+
+1) POST /api/v1/users/register
+   • Register a new user.
+   Body:
+     {
+       "name": "Guru",
+       "email": "guru@example.com",
+       "password": "pass"
+     }
+
+2) GET /api/v1/users/{id}
+   • Fetch user details by ID.
+
+3) GET /api/v1/users/email/{email}
+   • Find user by email (used by Auth Service).
+
+4) PUT /api/v1/users/{id}
+   • Update user's name or profile fields.
+
+5) DELETE /api/v1/users/{id}
+   • Soft delete user (isActive=false).
+
+
+---------------------------------------------------------
+AUTH SERVICE (Port 8082)
+Base URL: /api/v1/auth
+---------------------------------------------------------
+
+1) POST /api/v1/auth/login
+   • Login & receive JWT accessToken + refreshToken.
+
+2) POST /api/v1/auth/refresh
+   • Refresh access token using refreshToken.
+
+3) POST /api/v1/auth/logout
+   • Invalidate token (delete from DB).
+
+
+---------------------------------------------------------
+ACTIVITY SERVICE (Port 8083)
+Base URL: /api/v1/activities
+---------------------------------------------------------
+
+1) POST /api/v1/activities
+   • Create activity (running, cycling, etc.)
+   Body:
+     {
+       "userId": "UUID",
+       "title": "Morning Run",
+       "type": "RUN",
+       "distance": 5.2,
+       "duration": 1800
+     }
+
+2) GET /api/v1/activities/user/{userId}
+   • Fetch all activities for a user.
+
+3) GET /api/v1/activities/{id}
+   • Get single activity.
+
+4) DELETE /api/v1/activities/{id}
+   • Remove an activity.
+
+
+---------------------------------------------------------
+CLUB SERVICE (NEW) — OWNER + MEMBER FLOW
+(Will run as a separate microservice)
+Base URL: /api/v1/clubs
+---------------------------------------------------------
+
+1) POST /api/v1/clubs
+   • Create a new club (only verified owners).
+   Body:
+     {
+       "ownerId": "UUID",
+       "clubName": "Chennai Runners",
+       "description": "Weekend running club"
+     }
+
+2) GET /api/v1/clubs/{id}
+   • Get club details.
+
+3) POST /api/v1/clubs/{clubId}/join
+   • User joins a club.
+
+4) GET /api/v1/clubs/owner/{ownerId}
+   • Fetch clubs created by an owner.
+
+5) GET /api/v1/clubs/user/{userId}
+   • Fetch clubs a user has joined.
+
+
+---------------------------------------------------------
+EVENT SERVICE (Part of Club Owner Module)
+Base URL: /api/v1/events
+---------------------------------------------------------
+
+1) POST /api/v1/events
+   • Owner creates an event.
+     {
+       "clubId": "UUID",
+       "title": "Sunday Long Run",
+       "date": "2025-01-01T06:00:00",
+       "registrationOpensAt": "2024-12-20T00:00:00"
+     }
+
+2) GET /api/v1/events/club/{clubId}
+   • Club events list.
+
+3) POST /api/v1/events/{eventId}/register
+   • User registers for event.
+
+4) GET /api/v1/events/user/{userId}
+   • All events user registered for.
+
+
+---------------------------------------------------------
+STRAVA WEBHOOK SERVICE (Future/Add-on)
+Base URL: /api/v1/strava
+---------------------------------------------------------
+
+1) GET /api/v1/strava/webhook
+   • Verification challenge for Strava.
+
+2) POST /api/v1/strava/webhook
+   • Receive activity update from Strava.
+
+3) GET /api/v1/strava/activities/{userId}
+   • Pull linked Strava activities (optional additional sync).
+
+
+---------------------------------------------------------
+NOTIFICATION SERVICE
+Base URL: /api/v1/notifications
+---------------------------------------------------------
+
+1) GET /api/v1/notifications/user/{userId}
+   • Fetch notifications.
+
+2) POST /api/v1/notifications
+   • Create internal notification.
+
+
+---------------------------------------------------------
+API GATEWAY ROUTES (Port 8080)
+Used by frontend instead of calling services directly
+---------------------------------------------------------
+
+/api/v1/users/**         -> user-service
+/api/v1/auth/**          -> auth-service
+/api/v1/activities/**    -> activity-service
+/api/v1/clubs/**         -> club-service
+/api/v1/events/**        -> event-service
+/api/v1/strava/**        -> strava-service
+/api/v1/notifications/** -> notification-service
+
+---------------------------------------------------------
+TIPS FOR WRITING CLEAN ENDPOINTS
+---------------------------------------------------------
+✓ Always use plural nouns (users, activities, clubs)
+✓ Version your APIs: /api/v1/...
+✓ Keep resource-focused URLs (no verbs inside URL)
+✓ Use nouns in path, actions in HTTP:
+     GET → fetch
+     POST → create
+     PUT → update
+     DELETE → delete
+✓ Use sub-resources:
+     /clubs/{id}/members
+     /events/{id}/register
+✓ Use consistent casing → always kebab-case or camelCase; we use kebab-case only inside JSON.
+✓ IDs always passed as path param, not query param.
+
+---------------------------------------------------------
+END OF FILE
+=========================================================

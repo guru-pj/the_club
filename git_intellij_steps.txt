@@ -1,0 +1,179 @@
+THE CLUB — Git & IntelliJ Step-by-Step Guide
+============================================
+
+Purpose: Step-by-step instructions to initialize Git for your project, use IntelliJ to manage code, and push the project to GitHub. Save this file in your project root or reference it while you work.
+
+----------------------------------------------------------------------
+A. PREPARATION — Install & Configure
+----------------------------------------------------------------------
+1. Install Git (if not already)
+   - macOS (Homebrew): brew install git
+   - Verify: git --version
+
+2. Create a GitHub account (if not already)
+   - Visit https://github.com and sign up.
+
+3. Configure Git locally (one-time)
+   - Set your name and email:
+     git config --global user.name "Guru PJ"
+     git config --global user.email "your-email@example.com"
+   - Optional: set credential helper on macOS:
+     git config --global credential.helper osxkeychain
+
+----------------------------------------------------------------------
+B. CREATE PROJECT FOLDER (if not already)
+----------------------------------------------------------------------
+# From terminal in the folder that will hold your project
+mkdir the-club
+cd the-club
+# Copy or move your microservice folders into this directory:
+# user-service/ auth-service/ activity-service/ gateway-service/ discovery-service/ config-service/
+
+----------------------------------------------------------------------
+C. INITIALIZE GIT (command-line)
+----------------------------------------------------------------------
+# Initialize repository
+git init
+
+# Add all files (except ones in .gitignore)
+git add .
+
+# First commit
+git commit -m "chore(init): initial commit - project structure and config files"
+
+# Create main branch (ensure you use 'main' as default)
+git branch -M main
+
+----------------------------------------------------------------------
+D. CREATE REPO ON GITHUB (two ways)
+----------------------------------------------------------------------
+
+Option 1 — Create via GitHub website (recommended for beginners)
+1. Go to GitHub -> Your repositories -> New
+2. Repository name: the-club
+3. Description: (optional) "The Club — microservices fitness platform"
+4. Choose Private (recommended) or Public
+5. DO NOT initialize with README (if you already committed README locally) OR choose to init and follow the pull steps below.
+6. Click Create repository
+7. GitHub will show you commands to connect your local repo to GitHub.
+
+Option 2 — Create from IntelliJ (uses GitHub integration)
+- In IntelliJ: VCS -> Import into Version Control -> Share Project on GitHub
+- Follow the dialog to create a new repo and push.
+
+----------------------------------------------------------------------
+E. CONNECT LOCAL REPO TO GITHUB & PUSH (command-line)
+----------------------------------------------------------------------
+# Replace <URL> with GitHub repo URL shown (HTTPS or SSH)
+git remote add origin <URL>
+
+# If the repo on GitHub is empty:
+git push -u origin main
+
+# If GitHub repo already contains README or other files (common)
+git pull --rebase origin main
+git push -u origin main
+
+----------------------------------------------------------------------
+F. SSH KEYS (optional but recommended)
+----------------------------------------------------------------------
+# Create an SSH key (ed25519 is recommended)
+ssh-keygen -t ed25519 -C "your-email@example.com"
+# Press ENTER to accept default path and optionally add passphrase.
+
+# Start ssh agent & add key
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/id_ed25519
+
+# Copy public key and add to GitHub:
+cat ~/.ssh/id_ed25519.pub
+# Copy output and add to GitHub -> Settings -> SSH and GPG keys -> New SSH key
+
+# Then use SSH repo URL: git@github.com:username/the-club.git
+
+----------------------------------------------------------------------
+G. USING INTELLIJ WITH GIT
+----------------------------------------------------------------------
+1. Open the project
+   - File -> Open -> select the-club (root folder)
+
+2. Enable Git integration (if IntelliJ didn't auto-detect)
+   - VCS -> Enable Version Control Integration -> Git
+
+3. Verify Git tool windows
+   - View -> Tool Windows -> Version Control
+   - Commit window: shows changed files, diff, and commit button.
+
+4. Commit changes in IntelliJ
+   - Ctrl+K (Cmd+K on mac) to commit changes.
+   - Write clear commit messages (e.g., feat(auth): add JWT login)
+
+5. Push changes
+   - Ctrl+Shift+K (Cmd+Shift+K on mac) to push
+   - Or use the small 'up arrow' icon in the top-right status bar.
+
+6. Pull / Fetch
+   - VCS -> Git -> Pull (or use toolbar icons)
+   - Use Pull with rebase if you prefer a cleaner history.
+
+7. Create branches in IntelliJ
+   - Bottom-right branch widget -> New Branch...
+   - Work on feature branches: feature/login, feat/strava-integration
+
+8. Merge & Create PRs
+   - Push branch to origin and open a Pull Request on GitHub
+   - Use GitHub web UI or the IntelliJ GitHub plugin to create PRs
+
+----------------------------------------------------------------------
+H. PROTECT SECRETS & .gitignore
+----------------------------------------------------------------------
+1. Ensure your `.gitignore` exists at project root and contains:
+   - .env
+   - target/
+   - .idea/
+   - *.log
+   - mysql_data/ postgres_data/ (or whatever is local DB dump)
+2. If you accidentally committed .env or sensitive files:
+   - Remove from Git history (local):
+     git rm --cached .env
+     git commit -m "chore: remove .env from repository"
+   - To remove from remote history is more advanced (use git filter-repo or BFG) — ask if you need help.
+
+----------------------------------------------------------------------
+I. GITHUB: RELEASES, BRANCH PROTECTION (optional)
+----------------------------------------------------------------------
+1. Add branch protection rules on GitHub:
+   - Settings -> Branches -> Add rule -> Protect 'main'
+   - Require pull request reviews before merging, require status checks
+
+2. Use Actions (CI) later to run tests on push (optional)
+
+----------------------------------------------------------------------
+J. COMMON GIT COMMANDS (cheat sheet)
+----------------------------------------------------------------------
+git status                # see changes
+git add <file>            # stage file
+git commit -m "msg"       # commit staged changes
+git pull --rebase         # update local with remote (rebase)
+git push                  # push commits to remote
+git checkout -b feature/x # create and checkout branch
+git merge main            # merge main into current branch
+git log --oneline --graph # view commits graph
+
+----------------------------------------------------------------------
+K. QUICK IntelliJ Tips
+----------------------------------------------------------------------
+- Use the 'Commit' dialog to view diffs and run tests before committing.
+- Use 'Local History' (right-click file -> Local History) to recover small changes.
+- If IntelliJ prompts to set up credentials for GitHub, follow the OAuth dialog to connect your account (easier than SSH for first-time users).
+
+----------------------------------------------------------------------
+L. Next steps I can do for you (say 'yes' to any)
+----------------------------------------------------------------------
+1) Create the GitHub repo for you (I can give exact commands or instructions). 
+2) Create PR template and issue template files. 
+3) Add GitHub Actions workflow for Maven build and Docker linting.
+
+----------------------------------------------------------------------
+
+End of guide.

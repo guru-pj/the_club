@@ -1,0 +1,43 @@
+
+🗺️ The Club App - Entity Relationship Map
+
+User (UserService)
+ ├── id (UUID, PK)
+ ├── name (String)
+ ├── email (String, unique)
+ ├── password (String, hashed)
+ └── roles (ENUM)
+
+Auth (AuthService)
+ ├── id (UUID, PK)
+ ├── userId (FK → User)
+ ├── accessToken (String)
+ ├── refreshToken (String)
+ ├── expiry (DateTime)
+
+Activity (ActivityService)
+ ├── id (UUID, PK)
+ ├── userId (FK → User)
+ ├── type (ENUM)
+ ├── distance (double)
+ ├── duration (int)
+ ├── calories (int)
+ ├── startTime (DateTime)
+ └── endTime (DateTime)
+
+Profile (QR/ProfileService)
+ ├── id (UUID, PK)
+ ├── userId (FK → User)
+ ├── bio (String)
+ ├── profilePicUrl (String)
+ ├── qrCodeUrl (String)
+ ├── followersCount (int)
+ └── followingCount (int)
+
+Notification (NotificationService)
+ ├── id (UUID, PK)
+ ├── userId (FK → User)
+ ├── type (String)
+ ├── message (String)
+ ├── isRead (boolean)
+ └── createdAt (DateTime)

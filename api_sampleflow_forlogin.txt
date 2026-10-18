@@ -1,0 +1,21 @@
+
+🔐 API Flow - Login Request (Detailed Journey)
+
+1️⃣ User submits login request → `/api/v1/auth/login`
+   - Body: { email, password }
+
+2️⃣ Gateway routes request → AuthService
+
+3️⃣ AuthService:
+   - Validates email format & password
+   - Fetches user from UserService via FeignClient
+   - Verifies password hash
+   - Generates JWT accessToken + refreshToken
+
+4️⃣ Stores token → DB (AuthToken table)
+
+5️⃣ Returns Response → API Gateway → Client
+   - Body: { accessToken, refreshToken, expiresIn }
+
+🧩 Flow:
+ Client → Gateway → AuthService → UserService → DB → Gateway → Client

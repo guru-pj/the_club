@@ -1,0 +1,241 @@
+
+THE CLUB — UUID STRATEGY (DETAILED STEP‑BY‑STEP)
+=================================================
+
+This document explains WHY we use UUIDv7, WHERE the generator class lives,
+HOW to implement it inside each microservice, and all required entity,
+repository, service, and test updates.
+
+--------------------------------------------------
+1. WHY UUIDv7?
+--------------------------------------------------
+We use UUIDv7 because:
+- It is globally unique across all services and databases.
+- It is time‑ordered, so it reduces index fragmentation.
+- It prevents ID collisions across microservices (MySQL + PostgreSQL).
+- It avoids problems with auto‑increment sequences in distributed systems.
+- It allows ID generation BEFORE persisting to the DB.
+- Perfect for analytics (Trino), merging data safely.
+
+--------------------------------------------------
+2. WHERE TO PLACE THE GENERATOR CLASS
+--------------------------------------------------
+Inside each microservice:
+
+src/main/java/com/theclub/<service-name>/util/UuidGenerator.java
+
+Examples:
+- com.theclub.userservice.util.UuidGenerator
+- com.theclub.authservice.util.UuidGenerator
+- com.theclub.activityservice.util.UuidGenerator
+
+--------------------------------------------------
+3. MAVEN DEPENDENCIES (add to EACH service)
+--------------------------------------------------
+Add to pom.xml:
+
+<dependency>
+  <groupId>com.fasterxml.uuid</groupId>
+  <artifactId>java-uuid-generator</artifactId>
+  <version>5.0.0</version>
+</dependency>
+
+JUnit for test:
+
+<dependency>
+  <groupId>org.junit.jupiter</groupId>
+  <artifactId>junit-jupiter</artifactId>
+  <version>5.10.0</version>
+  <scope>test</scope>
+</dependency>
+
+--------------------------------------------------
+4. UUID GENERATOR CLASS (copy to each service)
+--------------------------------------------------
+package com.theclub.<service>.util;
+
+import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
+import java.util.UUID;
+
+public class UuidGenerator {
+
+    private static final TimeBasedEpochGenerator generator = new TimeBasedEpochGenerator();
+
+    public static UUID generate() {
+        return generator.generate();
+    }
+}
+
+--------------------------------------------------
+5. ENTITY UPDATES (examples)
+--------------------------------------------------
+
+----- USER (user-service) -----
+@Entity
+@Table(name = "users")
+public class User {
+
+    @Id
+    @Column(length = 36, nullable = false, updatable = false)
+    private UUID id;
+
+    @Column(nullable = false, length = 100)
+    private String name;
+
+    @Column(nullable = false, unique = true, length = 254)
+    private String email;
+
+    public User() {}
+
+    public User(String name, String email) {
+        this.id = UuidGenerator.generate();
+        this.name = name;
+        this.email = email;
+    }
+}
+
+----- AUTH TOKEN (auth-service) -----
+@Entity
+@Table(name = "auth_tokens")
+public class AuthToken {
+
+    @Id
+    @Column(length = 36, nullable = false, updatable = false)
+    private UUID id;
+
+    @Column(length = 36, nullable = false)
+    private UUID userId;
+
+    @Column(length = 512)
+    private String accessToken;
+
+    @Column(length = 512)
+    private String refreshToken;
+
+    @Column
+    private Instant expiry;
+
+    public AuthToken(UUID userId, String accessToken, String refreshToken, Instant expiry) {
+        this.id = UuidGenerator.generate();
+        this.userId = userId;
+        this.accessToken = accessToken;
+        this.refreshToken = refreshToken;
+        this.expiry = expiry;
+    }
+}
+
+----- ACTIVITY (activity-service) -----
+@Entity
+@Table(name = "activities")
+public class Activity {
+
+    @Id
+    @Column(length = 36, nullable = false, updatable = false)
+    private UUID id;
+
+    @Column(length = 36, nullable = false)
+    private UUID userId;
+
+    @Column(length = 100)
+    private String title;
+
+    @Column
+    private double distance;
+
+    @Column
+    private int duration;
+
+    @Column
+    private Instant startTime;
+
+    public Activity(UUID userId, String title, double distance, int duration, Instant startTime) {
+        this.id = UuidGenerator.generate();
+        this.userId = userId;
+        this.title = title;
+        this.distance = distance;
+        this.duration = duration;
+        this.startTime = startTime;
+    }
+}
+
+--------------------------------------------------
+6. REPOSITORIES (all same pattern)
+--------------------------------------------------
+public interface UserRepository extends JpaRepository<User, UUID> {}
+
+public interface AuthTokenRepository extends JpaRepository<AuthToken, UUID> {}
+
+public interface ActivityRepository extends JpaRepository<Activity, UUID> {}
+
+--------------------------------------------------
+7. SERVICE CREATE METHODS
+--------------------------------------------------
+public User createUser(String name, String email) {
+    User u = new User();
+    u.setId(UuidGenerator.generate());
+    u.setName(name);
+    u.setEmail(email);
+    return repo.save(u);
+}
+
+Same pattern for Auth and Activity services.
+
+--------------------------------------------------
+8. UNIT TESTS (UuidGeneratorTest.java)
+--------------------------------------------------
+package com.theclub.<service>.util;
+
+import org.junit.jupiter.api.Test;
+import java.util.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+public class UuidGeneratorTest {
+
+    @Test
+    void generatesUniqueIds() {
+        int n = 10000;
+        Set<UUID> set = new HashSet<>(n);
+        for (int i = 0; i < n; i++) {
+            UUID id = UuidGenerator.generate();
+            assertNotNull(id);
+            assertTrue(set.add(id));
+        }
+    }
+
+    @Test
+    void generatedIdsAreMonotonic() {
+        UUID previous = UuidGenerator.generate();
+        for (int i = 0; i < 1000; i++) {
+            UUID next = UuidGenerator.generate();
+            assertTrue(next.compareTo(previous) >= 0);
+            previous = next;
+        }
+    }
+}
+
+--------------------------------------------------
+9. OPTIONAL (BINARY(16) COMPACT STORAGE)
+--------------------------------------------------
+Later you can migrate to smaller index:
+
+- MySQL: BINARY(16)
+- PostgreSQL: BYTEA
+
+Use this converter:
+
+@Converter(autoApply = true)
+public class UUIDConverter implements AttributeConverter<UUID, byte[]> {
+    ...
+}
+
+--------------------------------------------------
+10. CHECKLIST
+--------------------------------------------------
+[ ] Add dependency in all pom.xml  
+[ ] Add UuidGenerator to each service  
+[ ] Update entities to UUID  
+[ ] Update repositories to UUID  
+[ ] Add and run UuidGeneratorTest  
+[ ] (Optional) Migrate to BINARY(16)  
+
+END OF FILE

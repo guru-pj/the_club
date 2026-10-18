@@ -1,0 +1,109 @@
+version: '3.9'
+
+services:
+  # ===================== DATABASES =====================
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_USER_DB}
+    ports:
+      - "${MYSQL_PORT}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_ACTIVITY_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  trino:
+    image: trinodb/trino
+    container_name: trino
+    ports:
+      - "${TRINO_PORT}:8080"
+    depends_on:
+      - mysql
+      - postgres
+
+  # ===================== SPRING SERVICES =====================
+  discovery-service:
+    build: ./discovery-service
+    container_name: discovery-service
+    ports:
+      - "${DISCOVERY_SERVICE_PORT}:8761"
+    environment:
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+
+  config-service:
+    build: ./config-service
+    container_name: config-service
+    ports:
+      - "${CONFIG_SERVICE_PORT}:8888"
+    environment:
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_URI=${CONFIG_GIT_URI}
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_ON_START=true
+
+  gateway-service:
+    build: ./gateway-service
+    container_name: gateway-service
+    ports:
+      - "${GATEWAY_SERVICE_PORT}:8080"
+    depends_on:
+      - discovery-service
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=${EUREKA_SERVER_URL}
+
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    ports:
+      - "${USER_SERVICE_PORT}:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_USER_DB}
+      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER}
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD}
+    depends_on:
+      - mysql
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    ports:
+      - "${AUTH_SERVICE_PORT}:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT}/${MYSQL_AUTH_DB}
+      - SPRING_DATASOURCE_USERNAME=${MYSQL_USER}
+      - SPRING_DATASOURCE_PASSWORD=${MYSQL_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mysql
+
+  activity-service:
+    build: ./activity-service
+    container_name: activity-service
+    ports:
+      - "${ACTIVITY_SERVICE_PORT}:8083"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_ACTIVITY_DB}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+
+volumes:
+  mysql_data:
+  postgres_data:
+
+# Load environment variables
+env_file:
+  - .env
