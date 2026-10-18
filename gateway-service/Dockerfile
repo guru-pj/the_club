@@ -1,5 +1,5 @@
 # Build the jar first from the project root: mvn clean install -DskipTests
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:22-jre-jammy
 
 # Run as an unprivileged user
 RUN groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
