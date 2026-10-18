@@ -1,0 +1,65 @@
+/* Styles for event, ticket, check-in and leaderboard pages. */
+.event-meta { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.event-meta-item { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.event-meta-item svg { flex-shrink: 0; }
+.event-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.status-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.register-panel { position: sticky; top: calc(var(--header-h) + 16px); }
+.price-tag { font-size: 1.5rem; font-weight: 750; letter-spacing: -0.02em; }
+.counts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ticket */
+.ticket {
+  max-width: 420px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow); overflow: hidden;
+}
+.ticket-top { padding: 22px 22px 18px; background: linear-gradient(135deg, var(--primary) 0%, #134e4a 100%); color: #fff; }
+.ticket-top .ticket-sub { color: rgba(255, 255, 255, 0.85); }
+.ticket-perforation { position: relative; height: 24px; background: var(--surface); }
+.ticket-perforation::before {
+  content: ''; position: absolute; left: 18px; right: 18px; top: 50%; border-top: 2px dashed var(--border);
+}
+.ticket-perforation::after, .ticket-perforation > span {
+  content: ''; position: absolute; top: 0; width: 24px; height: 24px; border-radius: 50%; background: var(--bg);
+}
+.ticket-perforation::after { right: -12px; }
+.ticket-perforation > span { left: -12px; }
+.ticket-body { padding: 4px 22px 24px; display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.ticket-qr { width: 260px; max-width: 100%; aspect-ratio: 1; background: #fff; padding: 10px; border-radius: 12px; border: 1px solid #e5e7eb; }
+.ticket-qr img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+.ticket-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.06em; word-break: break-all; font-size: 0.95rem; }
+
+.ticket-card { display: flex; gap: 14px; align-items: center; }
+.ticket-date {
+  flex-shrink: 0; width: 56px; text-align: center; border-radius: 10px; background: var(--primary-soft); color: var(--primary);
+  padding: 6px 0; line-height: 1.1;
+}
+.ticket-date .d { font-size: 1.35rem; font-weight: 750; }
+.ticket-date .m { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+.ticket-card.is-muted { opacity: 0.6; }
+
+/* check-in */
+.scanner-box { width: 100%; max-width: 420px; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #000; min-height: 0; }
+/* stay laid out while empty: html5-qrcode sizes the video from this element's width when it starts */
+.scanner-box:empty { background: none; }
+.scan-result { border-radius: var(--radius); padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
+.scan-result-success { background: var(--success-soft); color: var(--success); }
+.scan-result-error { background: var(--danger-soft); color: var(--danger); }
+.scan-result .icon-circle { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: currentColor; flex-shrink: 0; }
+.scan-result .icon-circle svg { color: var(--surface); }
+
+/* leaderboard */
+.month-picker { display: flex; align-items: center; gap: 8px; }
+.month-picker .label { min-width: 140px; text-align: center; font-weight: 650; }
+.stars { display: inline-flex; gap: 2px; color: var(--accent); vertical-align: middle; }
+.stars .off { color: var(--border); }
+.progress { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); border-radius: 4px; }
+
+@media print {
+  .app-header, .bottom-nav, .no-print, .toasts { display: none !important; }
+  body { background: #fff; }
+  .page { padding: 0; }
+  .ticket { box-shadow: none; border: 1px solid #ccc; }
+  .ticket-top { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

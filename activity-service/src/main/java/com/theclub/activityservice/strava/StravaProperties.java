@@ -17,7 +17,7 @@ public record StravaProperties(String clientId, String clientSecret, String redi
             oauthBaseUrl = "https://www.strava.com/oauth";
         }
         if (redirectUri == null || redirectUri.isBlank()) {
-            redirectUri = "http://localhost:8080/api/v1/strava/callback";
+            redirectUri = "http://localhost:3000/strava/callback";
         }
     }
 

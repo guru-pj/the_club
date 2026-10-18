@@ -34,9 +34,35 @@
 | ⚙️ Config Service | Spring Cloud Config (native or git backend) | 8888 | — |
 | 🔍 Trino | Query engine connecting MySQL + PostgreSQL | 8085 | — |
 | 📬 Mailpit | Local SMTP catcher for confirmation emails | 8025 (UI) | — |
+| 🖥️ Web App | React UI for members, club owners and admins (`web-app/`) | 3000 | — |
 
 `common-lib` holds code shared by every service: JWT validation, the UUIDv7 generator, internal API-key auth and problem-detail error handling.
 Internal APIs, security model and conventions: [`docs/SERVICE_CONTRACTS.md`](docs/SERVICE_CONTRACTS.md).
+
+---
+
+## 🖥️ Web App
+
+`web-app/` is a React + TypeScript single-page app (Vite) covering every Phase 1 + 2 feature:
+
+| Who | What they can do |
+|---|---|
+| Member | Sign up / log in, dashboard, browse & join clubs, club feed, log activities, connect Strava, register & pay for events, QR tickets, leaderboards, notifications |
+| Club owner | Apply for ownership, create/edit club, post announcements & event recaps (photos, linked Strava activity), create events with registration windows, view registrations, scan QR tickets with the phone camera to check members in |
+| Admin | Review owner applications (approve + create club, reject, request more info) |
+
+**With Docker:** `docker compose up -d --build` serves it at http://localhost:3000. nginx proxies `/api` to the gateway.
+
+**For UI development:** start the backend, then:
+```bash
+cd web-app
+npm install
+npm run dev          # http://localhost:5173, proxies /api to http://localhost:8080 (override with GATEWAY_URL)
+npm test             # unit tests (vitest)
+npm run e2e          # browser end-to-end flow (needs Chrome; set CHROME_PATH, ADMIN_EMAIL, ADMIN_PASSWORD)
+```
+Log in as the bootstrap admin from `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) to approve club-owner applications.
+The camera QR scanner needs HTTPS or `localhost`; on a phone over plain HTTP, use the manual ticket-code field.
 
 ---
 
@@ -80,6 +106,7 @@ the-club/
  ┣━ discovery-service/  config-service/  gateway-service/
  ┣━ user-service/  auth-service/  activity-service/
  ┣━ club-service/  event-service/  notification-service/
+ ┣━ web-app/                (React UI)
  ┣━ docs/SERVICE_CONTRACTS.md
  ┣━ scripts/smoke-test.sh
  ┣━ docker-compose.yml
@@ -106,7 +133,8 @@ docker compose up -d --build
 ### Verify
 | Service | URL |
 |----------|-----|
-| Gateway (use this for the API) | http://localhost:8080 |
+| **Web app** | http://localhost:3000 |
+| Gateway (API) | http://localhost:8080 |
 | Discovery (Eureka) | http://localhost:8761 |
 | Mailpit (sent emails) | http://localhost:8025 |
 | Trino Web UI | http://localhost:8085 |
@@ -133,7 +161,7 @@ mvn test        # unit tests + MockMvc/H2 integration tests for every module
 - **Secrets:** change `JWT_SECRET` (≥ 32 chars), `INTERNAL_API_KEY` and `ADMIN_PASSWORD` in `.env` for anything beyond local dev.
 - **First admin:** `ADMIN_EMAIL` / `ADMIN_PASSWORD` create a platform admin at startup. The admin reviews club-owner applications.
 - **Payments:** `PAYMENT_PROVIDER=mock` is for development only. The mock provider exposes `POST /api/v1/payments/{id}/mock-signature`, so anyone can "pay". Set `PAYMENT_PROVIDER=razorpay` plus `RAZORPAY_KEY_ID`/`RAZORPAY_KEY_SECRET` for real payments. The client completes checkout with Razorpay and sends `{providerPaymentId, signature}` to `/confirm`. Refunds are not implemented.
-- **Strava:** set `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` and register the webhook `https://<public-host>/api/v1/strava/webhook` with `STRAVA_WEBHOOK_VERIFY_TOKEN`.
+- **Strava:** set `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET`. Set the Strava app's callback domain to match `STRAVA_REDIRECT_URI` (the web app's `/strava/callback` page). Register the webhook `https://<public-host>/api/v1/strava/webhook` with `STRAVA_WEBHOOK_VERIFY_TOKEN`.
 - **Email:** all mail goes to Mailpit locally. Point `MAIL_HOST`/`MAIL_PORT` at a real SMTP server in other environments.
 - **Proof documents** for owner verification are submitted as URLs. Upload storage (MinIO/S3) is not built yet.
 - **Logout** revokes the refresh token. Access tokens stay valid until they expire (`JWT_EXPIRATION`, default 1h).
