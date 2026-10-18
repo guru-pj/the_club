@@ -90,15 +90,7 @@ All endpoints are called through the gateway at `http://localhost:8080` with `Au
 
 ---
 
-## 🧰 Environment Setup
-
-### Prerequisites
-- Docker Desktop (latest version)
-- Java 21 **JDK**
-- Maven 3.9+
-- Git
-
-### Directory Structure
+## 🧰 Directory Structure
 ```
 the-club/
  ┣━ pom.xml                 (parent; builds every module)
@@ -115,44 +107,105 @@ the-club/
 
 ---
 
-## 🚀 Build & Run Instructions
+## 🚀 Running on a New Machine (from scratch)
 
-### Quick start
+These steps run the whole backend plus the web UI with Docker.
+
+### 1. Install prerequisites
+
+**Ubuntu / Debian**
+```bash
+# Git, Java 21 JDK (the full JDK, not just the runtime) and Maven
+sudo apt update
+sudo apt install -y git openjdk-21-jdk maven curl jq
+
+# Docker Engine + Compose v2
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER      # log out and back in so docker works without sudo
+```
+
+**macOS / Windows:** install Docker Desktop, Temurin JDK 21 and Maven 3.9+.
+
+Check the installs:
+```bash
+java -version          # 21.x
+javac -version         # must exist; if missing, only a JRE is installed
+mvn -v                 # 3.6+
+docker compose version
+```
+
+### 2. Clone and configure
+```bash
+git clone https://github.com/guru-pj/the_club.git
+cd the_club
+cp enviroinment_variables.env .env
+```
+
+Edit `.env`. At minimum, change these:
+
+| Variable | What to set |
+|---|---|
+| `JWT_SECRET` | Random string of 32+ characters, e.g. `openssl rand -base64 48` |
+| `INTERNAL_API_KEY` | Another random string |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Your first admin login |
+| `MYSQL_PASSWORD`, `POSTGRES_PASSWORD` | Change if the machine is reachable by others |
+
+The defaults are fine for everything else on a first run: payments in test mode, emails caught by Mailpit.
+
+### 3. Build and start
 ```bash
 ./project-setup.sh up          # Windows: project-setup.bat up
 ```
-This copies `enviroinment_variables.env` to `.env` (first run only), builds all modules, builds the images and starts everything.
+This builds every service with Maven (the first run downloads dependencies for a few minutes), builds the Docker images, starts everything and streams the logs. Press Ctrl+C to stop watching; the containers keep running.
 
-### Manual steps
+The same thing, step by step:
 ```bash
-cp enviroinment_variables.env .env      # then edit secrets
 mvn clean install -DskipTests           # from the project root (common-lib must build first)
 docker compose up -d --build
 ```
 
-### Verify
-| Service | URL |
+### 4. Verify (allow about a minute for startup)
+
+| What | URL |
 |----------|-----|
 | **Web app** | http://localhost:3000 |
-| Gateway (API) | http://localhost:8080 |
-| Discovery (Eureka) | http://localhost:8761 |
-| Mailpit (sent emails) | http://localhost:8025 |
+| Gateway health | http://localhost:8080/actuator/health |
+| Discovery (Eureka): all 7 services should be listed | http://localhost:8761 |
+| Mailpit (sent emails / QR tickets) | http://localhost:8025 |
 | Trino Web UI | http://localhost:8085 |
 
-Then run the end-to-end smoke test (needs `curl` and `jq`):
+Then run the end-to-end smoke test (needs `curl` and `jq`). It should end with `ALL PASSED`:
 ```bash
 ADMIN_PASSWORD=<from .env> STRAVA_WEBHOOK_VERIFY_TOKEN=<from .env> ./scripts/smoke-test.sh
 ```
 
-### Stop Services
+### Day-to-day commands
 ```bash
-docker compose down
+docker compose ps                        # status of each container
+docker compose logs -f event-service     # follow one service's log
+docker compose down                      # stop everything (data is kept)
+docker compose down -v                   # stop and wipe the databases
+
+# after pulling new code
+mvn clean install -DskipTests && docker compose up -d --build
 ```
 
 ### Tests
 ```bash
-mvn test        # unit tests + MockMvc/H2 integration tests for every module
+mvn test                       # unit + MockMvc/H2 integration tests for every service
+cd web-app && npm test         # web app unit tests
 ```
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `port is already allocated` | Another program uses one of the ports 3306, 5432, 8080–8088, 8761, 8888, 1025, 8025 or 3000 (often a local MySQL). Stop it or change the port in `.env`. |
+| 503 errors for the first 30–60 s | Services are still registering with Eureka. Wait and retry. |
+| A service keeps restarting | Check `docker compose logs <service>`. Usually the database wasn't ready yet (it recovers on its own) or `JWT_SECRET` is shorter than 32 characters. |
+| `release version 21 not supported` (Maven) | Only a Java runtime is installed. Install `openjdk-21-jdk`. |
+| Machine low on memory | The stack needs about 4–6 GB. Trino is optional: `docker compose stop trino`. |
+| Opening the app from other computers | Use `http://<server-ip>:3000`. For Strava, set `STRAVA_REDIRECT_URI` to `http://<server-ip>:3000/strava/callback`. |
 
 ---
 
