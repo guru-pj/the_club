@@ -106,10 +106,13 @@ subscription.
 
 - cloudflared (no account needed for quick tunnels):
   ```bash
-  # Linux: download cloudflared once
+  # Linux (use cloudflared-linux-arm64 on ARM machines)
   curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared
-  # macOS: brew install cloudflared
   ./cloudflared tunnel --url http://localhost:3000
+
+  # macOS
+  brew install cloudflared
+  cloudflared tunnel --url http://localhost:3000
   ```
   It prints a URL like `https://random-words.trycloudflare.com`.
 - ngrok (free account):

@@ -131,6 +131,15 @@ Follow these steps in order on a fresh machine. Every command block is copy-past
 | Docker + Compose v2 | Docker 24+ | run everything |
 | bash, openssl, curl, jq | any | secrets generator and smoke test |
 
+**Optional:**
+
+| Tool | For | Install |
+|---|---|---|
+| Node.js 22 + Chrome | web-app development and the browser test | see [Tests](#tests) |
+| kind, kubectl, Helm | running on a local Kubernetes cluster | see [`docs/KUBERNETES.md`](docs/KUBERNETES.md#quick-start-on-your-laptop-kind) (Linux and macOS commands) |
+
+The app alone needs 8 GB of RAM. **Monitoring** (Prometheus/Grafana/Tempo/Loki) adds about 2 GB, and **local Kubernetes** (kind) needs about 10 GB on its own. On macOS, raise Docker Desktop's memory accordingly (Settings → Resources).
+
 > ⚠️ **Never run `mvn`, `./project-setup.sh` or the scripts with `sudo`.** Doing so leaves root-owned files that break later builds. Only the install commands in step 1 use `sudo`.
 
 ---
@@ -259,6 +268,8 @@ The defaults in `.env` are set up for local use: test-mode payments, emails caug
 ```bash
 bash -c 'for p in 3000 3306 5432 8025 8080 8081 8082 8083 8084 8085 8086 8087 8761 8888; do (echo > /dev/tcp/127.0.0.1/$p) 2>/dev/null && echo "  port $p is already in use"; done; echo "port check done"'
 ```
+If you plan to run the monitoring stack too, it also uses 3001 (Grafana), 9090 (Prometheus) and 9093 (Alertmanager); add them to the list above.
+
 If anything is listed, free the port or move ours in `.env`. A locally installed PostgreSQL (5432) or MySQL (3306) is the usual cause:
 ```bash
 # use 5433 / 3307 on your machine instead (works on Linux and macOS)
@@ -302,6 +313,16 @@ cat secrets/admin-password
 ```
 Then follow the [User Guide](#-user-guide) below.
 
+### Optional next steps (Linux and macOS)
+
+| Goal | Guide |
+|---|---|
+| Send real emails (verification, reset, tickets) through Zoho ZeptoMail | [`docs/EMAIL_SETUP.md`](docs/EMAIL_SETUP.md) |
+| Connect real Strava accounts | [`docs/STRAVA_SETUP.md`](docs/STRAVA_SETUP.md) |
+| Dashboards, traces, logs and alerts | the monitoring command under [Day-to-day commands](#day-to-day-commands), then [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) |
+| Run on Kubernetes, locally with kind or in the cloud | [`docs/KUBERNETES.md`](docs/KUBERNETES.md) |
+| Deploy to a production server | [`docs/PRODUCTION.md`](docs/PRODUCTION.md) |
+
 ---
 
 ### Day-to-day commands
@@ -327,6 +348,8 @@ Monitoring (Prometheus, Grafana, Tempo, Loki). Grafana runs at http://localhost:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.observability.yml up -d
 ```
+On macOS, log collection reads Docker's socket at `/var/run/docker.sock`. In Docker Desktop, keep **Settings → Advanced → "Allow the default Docker socket to be used"** enabled; it's on by default. Details: [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
+
 
 Low on memory? Trino (analytics) is optional. Stop it:
 ```bash
