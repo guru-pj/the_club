@@ -107,137 +107,327 @@ the-club/
 
 ---
 
-## 🚀 Running on a New Machine (from scratch)
+## 🚀 Getting Started (Linux & macOS, from scratch)
 
-These steps run the whole backend plus the web UI with Docker.
+Follow these steps in order on a fresh machine. Every command block is copy-pasteable. The whole stack runs in Docker; Java and Maven are only needed to build it.
 
-### 1. Install prerequisites
+**At a glance:** install the tools (step 1) → clone (step 2) → generate secrets (step 3) → build and start (step 4) → open http://localhost:3000.
 
-**Machine:** 64-bit Linux, macOS or Windows; at least 8 GB RAM (the full stack uses about 4–6 GB) and 10 GB free disk.
+### What you need
 
-**Required to build and run the backend and web app (all in Docker):**
-
-| Tool | Version | Used for |
+| | Minimum | Recommended |
 |---|---|---|
-| Git | any | cloning the repository |
-| Java **JDK** | 21 (a JRE alone is not enough) | compiling the services |
-| Maven | 3.6+ (3.9 recommended) | building the services |
-| Docker Engine + Compose v2 plugin | Docker 24+ | running every container |
-| bash, openssl | any | `scripts/generate-secrets.sh` creates keys and passwords |
-| curl, jq | any | `scripts/smoke-test.sh` and Docker install |
+| OS | Ubuntu 22.04+ / Debian 12+ / Fedora 39+, or macOS 13 Ventura+ (Apple Silicon or Intel) | Ubuntu 24.04 / macOS 14+ |
+| RAM | 8 GB | 16 GB |
+| Free disk | 20 GB | 40 GB |
+| Network | Needed for the first build (about 3 GB of downloads) | |
+| Access | A GitHub account that can read `guru-pj/the_club` | |
 
-**Ubuntu / Debian**
+| Tool | Version | Why |
+|---|---|---|
+| Git | any | clone the code |
+| Java **JDK** | **21** (a JRE alone won't work) | compile the services |
+| Maven | 3.6+ | build the services |
+| Docker + Compose v2 | Docker 24+ | run everything |
+| bash, openssl, curl, jq | any | secrets generator and smoke test |
+
+> ⚠️ **Never run `mvn`, `./project-setup.sh` or the scripts with `sudo`.** Doing so leaves root-owned files that break later builds. Only the install commands in step 1 use `sudo`.
+
+---
+
+### Step 1A — Install the tools on Linux (Ubuntu / Debian)
+
 ```bash
 sudo apt update
-sudo apt install -y git openjdk-21-jdk maven curl jq openssl
+sudo apt install -y git maven curl jq openssl ca-certificates
+```
 
-# Docker Engine + Compose v2
+Install Java 21. On Ubuntu 22.04/24.04 it's in the standard repositories:
+```bash
+sudo apt install -y openjdk-21-jdk
+```
+On **Debian 12**, or if the line above reports "Unable to locate package", install Temurin 21 instead:
+```bash
+sudo apt install -y wget gpg
+wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/adoptium.gpg > /dev/null
+echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print $2}' /etc/os-release) main" | sudo tee /etc/apt/sources.list.d/adoptium.list
+sudo apt update && sudo apt install -y temurin-21-jdk
+```
+
+Install Docker Engine and Compose v2, then let your user run Docker without `sudo`:
+```bash
 curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker $USER
-newgrp docker                      # or log out and back in, so docker works without sudo
+```
+**Log out and log back in** (or reboot) so the group change applies to every terminal. To use it immediately in the current terminal only, run:
+```bash
+newgrp docker
 ```
 
-**macOS (Apple Silicon or Intel):** follow the step-by-step [macOS installation guide](docs/INSTALL_MACOS.md). It covers Homebrew, Temurin JDK 21, Maven and Docker Desktop resource settings, with Mac-specific troubleshooting.
-
-**Windows:** install Git for Windows (it includes Git Bash with bash and openssl), Temurin JDK 21, Maven 3.9+ and Docker Desktop with the WSL 2 backend. Run the `.sh` scripts from Git Bash or WSL.
-
-**Optional, only for web-app development and browser tests:**
-
-| Tool | Version | Used for |
-|---|---|---|
-| Node.js + npm | 22 | `npm run dev`, `npm test` in `web-app/` |
-| Google Chrome or Chromium | recent | `npm run e2e` browser test |
+<details>
+<summary><b>Fedora / RHEL / CentOS Stream</b></summary>
 
 ```bash
-# Node.js 22 on Ubuntu
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
+sudo dnf install -y git maven curl jq openssl java-21-openjdk-devel
+curl -fsSL https://get.docker.com | sudo sh
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER      # then log out and back in
+```
+</details>
+
+If you have several Java versions, make 21 the default:
+```bash
+sudo update-alternatives --config java
+sudo update-alternatives --config javac
 ```
 
-**Check the installs:**
+### Step 1B — Install the tools on macOS (Apple Silicon or Intel)
+
+Command Line Tools (provides git). Click **Install** in the dialog that appears:
+```bash
+xcode-select --install
+```
+
+Homebrew:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+**Apple Silicon only:** put Homebrew on your PATH:
+```bash
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+
+Java 21, Maven and the other tools. `JAVA_HOME` makes Maven use Java 21 even if other versions are installed:
+```bash
+brew install --cask temurin@21
+brew install maven jq openssl@3
+echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 21)' >> ~/.zshrc
+echo 'export PATH="$JAVA_HOME/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Docker Desktop:
+```bash
+brew install --cask docker
+open -a Docker
+```
+Wait until the whale icon in the menu bar says **Docker Desktop is running**. Then open **Settings ⚙ → Resources → Advanced** and set:
+- **CPUs:** 4 or more
+- **Memory:** 6 GB minimum, 8 GB recommended
+- **Disk:** 40 GB
+
+Click **Apply & restart**. Keep the project inside your home folder (`/Users/<you>/…`); Docker Desktop shares it by default.
+
+> OrbStack (`brew install --cask orbstack`) or Colima (`brew install colima docker docker-compose && colima start --cpu 4 --memory 8 --disk 40`) also work instead of Docker Desktop.
+
+### Step 1C — Check the installs (Linux and macOS)
+
 ```bash
 git --version
-java -version          # 21.x
-javac -version         # must print 21.x; if missing, only a JRE is installed: install openjdk-21-jdk
-mvn -v                 # 3.6+ and "Java version: 21"
-docker compose version # v2.x
-docker run --rm hello-world   # confirms docker works without sudo
-openssl version
+java -version        # must say 21
+javac -version       # must say 21 — if "command not found", only a JRE is installed
+mvn -v               # must show "Java version: 21"
+docker compose version
+docker run --rm hello-world     # must work WITHOUT sudo
+openssl version && jq --version
 ```
+If `docker run` says **permission denied** on Linux, you haven't logged out and back in since `usermod` (or run `newgrp docker`). If it says **Cannot connect to the Docker daemon** on macOS, Docker Desktop isn't running yet.
 
-**Ports:** the local setup publishes port 3000 (web app). It also binds these ports on localhost only: 8025 (Mailpit), 8080 (gateway), 8081–8084, 8086, 8087 (services), 8761, 8888, 3306 (MySQL), 5432 (PostgreSQL) and 8085 (Trino). Stop anything already using them, such as a local MySQL or PostgreSQL, or change the ports in `.env`.
+---
 
-### 2. Clone and configure
+### Step 2 — Clone the code
+
 ```bash
+cd ~
 git clone https://github.com/guru-pj/the_club.git
 cd the_club
+```
+If the repository is private, git asks for your GitHub username and a **personal access token** as the password. Create one at github.com → Settings → Developer settings → Personal access tokens, with `repo` scope.
+
+### Step 3 — Configure
+
+```bash
 cp enviroinment_variables.env .env
 ./scripts/generate-secrets.sh
 ```
+The second command creates `secrets/` (never committed). It holds the signing keys and the internal service key, plus passwords for the databases and the first admin. It prints the admin password once; you can read it again any time with `cat secrets/admin-password`.
 
-`.env` holds only non-secret settings. The defaults work for a first local run: test-mode payments, emails caught by Mailpit, email verification off.
+The defaults in `.env` are set up for local use: test-mode payments, emails caught by Mailpit, and email verification off.
 
-`generate-secrets.sh` creates `./secrets/` (gitignored) containing:
-- the RS256 token signing key pair
-- the internal service key
-- database passwords, including a separate least-privilege user per service
-- the first admin's password, printed once at the end and kept in `secrets/admin-password`
-
-Each file is mounted only into the containers that need it. `project-setup.sh` runs the generator automatically on first use.
-
-### 3. Build and start
+**Check for port clashes** before starting. The stack uses these ports on your machine:
 ```bash
-./project-setup.sh up          # Windows: project-setup.bat up
+bash -c 'for p in 3000 3306 5432 8025 8080 8081 8082 8083 8084 8085 8086 8087 8761 8888; do (echo > /dev/tcp/127.0.0.1/$p) 2>/dev/null && echo "  port $p is already in use"; done; echo "port check done"'
 ```
-This builds every service with Maven (the first run downloads dependencies for a few minutes), builds the Docker images, starts everything and streams the logs. Press Ctrl+C to stop watching; the containers keep running.
-
-The same thing, step by step:
+If anything is listed, free the port or move ours in `.env`. A locally installed PostgreSQL (5432) or MySQL (3306) is the usual cause:
 ```bash
-mvn clean install -DskipTests           # from the project root (common-lib must build first)
+# use 5433 / 3307 on your machine instead (works on Linux and macOS)
+sed -i.bak 's/^POSTGRES_PORT=.*/POSTGRES_PORT=5433/; s/^MYSQL_PORT=.*/MYSQL_PORT=3307/' .env && rm .env.bak
+```
+These variables only change the port on your machine; the containers still talk to each other as before.
+
+### Step 4 — Build and start
+
+```bash
+mvn clean install -DskipTests
+docker compose up -d --build
+```
+The first run takes 5–15 minutes because Maven and Docker download their dependencies; later runs take about a minute.
+
+Wait until every service reports healthy:
+```bash
+echo "Waiting for services to become healthy (up to 10 minutes)..."; end=$((SECONDS+600)); until ! docker compose ps --format '{{.Status}}' | grep -qE 'starting|unhealthy|Restarting'; do [ $SECONDS -gt $end ] && echo "Still not healthy after 10 minutes - see Troubleshooting" && break; sleep 5; done; docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+```
+Every service should show `Up … (healthy)`. The two `db-backup-*` containers have no health check and just show `Up`. If something shows `Restarting` or `Exited`, see [Troubleshooting](#troubleshooting).
+
+> **Shortcut:** `./project-setup.sh up` does steps 3–4 in one go (copy `.env`, generate secrets, build, start), then streams the logs. Press Ctrl+C to stop watching; the containers keep running.
+
+### Step 5 — Verify and open the app
+
+Run the automated end-to-end check. It signs up users, creates a club and events, handles payment, ticket and check-in, and ends with `ALL PASSED`:
+```bash
+./scripts/smoke-test.sh
+```
+If the first steps fail with 503, the services are still finding each other. Wait 30 seconds and run it again.
+
+| Open | URL |
+|---|---|
+| **The Club** | http://localhost:3000 |
+| Emails sent by the app (tickets, password resets) | http://localhost:8025 |
+| Service registry: all 7 services should be listed | http://localhost:8761 |
+
+Log in as admin with `admin@theclub.local` and this password:
+```bash
+cat secrets/admin-password
+```
+Then follow the [User Guide](#-user-guide) below.
+
+---
+
+### Day-to-day commands
+
+```bash
+docker compose ps                        # status of every container
+docker compose logs -f user-service      # follow one service's log (Ctrl+C to stop)
+docker compose stop                      # stop everything (data is kept)
+docker compose start                     # start it again
+docker compose down                      # remove containers (data is kept in volumes)
+docker compose down -v                   # remove containers AND all data (fresh start)
+```
+
+Update to the latest code:
+```bash
+git pull
+mvn clean install -DskipTests
 docker compose up -d --build
 ```
 
-### 4. Verify (allow about a minute for startup)
-
-| What | URL |
-|----------|-----|
-| **Web app** | http://localhost:3000 |
-| Gateway health | http://localhost:8080/actuator/health |
-| Discovery (Eureka): all 7 services should be listed | http://localhost:8761 |
-| Mailpit (sent emails / QR tickets) | http://localhost:8025 |
-| Trino Web UI | http://localhost:8085 |
-
-Then run the end-to-end smoke test (needs `curl` and `jq`). It should end with `ALL PASSED`:
+Low on memory? Trino (analytics) is optional. Stop it:
 ```bash
-./scripts/smoke-test.sh      # reads the admin password from secrets/admin-password
-```
-
-### Day-to-day commands
-```bash
-docker compose ps                        # status of each container
-docker compose logs -f event-service     # follow one service's log
-docker compose down                      # stop everything (data is kept)
-docker compose down -v                   # stop and wipe the databases
-
-# after pulling new code
-mvn clean install -DskipTests && docker compose up -d --build
+docker compose stop trino
 ```
 
 ### Tests
+
 ```bash
-mvn test                       # unit + MockMvc/H2 integration tests for every service
-cd web-app && npm test         # web app unit tests
+mvn test                       # unit + integration tests for every service
+cd web-app && npm ci && npm test && cd ..     # web app tests (needs Node.js 22)
 ```
+For web-app development (`npm run dev`) and the browser test (`npm run e2e`), install Node.js 22 and Chrome:
+- Linux: `curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs`
+- macOS: `brew install node@22 && brew install --cask google-chrome`
+
+See the Web App section above.
 
 ### Troubleshooting
 
-| Symptom | Fix |
+| Problem | Fix |
 |---|---|
-| `port is already allocated` | Another program uses one of the ports 3306, 5432, 8080–8088, 8761, 8888, 1025, 8025 or 3000 (often a local MySQL). Stop it or change the port in `.env`. |
-| 503 errors for the first 30–60 s | Services are still registering with Eureka. Wait and retry. |
-| A service keeps restarting | Check `docker compose logs <service>`. Usually the database wasn't ready yet (it recovers on its own) or `secrets/` is missing; run `./scripts/generate-secrets.sh`. |
-| `release version 21 not supported` (Maven) | Only a Java runtime is installed. Install `openjdk-21-jdk`. |
-| Machine low on memory | The stack needs about 4–6 GB. Trino is optional: `docker compose stop trino`. |
-| Opening the app from other computers | Use `http://<server-ip>:3000`. For Strava, set `STRAVA_REDIRECT_URI` to `http://<server-ip>:3000/strava/callback`. |
+| `./project-setup.sh: Permission denied` | `chmod +x project-setup.sh scripts/*.sh` |
+| `permission denied … docker.sock` (Linux) | Log out and back in after `usermod -aG docker $USER`, or run `newgrp docker` |
+| `Cannot connect to the Docker daemon` (macOS) | Start Docker Desktop and wait for "running" |
+| `Failed to delete …/target/…` or other permission errors in the build | A previous run used `sudo`. Fix ownership: `sudo chown -R $USER:$USER .` |
+| `release version 21 not supported` / `mvn -v` shows another Java | Install JDK 21 and make it the default (step 1). On macOS, check `echo $JAVA_HOME`. |
+| `port is already allocated` / `address already in use` | Run the port check in step 3 and change `POSTGRES_PORT` / `MYSQL_PORT` in `.env`, then `docker compose up -d` |
+| `Service temporarily unavailable` / 503 right after starting | Services are still registering. Wait 30–60 s and retry. |
+| `Bad Gateway` in the web app | Run `docker compose restart web-app`, and `git pull` the latest code, which fixes the cause |
+| A service keeps `Restarting` | `docker compose logs --tail=100 <service>`. Usually the database isn't ready yet (it recovers) or `secrets/` is missing (`./scripts/generate-secrets.sh`). |
+| Containers exit with code 137 | Out of memory. Give Docker more RAM (macOS: Settings → Resources) or `docker compose stop trino` |
+| `git pull` refuses: "local changes would be overwritten" | `git stash` (or `git checkout -- <file>`), then `git pull` |
+| `xcrun: error: invalid active developer path` (macOS) | `xcode-select --install` |
+
+### Uninstall
+
+```bash
+cd ~/the_club && docker compose down -v --rmi local    # containers, data and built images
+cd ~ && rm -rf the_club                                 # code and secrets
+```
+
+---
+
+## 🗄️ Database Access
+
+Each service owns its own database:
+
+| Server | Database | Holds |
+|---|---|---|
+| MySQL | `userdb` | users, roles, verification and reset tokens |
+| MySQL | `authdb` | refresh-token sessions, login lockouts |
+| MySQL | `clubdb` | clubs, memberships, posts, owner applications |
+| MySQL | `eventdb` | events, registrations, payments, points |
+| MySQL | `notificationdb` | in-app notifications |
+| PostgreSQL | `activitydb` | activities, Strava connections |
+
+Run the commands below from the project folder. If `docker` reports "permission denied", log out and back in once after adding yourself to the `docker` group, or wrap the command in `sg docker -c "..."`.
+
+### From the terminal
+
+**MySQL:**
+```bash
+docker compose exec mysql sh -c 'mysql -uroot -p"$(cat /run/secrets/mysql-root-password)"'
+```
+```sql
+SHOW DATABASES;
+USE userdb;
+SHOW TABLES;
+SELECT name, email, email_verified FROM users;
+USE eventdb;
+SELECT title, start_time, status FROM events;
+SELECT status, COUNT(*) FROM event_registrations GROUP BY status;
+exit
+```
+
+**PostgreSQL:**
+```bash
+docker compose exec postgres psql -U postgres -d activitydb
+```
+```sql
+\dt
+SELECT title, type, distance, duration FROM activities ORDER BY start_time DESC LIMIT 10;
+\q
+```
+
+### From a GUI (DBeaver, MySQL Workbench, pgAdmin)
+
+In the local setup, both databases are reachable on localhost. Install DBeaver with `sudo snap install dbeaver-ce` (or `brew install --cask dbeaver-community` on macOS).
+
+| Setting | MySQL | PostgreSQL |
+|---|---|---|
+| Host | `localhost` | `localhost` |
+| Port | `MYSQL_PORT` from `.env` (default `3306`) | `POSTGRES_PORT` from `.env` (default `5432`) |
+| User | `root` | `postgres` |
+| Password | `cat secrets/mysql-root-password` | `cat secrets/postgres-password` |
+| Database | leave empty to see all | `activitydb` |
+
+For MySQL in DBeaver, set the driver property `allowPublicKeyRetrieval=true`.
+
+> **Port already in use?** If PostgreSQL or MySQL is also installed directly on your machine, change `POSTGRES_PORT` (e.g. `5433`) or `MYSQL_PORT` (e.g. `3307`) in `.env`, then run `docker compose up -d`. This only changes the port on your machine; the services still connect internally as before.
+
+### Good to know
+- **Read, don't restructure.** The schema is managed by Flyway migrations (see [`docs/DATABASE_MIGRATIONS.md`](docs/DATABASE_MIGRATIONS.md)). Change tables only through a new migration, and change data through the app where possible.
+- **Production:** database ports are not published. Use the `docker compose -f docker-compose.yml exec ...` form of the commands above on the server.
+- **Start over with empty databases:** `docker compose down -v && docker compose up -d`. This deletes all data; wait about a minute for the services to become healthy.
+- **Backups and restore:** see `scripts/backup.sh` / `scripts/restore.sh` and [`docs/PRODUCTION.md`](docs/PRODUCTION.md).
 
 ---
 
