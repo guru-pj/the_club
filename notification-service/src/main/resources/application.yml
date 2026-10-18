@@ -33,8 +33,14 @@ eureka:
   client:
     service-url:
       defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka}
+    # See newly started services within seconds instead of ~30s (avoids 503s right after a restart)
+    registry-fetch-interval-seconds: 5
   instance:
     prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+
+# The load balancer's own instance cache would otherwise add another 35s of delay
+spring.cloud.loadbalancer.cache.ttl: 5s
 
 management:
   endpoints:

@@ -12,6 +12,8 @@ eureka:
   server:
     # single-node registry; avoid self-preservation noise in development
     enable-self-preservation: ${EUREKA_SELF_PRESERVATION:false}
+    # Serve registry changes within 5s (default 30s) so restarted services are routable quickly
+    response-cache-update-interval-ms: 5000
 
 management:
   endpoints:

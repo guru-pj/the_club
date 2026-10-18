@@ -37,6 +37,8 @@
         <jjwt.version>0.12.6</jjwt.version>
         <uuid-generator.version>5.0.0</uuid-generator.version>
         <zxing.version>3.5.3</zxing.version>
+        <!-- 1.21.3 (Spring Boot's default) speaks Docker API 1.32, which Docker 29+ rejects; 1.21.4 negotiates a newer API -->
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <dependencyManagement>
