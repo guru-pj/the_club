@@ -64,7 +64,7 @@ public class PaymentWebhookService {
         if (eventId.length() > MAX_ID_LENGTH) {
             eventId = eventId.substring(0, MAX_ID_LENGTH);
         }
-        // Both come from the request, so line breaks are removed before logging (no forged log lines)
+        // Both come from the request: keep only the characters ids and event types use, so they can't forge log lines
         String logId = forLog(eventId);
         String logType = forLog(type);
         if (processed.existsById(eventId)) {
@@ -109,7 +109,7 @@ public class PaymentWebhookService {
     }
 
     private static String forLog(String value) {
-        return value.replaceAll("[\r\n]", "_");
+        return value.replaceAll("[^\\w.:-]", "_");
     }
 
     private static String sha256(byte[] body) {
