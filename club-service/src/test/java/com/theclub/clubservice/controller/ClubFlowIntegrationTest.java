@@ -81,10 +81,13 @@ class ClubFlowIntegrationTest {
     void createJoinLeaveAndList() throws Exception {
         UUID owner = UUID.randomUUID();
         UUID member = UUID.randomUUID();
-        String clubId = createClub(owner, "Chennai Runners").get("id").asText();
+        // The H2 database is shared by every test class, so the name (and the search below) must be unique to this run
+        String suffix = owner.toString().substring(0, 8);
+        String name = "Chennai Runners " + suffix;
+        String clubId = createClub(owner, name).get("id").asText();
 
         mvc.perform(post("/api/v1/clubs").header("Authorization", token(owner, "USER", "CLUB_OWNER"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"chennai runners\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"%s\"}".formatted(name.toLowerCase())))
                 .andExpect(status().isConflict());
 
         mvc.perform(post("/api/v1/clubs/{id}/join", clubId).header("Authorization", token(member, "USER")))
@@ -100,8 +103,8 @@ class ClubFlowIntegrationTest {
         mvc.perform(get("/api/v1/clubs/user/{id}", member).header("Authorization", token(owner, "USER")))
                 .andExpect(jsonPath("$.length()").value(1));
         mvc.perform(get("/api/v1/clubs/owner/{id}", owner).header("Authorization", token(member, "USER")))
-                .andExpect(jsonPath("$[0].name").value("Chennai Runners"));
-        mvc.perform(get("/api/v1/clubs").param("q", "runn").header("Authorization", token(member, "USER")))
+                .andExpect(jsonPath("$[0].name").value(name));
+        mvc.perform(get("/api/v1/clubs").param("q", ("unners " + suffix).toUpperCase()).header("Authorization", token(member, "USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalItems").value(1));
 
