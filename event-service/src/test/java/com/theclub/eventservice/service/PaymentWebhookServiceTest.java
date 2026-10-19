@@ -1,6 +1,6 @@
 package com.theclub.eventservice.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.model.PaymentWebhookEvent;
 import com.theclub.eventservice.payment.MockPaymentGateway;

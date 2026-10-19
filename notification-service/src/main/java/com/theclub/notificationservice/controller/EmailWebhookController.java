@@ -1,6 +1,6 @@
 package com.theclub.notificationservice.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.theclub.common.web.ApiException;
 import com.theclub.notificationservice.config.MailProperties;
 import com.theclub.notificationservice.email.BounceService;

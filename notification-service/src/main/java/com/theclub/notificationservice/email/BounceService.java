@@ -1,6 +1,6 @@
 package com.theclub.notificationservice.email;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.theclub.notificationservice.model.EmailSuppression;
 import com.theclub.notificationservice.repository.EmailSuppressionRepository;
 import org.slf4j.Logger;

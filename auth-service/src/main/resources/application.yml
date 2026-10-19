@@ -2,6 +2,10 @@ server:
   port: 8082
 
 spring:
+  jackson:
+    # Spring Boot 4 uses Jackson 3, whose defaults differ (e.g. missing primitive fields are rejected); keep the
+    # behaviour clients relied on with Jackson 2
+    use-jackson2-defaults: true
   application:
     name: auth-service
   datasource:

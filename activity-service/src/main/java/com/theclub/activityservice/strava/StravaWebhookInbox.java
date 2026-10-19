@@ -1,7 +1,7 @@
 package com.theclub.activityservice.strava;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.activityservice.model.StravaWebhookEventRecord;
 import com.theclub.activityservice.repository.StravaWebhookEventRepository;
 import org.slf4j.Logger;
@@ -72,7 +72,7 @@ public class StravaWebhookInbox {
         try {
             String value = json.writeValueAsString(event.updates());
             return value.length() > MAX_UPDATES_LENGTH ? value.substring(0, MAX_UPDATES_LENGTH) : value;
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             log.debug("Unserializable Strava updates map ignored");
             return null;
         }

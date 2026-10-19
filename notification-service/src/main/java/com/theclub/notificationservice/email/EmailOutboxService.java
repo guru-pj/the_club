@@ -1,7 +1,7 @@
 package com.theclub.notificationservice.email;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.common.web.ApiException;
 import com.theclub.notificationservice.config.MailProperties;
 import com.theclub.notificationservice.dto.EmailAttachment;
@@ -182,7 +182,7 @@ public class EmailOutboxService {
         }
         try {
             return List.of(json.readValue(row.getAttachments(), EmailAttachment[].class));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Corrupt attachments on email " + row.getId(), e);
         }
     }
@@ -193,7 +193,7 @@ public class EmailOutboxService {
         }
         try {
             return json.writeValueAsString(attachments);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalArgumentException("Attachments could not be stored", e);
         }
     }

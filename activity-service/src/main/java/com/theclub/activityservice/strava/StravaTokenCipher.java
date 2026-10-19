@@ -70,7 +70,7 @@ public class StravaTokenCipher {
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
             cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
             byte[] sealed = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
-            return PREFIX + Base64.getEncoder().encodeToString(ByteBuffer.allocate(iv.length + sealed.length)
+            return PREFIX + Base64.getEncoder().encodeToString(ByteBuffer.allocate(IV_BYTES + sealed.length)
                     .put(iv).put(sealed).array());
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException("Could not encrypt Strava token", e);
