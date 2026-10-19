@@ -70,13 +70,13 @@ jobs:
       run:
         working-directory: web-app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -105,7 +105,7 @@ jobs:
             ./gradlew --no-daemon assembleDebug
             cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/TheClub-android.apk"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: the-club-android
           path: ${{ runner.temp }}/TheClub-android.apk
@@ -120,8 +120,8 @@ jobs:
       run:
         working-directory: web-app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -137,7 +137,7 @@ jobs:
         run: |
           npx tauri build --target universal-apple-darwin --config '{"version":"${{ needs.version.outputs.version }}"}'
           cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg "$RUNNER_TEMP/TheClub-macos.dmg"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: the-club-macos
           path: ${{ runner.temp }}/TheClub-macos.dmg
@@ -154,8 +154,8 @@ jobs:
       run:
         working-directory: web-app
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -172,7 +172,7 @@ jobs:
             MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_VERSION_CODE" build
           cd "$RUNNER_TEMP/dd/Build/Products/Release-iphonesimulator"
           zip -qry "$RUNNER_TEMP/TheClub-ios-simulator.zip" App.app
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: the-club-ios-simulator
           path: ${{ runner.temp }}/TheClub-ios-simulator.zip
@@ -225,7 +225,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: out
           merge-multiple: true
