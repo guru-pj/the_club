@@ -161,14 +161,11 @@ jobs:
           docker push "$IMAGE:latest"
 
   dependency-scan:
-    name: Dependency scan (report)
+    # Code scanning (the Security tab) isn't available for private personal repositories, so findings go to the job
+    # summary and a SARIF artifact instead, and the job fails when there are any
+    name: Dependency scan
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: read
-      # code-scanning uploads read the workflow run; private repositories need this explicitly
-      actions: read
-      security-events: write
     steps:
       - uses: actions/checkout@v4
       - name: Scan lockfiles and poms
@@ -178,12 +175,24 @@ jobs:
           scan-ref: .
           scanners: vuln
           severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
           ignore-unfixed: true
           format: sarif
           output: trivy-fs.sarif
-      - name: Upload to code scanning
+      - uses: actions/upload-artifact@v4
         if: always() && hashFiles('trivy-fs.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: trivy-fs.sarif
-          category: trivy-fs
+          name: trivy-fs-sarif
+          path: trivy-fs.sarif
+          retention-days: 14
+      - name: Report findings
+        run: |
+          count=$(jq '[.runs[].results[]] | length' trivy-fs.sarif)
+          {
+            echo "### Dependency scan: $count HIGH/CRITICAL fixable vulnerabilities"
+            if [ "$count" -gt 0 ]; then
+              echo; echo "| Rule | File | Details |"; echo "|---|---|---|"
+              jq -r '.runs[].results[] | "| \(.ruleId) | \(.locations[0].physicalLocation.artifactLocation.uri) | \(.message.text | split("\n") | map(select(test("Package|Installed|Fixed|Severity"))) | join("; ")) |"' trivy-fs.sarif
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$count" -gt 0 ]; then echo "::error::$count fixable HIGH/CRITICAL vulnerabilities; see the job summary"; exit 1; fi

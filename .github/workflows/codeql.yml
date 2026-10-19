@@ -15,11 +15,10 @@ jobs:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Code scanning (the Security tab) isn't available for private personal repositories, so results go to the job
+    # summary and a SARIF artifact instead, and the job fails when there are any
     permissions:
       contents: read
-      # code-scanning uploads read the workflow run; private repositories need this explicitly
-      actions: read
-      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -52,3 +51,25 @@ jobs:
       - uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
+          upload: never
+          output: sarif-results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-${{ matrix.language }}-sarif
+          path: sarif-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Report findings
+        run: |
+          count=$(jq -s '[.[].runs[].results[]] | length' sarif-results/*.sarif)
+          {
+            echo "### CodeQL (${{ matrix.language }}): $count findings"
+            if [ "$count" -gt 0 ]; then
+              echo; echo "| Rule | Location | Message |"; echo "|---|---|---|"
+              jq -r '.runs[].results[] | "| \(.ruleId) | \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine) | \(.message.text | split("\n")[0] | gsub("\\|"; "/")) |"' sarif-results/*.sarif
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$count" -gt 0 ]; then echo "::error::CodeQL found $count issues; see the job summary"; exit 1; fi
