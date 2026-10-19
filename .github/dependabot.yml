@@ -6,6 +6,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      # Spring Cloud 2025.1 is built against Spring Boot 4.0; move to Boot 4.1 together with the Spring Cloud release
+      # train that supports it, by hand
+      - dependency-name: "org.springframework.boot:spring-boot-starter-parent"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       maven-minor-patch:
         update-types: [minor, patch]
@@ -15,6 +20,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    ignore:
+      # Node's type definitions follow the Node version the app is built with (22, as in CI and the Dockerfile)
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
@@ -41,6 +50,13 @@ updates:
       - "/web-app"
     schedule:
       interval: weekly
+    ignore:
+      # Major versions of Java and Node change the runtime; move between LTS releases deliberately (Java 21 -> 25,
+      # Node 22 -> 24) instead of to whatever is newest
+      - dependency-name: "eclipse-temurin"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       base-images:
         patterns: ["*"]
