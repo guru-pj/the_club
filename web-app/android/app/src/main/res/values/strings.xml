@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">The Club</string>
+    <string name="title_activity_main">The Club</string>
+    <string name="package_name">com.theclub.app</string>
+    <string name="custom_url_scheme">com.theclub.app</string>
+</resources>

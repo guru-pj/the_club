@@ -2,3 +2,5 @@ node_modules
 dist
 e2e/screenshots
 *.log
+android
+src-tauri

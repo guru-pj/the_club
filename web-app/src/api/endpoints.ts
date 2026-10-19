@@ -1,4 +1,4 @@
-import { request } from './client'
+import { nativeRefreshToken, request } from './client'
 import type {
   Activity, ActivityRequest, AppNotification, ApplyVerificationRequest, CheckInResponse, Club, ClubEvent,
   ClubLeaderboard, ClubRequest, CreatePostRequest, EventRegistrationRow, EventRequest, LeaderboardMetric,
@@ -12,8 +12,11 @@ type Paging = { page?: number; size?: number }
 export const authApi = {
   login: (email: string, password: string) =>
     request<TokenResponse>('POST', '/api/v1/auth/login', { body: { email, password }, anonymous: true }),
-  /** Revokes this browser's session; the refresh token travels in the HttpOnly cookie. */
-  logout: () => request<void>('POST', '/api/v1/auth/logout', { anonymous: true }),
+  /** Revokes this session; the refresh token travels in the HttpOnly cookie (browser) or the body (native apps). */
+  logout: () => {
+    const refreshToken = nativeRefreshToken()
+    return request<void>('POST', '/api/v1/auth/logout', { anonymous: true, ...(refreshToken && { body: { refreshToken } }) })
+  },
   /** Revokes every session of the signed-in user (all devices). */
   logoutAll: () => request<void>('POST', '/api/v1/auth/logout-all'),
 }

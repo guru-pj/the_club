@@ -28,7 +28,11 @@ npx vitest run src/lib/format.test.ts         # single test file
 npx oxlint src     # lint (CI uses this exact form)
 npm run build      # tsc -b && vite build
 npm run e2e        # browser flow via playwright-core; needs CHROME_PATH, ADMIN_EMAIL, ADMIN_PASSWORD
+VITE_API_BASE_URL=https://… npm run android:sync   # native build into the Capacitor project (android/)
+npm run macos:build                                 # Tauri app (macOS only, needs Rust)
 ```
+
+The Android (`web-app/android/`, Capacitor) and macOS (`web-app/src-tauri/`, Tauri) apps wrap this same UI, built with `--mode native` (`isNativeApp` in `src/lib/platform.ts`). They call the gateway cross-origin, so they keep the refresh token in app storage and send it in the request body rather than relying on the cookie. Any change to auth or session handling must work in both modes. CI builds them in `.github/workflows/apps.yml`. See `docs/NATIVE_APPS.md`.
 
 Full stack:
 
@@ -63,4 +67,4 @@ Production compose uses `docker compose -f docker-compose.yml` only, without the
 
 ## Docs
 
-`docs/` contains the authoritative reference: `SERVICE_CONTRACTS.md`, `DATABASE_MIGRATIONS.md`, `PRODUCTION.md`, `KUBERNETES.md`, `OBSERVABILITY.md`, `EMAIL_SETUP.md`, `STRAVA_SETUP.md` and `ARCHITECTURE_OVERVIEW.md`. The `*.txt` / `*.md.txt` files in the repo root are early design notes from the initial upload and may not match the current code; prefer `docs/` and the source.
+`docs/` contains the authoritative reference: `SERVICE_CONTRACTS.md`, `DATABASE_MIGRATIONS.md`, `PRODUCTION.md`, `KUBERNETES.md`, `OBSERVABILITY.md`, `NATIVE_APPS.md`, `EMAIL_SETUP.md`, `STRAVA_SETUP.md` and `ARCHITECTURE_OVERVIEW.md`. The `*.txt` / `*.md.txt` files in the repo root are early design notes from the initial upload and may not match the current code; prefer `docs/` and the source.

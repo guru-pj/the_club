@@ -5,6 +5,10 @@ import { defineConfig, loadEnv } from 'vite'
 // In development every /api call is proxied to the gateway, so the browser never needs CORS.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  // The Android and macOS apps load the UI from the device, so they need the gateway's absolute URL
+  if (mode === 'native' && !env.VITE_API_BASE_URL) {
+    throw new Error('Set VITE_API_BASE_URL (e.g. https://club.example.com) to build the native apps')
+  }
   return {
     plugins: [react()],
     server: {

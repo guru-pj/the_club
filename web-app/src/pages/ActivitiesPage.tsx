@@ -6,6 +6,7 @@ import type { Activity } from '../api/types'
 import { ActivityIcon, EditIcon, PlusIcon, RefreshIcon, TrashIcon } from '../components/icons'
 import { useToast } from '../components/Toast'
 import { Badge, Button, Card, EmptyState, ErrorMessage, Loading, Modal, PageHeader, Pagination, Stat, StatusBadge } from '../components/ui'
+import { isNativeApp, webAppUrl } from '../lib/platform'
 import { formatDate, formatDateTime, formatDistance, formatDuration, formatPace, humanize } from '../lib/format'
 import { useAsync } from '../lib/useAsync'
 import { ActivityForm } from './account/ActivityForm'
@@ -104,7 +105,13 @@ function StravaCard({ onSynced }: { onSynced: () => void }) {
           <p className="muted small">Connect Strava to bring your runs and rides into The Club automatically.</p>
           {notConfigured
             ? <p className="muted small">Strava isn't configured on this server.</p>
-            : <Button variant="accent" loading={busy === 'connect'} onClick={connect}>Connect with Strava</Button>}
+            : isNativeApp
+              // Strava redirects back to the web app, which must finish the connection in a signed-in browser
+              ? <>
+                  <p className="muted small">Connect Strava once on the website{webAppUrl && <> at <strong>{webAppUrl}</strong></>}, then come back here.</p>
+                  <Button variant="secondary" onClick={reload}><RefreshIcon size={16} />Check again</Button>
+                </>
+              : <Button variant="accent" loading={busy === 'connect'} onClick={connect}>Connect with Strava</Button>}
         </div>
       )}
       {data?.connected && notConfigured && <p className="muted small" style={{ marginTop: 8 }}>Strava isn't configured on this server.</p>}

@@ -1,3 +1,4 @@
+import { isNativeApp } from '../lib/platform'
 import type { TokenResponse } from './types'
 
 /** RFC 7807 error returned by every service, with optional per-field validation messages. */
@@ -23,12 +24,15 @@ export class ApiError extends Error {
 // Session tokens. The access token lives in memory only; the refresh token is an HttpOnly cookie
 // (theclub_refresh, Path=/api/v1/auth) that scripts can't read. A page reload restores the session by
 // calling /refresh, which uses that cookie.
+// The native apps (isNativeApp) call the API cross-origin, where that cookie is never sent. They keep the refresh
+// token in the app's own sandboxed storage and send it in the request body instead.
 
 /** Refresh this long before the access token expires. */
 const REFRESH_AHEAD_MS = 60_000
 const MIN_REFRESH_DELAY_MS = 5_000
 const LEGACY_STORAGE_KEY = 'theclub.tokens'
 const CHANNEL_NAME = 'theclub-auth'
+const NATIVE_REFRESH_KEY = 'theclub.native.refresh'
 
 type AuthMessage = { type: 'logout' } | { type: 'token'; accessToken: string; expiresIn: number }
 
@@ -54,6 +58,26 @@ function broadcast(message: AuthMessage) {
   }
 }
 
+/** The stored refresh token in the native apps; always null in the browser. */
+export function nativeRefreshToken(): string | null {
+  if (!isNativeApp) return null
+  try {
+    return globalThis.localStorage?.getItem(NATIVE_REFRESH_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+function storeNativeRefreshToken(token: string | null) {
+  if (!isNativeApp) return
+  try {
+    if (token) globalThis.localStorage?.setItem(NATIVE_REFRESH_KEY, token)
+    else globalThis.localStorage?.removeItem(NATIVE_REFRESH_KEY)
+  } catch {
+    // storage unavailable
+  }
+}
+
 function scheduleRefresh(expiresInSeconds: number | undefined) {
   clearTimeout(refreshTimer)
   refreshTimer = undefined
@@ -64,14 +88,19 @@ function scheduleRefresh(expiresInSeconds: number | undefined) {
 
 function apply(token: string | null, expiresInSeconds?: number) {
   accessToken = token
+  if (!token) storeNativeRefreshToken(null)
   scheduleRefresh(expiresInSeconds)
   listeners.forEach((l) => l(token))
 }
 
 export const tokenStore = {
   get: () => accessToken,
-  /** Stores a new access token (and tells other tabs), or clears it with `null`. */
-  set(token: string | null, expiresInSeconds?: number) {
+  /**
+   * Stores a new access token (and tells other tabs), or clears it with `null`.
+   * `refreshToken` is kept only by the native apps; browsers rely on the cookie.
+   */
+  set(token: string | null, expiresInSeconds?: number, refreshToken?: string) {
+    if (refreshToken) storeNativeRefreshToken(refreshToken)
     apply(token, expiresInSeconds)
     if (token && expiresInSeconds) broadcast({ type: 'token', accessToken: token, expiresIn: expiresInSeconds })
   },
@@ -106,11 +135,17 @@ let refreshing: Promise<boolean> | null = null
 export function refreshTokens(): Promise<boolean> {
   refreshing ??= (async () => {
     const before = accessToken
+    const stored = nativeRefreshToken()
     try {
-      const res = await fetch(`${BASE}/api/v1/auth/refresh`, { method: 'POST', credentials: 'same-origin' })
+      if (isNativeApp && !stored) return false
+      const res = await fetch(`${BASE}/api/v1/auth/refresh`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        ...(stored && { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: stored }) }),
+      })
       if (res.ok) {
         const body = (await res.json()) as TokenResponse
-        tokenStore.set(body.accessToken, body.expiresIn)
+        tokenStore.set(body.accessToken, body.expiresIn, body.refreshToken)
         return true
       }
       // Another tab may have rotated the cookie first and shared its token with us meanwhile.

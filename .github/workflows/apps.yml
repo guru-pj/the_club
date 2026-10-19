@@ -1,0 +1,93 @@
+name: Native apps
+
+# Builds the Android APK (Capacitor) and the macOS app (Tauri) from web-app/. Both bundle the UI and call the
+# gateway at APP_API_BASE_URL, so set that repository variable (Settings → Secrets and variables → Actions →
+# Variables), e.g. https://club.example.com. APP_WEB_URL (optional) is shown where a flow must finish on the website.
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: "Gateway URL the apps call (defaults to the APP_API_BASE_URL variable)"
+        required: false
+      web_app_url:
+        description: "Website URL (defaults to the APP_WEB_URL variable)"
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - "web-app/**"
+      - ".github/workflows/apps.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VITE_API_BASE_URL: ${{ inputs.api_base_url || vars.APP_API_BASE_URL }}
+  VITE_WEB_APP_URL: ${{ inputs.web_app_url || vars.APP_WEB_URL }}
+
+jobs:
+  android:
+    name: Android APK
+    if: inputs.api_base_url != '' || vars.APP_API_BASE_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
+      - run: npm ci
+      - name: Build UI and sync it into the Android project
+        run: npm run android:sync
+      - name: Build APK
+        working-directory: web-app/android
+        run: ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-club-android
+          path: web-app/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+  macos:
+    name: macOS app
+    if: inputs.api_base_url != '' || vars.APP_API_BASE_URL != ''
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: web-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web-app/src-tauri
+      - run: npm ci
+      - name: Build universal app and disk image (Apple Silicon + Intel)
+        run: npx tauri build --target universal-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-club-macos
+          path: web-app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 14

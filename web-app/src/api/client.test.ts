@@ -174,4 +174,44 @@ describe('api client', () => {
     expect(decodeToken(`x.${payload}.y`)?.roles).toEqual(['USER', 'CLUB_OWNER'])
     expect(decodeToken('garbage')).toBeNull()
   })
+
+  describe('native apps', () => {
+    beforeEach(() => vi.stubEnv('VITE_NATIVE', 'true'))
+    afterEach(() => vi.unstubAllEnvs())
+
+    it('sends the stored refresh token in the body and stores the rotated one', async () => {
+      storage.getItem.mockReturnValue('stored-refresh')
+      const fetchMock = vi.fn().mockImplementation(async () =>
+        jsonResponse(200, { ...tokenBody('n1'), refreshToken: 'rotated-refresh' }))
+      vi.stubGlobal('fetch', fetchMock)
+      const { refreshTokens, tokenStore } = await import('./client')
+
+      expect(await refreshTokens()).toBe(true)
+
+      expect(tokenStore.get()).toBe('n1')
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ refreshToken: 'stored-refresh' })
+      expect(storage.setItem).toHaveBeenCalledWith('theclub.native.refresh', 'rotated-refresh')
+    })
+
+    it('does not call the server when no refresh token is stored, and can retry later', async () => {
+      storage.getItem.mockReturnValue(null)
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      const { refreshTokens } = await import('./client')
+
+      expect(await refreshTokens()).toBe(false)
+      expect(await refreshTokens()).toBe(false)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('forgets the stored refresh token on sign-out', async () => {
+      const { tokenStore } = await import('./client')
+
+      tokenStore.set('a', 900, 'r')
+      tokenStore.clearEverywhere()
+
+      expect(storage.setItem).toHaveBeenCalledWith('theclub.native.refresh', 'r')
+      expect(storage.removeItem).toHaveBeenCalledWith('theclub.native.refresh')
+    })
+  })
 })
