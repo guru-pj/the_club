@@ -1,0 +1,7 @@
+# CodeQL configuration used by .github/workflows/codeql.yml
+query-filters:
+  # Every service is a stateless bearer-token API, so Spring's CSRF tokens don't apply. The only cookie read anywhere
+  # is the refresh token (auth-service RefreshCookies): HttpOnly, SameSite=Strict and scoped to /api/v1/auth, so
+  # browsers never attach it to cross-site requests. Revisit this if a cookie- or session-authenticated endpoint is added.
+  - exclude:
+      id: java/spring-disabled-csrf-protection
