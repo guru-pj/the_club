@@ -1,6 +1,6 @@
 package com.theclub.notificationservice.email;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.notificationservice.config.MailProperties;
 import com.theclub.notificationservice.dto.EmailAttachment;
 import org.junit.jupiter.api.BeforeEach;

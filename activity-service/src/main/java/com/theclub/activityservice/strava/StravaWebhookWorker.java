@@ -1,7 +1,7 @@
 package com.theclub.activityservice.strava;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.activityservice.model.StravaWebhookEventRecord;
 import com.theclub.activityservice.model.StravaWebhookEventRecord.Status;
 import com.theclub.activityservice.repository.StravaWebhookEventRepository;

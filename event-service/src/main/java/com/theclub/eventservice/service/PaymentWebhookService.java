@@ -1,7 +1,8 @@
 package com.theclub.eventservice.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.model.PaymentWebhookEvent;
 import com.theclub.eventservice.payment.PaymentGateway;
@@ -11,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
@@ -56,7 +56,7 @@ public class PaymentWebhookService {
         JsonNode root;
         try {
             root = objectMapper.readTree(rawBody);
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             throw ApiException.badRequest("Webhook body is not valid JSON");
         }
         String type = root.path("event").asText("");

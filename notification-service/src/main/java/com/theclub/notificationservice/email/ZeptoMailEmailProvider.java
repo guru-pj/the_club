@@ -1,7 +1,8 @@
 package com.theclub.notificationservice.email;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.notificationservice.config.MailProperties;
 import com.theclub.notificationservice.dto.EmailAttachment;
 import org.springframework.http.HttpHeaders;
@@ -130,7 +131,7 @@ public class ZeptoMailEmailProvider implements EmailProvider {
         try {
             JsonNode node = json.readTree(raw).get(field);
             return node == null || node.isNull() ? null : node.asText();
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             return null;
         }
     }
@@ -149,7 +150,7 @@ public class ZeptoMailEmailProvider implements EmailProvider {
             }
             String described = (code + " " + message).trim();
             return described.isEmpty() ? "no error details" : described;
-        } catch (IOException e) {
+        } catch (JacksonException e) {
             return "unparseable error body";
         }
     }

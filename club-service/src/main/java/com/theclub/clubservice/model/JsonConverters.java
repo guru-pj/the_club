@@ -1,8 +1,8 @@
 package com.theclub.clubservice.model;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 
@@ -24,7 +24,7 @@ public final class JsonConverters {
     private static String write(Object value) {
         try {
             return MAPPER.writeValueAsString(value);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Cannot serialize value to JSON", e);
         }
     }
@@ -32,7 +32,7 @@ public final class JsonConverters {
     private static <T> T read(String json, TypeReference<T> type) {
         try {
             return MAPPER.readValue(json, type);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Cannot read JSON column", e);
         }
     }

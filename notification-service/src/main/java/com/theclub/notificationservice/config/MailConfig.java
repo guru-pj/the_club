@@ -1,6 +1,6 @@
 package com.theclub.notificationservice.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.theclub.notificationservice.email.EmailProvider;
 import com.theclub.notificationservice.email.LogEmailProvider;
 import com.theclub.notificationservice.email.SmtpEmailProvider;
