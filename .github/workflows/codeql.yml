@@ -19,6 +19,8 @@ jobs:
     # summary and a SARIF artifact instead, and the job fails when there are any
     permissions:
       contents: read
+      # the CodeQL action reads its own workflow run even when it doesn't upload
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -38,7 +40,7 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -48,7 +50,7 @@ jobs:
         if: matrix.build-mode == 'manual'
         run: mvn -B -ntp -DskipTests package
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"
           upload: never
