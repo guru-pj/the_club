@@ -92,3 +92,8 @@ backup/
 # Deployment secrets (scripts/generate-secrets.sh) and local database dumps
 secrets/
 backups/
+
+# Android release signing key (kept outside the repo; see docs/NATIVE_APPS.md)
+*.keystore
+*.jks
+keystore.b64

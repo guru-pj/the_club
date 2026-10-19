@@ -3,6 +3,10 @@ name: Native apps
 # Builds the Android APK (Capacitor) and the macOS app (Tauri) from web-app/. Both bundle the UI and call the
 # gateway at APP_API_BASE_URL, so set that repository variable (Settings → Secrets and variables → Actions →
 # Variables), e.g. https://club.example.com. APP_WEB_URL (optional) is shown where a flow must finish on the website.
+#
+# Pushing a tag app-vX.Y.Z publishes a GitHub Release with TheClub-android.apk and TheClub-macos.dmg, also
+# reachable at …/releases/latest/download/<file>. Other runs only upload workflow artifacts (test builds).
+# Step-by-step guide: docs/NATIVE_APPS.md
 on:
   workflow_dispatch:
     inputs:
@@ -14,6 +18,7 @@ on:
         required: false
   push:
     branches: [main]
+    tags: ["app-v*"]
     paths:
       - "web-app/**"
       - ".github/workflows/apps.yml"
@@ -23,18 +28,43 @@ permissions:
 
 concurrency:
   group: apps-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
   VITE_API_BASE_URL: ${{ inputs.api_base_url || vars.APP_API_BASE_URL }}
   VITE_WEB_APP_URL: ${{ inputs.web_app_url || vars.APP_WEB_URL }}
+  IS_RELEASE: ${{ startsWith(github.ref, 'refs/tags/app-v') }}
+  # Android needs an ever-increasing versionCode for updates; the run number only grows
+  APP_VERSION_CODE: ${{ github.run_number }}
 
 jobs:
-  android:
-    name: Android APK
+  version:
+    name: Version
     if: inputs.api_base_url != '' || vars.APP_API_BASE_URL != ''
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: |
+          if [ "$IS_RELEASE" = true ]; then
+            version="${GITHUB_REF_NAME#app-v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Release tags must look like app-v1.2.3 (got $GITHUB_REF_NAME)"; exit 1
+            fi
+          else
+            version="0.0.$GITHUB_RUN_NUMBER"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building version $version (versionCode $APP_VERSION_CODE)"
+
+  android:
+    name: Android APK
+    needs: version
+    runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      APP_VERSION: ${{ needs.version.outputs.version }}
     defaults:
       run:
         working-directory: web-app
@@ -55,16 +85,34 @@ jobs:
         run: npm run android:sync
       - name: Build APK
         working-directory: web-app/android
-        run: ./gradlew --no-daemon assembleDebug
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/release.keystore"
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
+            ./gradlew --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/TheClub-android.apk"
+          elif [ "$IS_RELEASE" = true ]; then
+            echo "::error::Releases must be signed with the permanent keystore: add the ANDROID_KEYSTORE_* secrets (docs/NATIVE_APPS.md)"
+            exit 1
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: this test build is debug-signed and can't update a release install"
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/TheClub-android.apk"
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: the-club-android
-          path: web-app/android/app/build/outputs/apk/debug/*.apk
+          path: ${{ runner.temp }}/TheClub-android.apk
           retention-days: 14
 
   macos:
     name: macOS app
-    if: inputs.api_base_url != '' || vars.APP_API_BASE_URL != ''
+    needs: version
     runs-on: macos-latest
     timeout-minutes: 45
     defaults:
@@ -85,9 +133,46 @@ jobs:
           workspaces: web-app/src-tauri
       - run: npm ci
       - name: Build universal app and disk image (Apple Silicon + Intel)
-        run: npx tauri build --target universal-apple-darwin
+        run: |
+          npx tauri build --target universal-apple-darwin --config '{"version":"${{ needs.version.outputs.version }}"}'
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg "$RUNNER_TEMP/TheClub-macos.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: the-club-macos
-          path: web-app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          path: ${{ runner.temp }}/TheClub-macos.dmg
           retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/app-v')
+    needs: [version, android, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          cd out
+          sha256sum TheClub-android.apk TheClub-macos.dmg > SHA256SUMS.txt
+          cat > notes.md <<EOF
+          ## The Club ${VERSION}
+
+          | | Download | Requires |
+          |---|---|---|
+          | Android | [TheClub-android.apk](${REPO_URL}/releases/download/${GITHUB_REF_NAME}/TheClub-android.apk) | Android 7.0 or later |
+          | macOS | [TheClub-macos.dmg](${REPO_URL}/releases/download/${GITHUB_REF_NAME}/TheClub-macos.dmg) | macOS 13 or later, Apple Silicon or Intel |
+
+          Always-current links: \`${REPO_URL}/releases/latest/download/TheClub-android.apk\` and \`…/TheClub-macos.dmg\`.
+
+          How to install: [docs/NATIVE_APPS.md](${REPO_URL}/blob/${GITHUB_REF_NAME}/docs/NATIVE_APPS.md#installing-on-android).
+          EOF
+          gh release create "$GITHUB_REF_NAME" TheClub-android.apk TheClub-macos.dmg SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --title "The Club $VERSION" --notes-file notes.md

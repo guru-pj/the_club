@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// CI sets these for releases (see .github/workflows/apps.yml and docs/NATIVE_APPS.md). versionCode must grow with
+// every release, and every release must be signed with the same keystore, or Android refuses to install the update.
+def env = System.getenv()
+def releaseKeystore = env.ANDROID_KEYSTORE_FILE
+
 android {
     namespace = "com.theclub.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +12,8 @@ android {
         applicationId "com.theclub.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode((env.APP_VERSION_CODE ?: "1").toInteger())
+        versionName env.APP_VERSION ?: "0.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +21,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseKeystore) {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword env.ANDROID_KEYSTORE_PASSWORD
+                keyAlias env.ANDROID_KEY_ALIAS
+                keyPassword env.ANDROID_KEY_PASSWORD
+            }
+        }
+    }
     buildTypes {
         release {
+            if (releaseKeystore) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
