@@ -8,7 +8,7 @@
 ## ⚙️ Tech Stack
 
 - **Java 21**
-- **Spring Boot 3.5.7**
+- **Spring Boot 4.0** (Spring Framework 7, Jackson 3)
 - **Spring Cloud (Eureka, Gateway, Config Server)**
 - **MySQL + PostgreSQL** (for data persistence)
 - **Trino** (for federated query access)

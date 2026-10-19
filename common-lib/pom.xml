@@ -59,13 +59,11 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!-- Since Spring Boot 4 the OpenTelemetry bridge and OTLP exporter are only auto-configured by this starter;
+             the bare micrometer-tracing-bridge-otel and opentelemetry-exporter-otlp libraries export nothing -->
         <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-tracing-bridge-otel</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.opentelemetry</groupId>
-            <artifactId>opentelemetry-exporter-otlp</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
         </dependency>
         <!-- Only needed by services that use Feign clients; the interceptor config is conditional on it. -->
         <dependency>

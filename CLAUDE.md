@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-The Club: a fitness-club platform. It is a Maven multi-module of Spring Boot 3.5.7 microservices (Java 21, Spring Cloud 2025.0) plus a React 19 + TypeScript + Vite SPA in `web-app/`. Everything runs under Docker Compose; Kubernetes is supported via the Helm chart in `deploy/helm/the-club`.
+The Club: a fitness-club platform. It is a Maven multi-module of Spring Boot 4.0 microservices (Java 21, Spring Cloud 2025.1, Jackson 3) plus a React 19 + TypeScript + Vite SPA in `web-app/`. Everything runs under Docker Compose; Kubernetes is supported via the Helm chart in `deploy/helm/the-club`.
 
 ## Commands
 
@@ -14,9 +14,11 @@ Backend (from the repo root; never run `mvn` or the scripts with `sudo`, because
 mvn clean install -DskipTests                 # build all modules (common-lib must be installed before services build alone)
 mvn -B -ntp verify                            # what CI runs
 mvn -pl event-service -am test                # one service (with its common-lib dependency)
-mvn -pl event-service test -Dtest=PaymentServiceTest              # one test class
-mvn -pl event-service test -Dtest=PaymentServiceTest#methodName   # one test method
+mvn -pl event-service -am test -Dtest=PaymentServiceTest -Dsurefire.failIfNoSpecifiedTests=false             # one test class
+mvn -pl event-service -am test -Dtest='PaymentServiceTest#methodName' -Dsurefire.failIfNoSpecifiedTests=false # one method
 ```
+
+Always keep `-am` with `-pl`. Without it Maven uses the parent POM and `common-lib` from `~/.m2`. If those are stale (for example after a version bump), Maven only warns "The POM for com.theclub:common-lib ... is invalid" and drops all of common-lib's transitive dependencies.
 
 Web app (`cd web-app`, Node 22):
 
@@ -63,6 +65,14 @@ Production compose uses `docker compose -f docker-compose.yml` only, without the
 - **IDs:** UUIDv7 from `com.theclub.common.util.UuidGenerator`, mapped as `CHAR(36)` with `@JdbcTypeCode(SqlTypes.CHAR)`.
 - **Time:** `LocalDateTime` in `APP_TIME_ZONE` (default `Asia/Kolkata`). Always get "now" from the injected `java.time.Clock` (tests use `MutableClock`), never `LocalDateTime.now()`.
 - **Schema is owned by Flyway** (`<service>/src/main/resources/db/migration`, `V<n>__desc.sql`). Hibernate runs `ddl-auto: validate`. Never edit an applied migration; add a new one. Enums are `VARCHAR` columns. SQL must also run on H2 in MySQL/PostgreSQL mode, because tests use H2. See `docs/DATABASE_MIGRATIONS.md`.
+- **Spring Boot 4 splits auto-configuration into modules.** A missing one fails silently or at startup, not at compile time:
+  - `spring-boot-starter-flyway`: without it, migrations simply don't run.
+  - `spring-boot-starter-restclient`: provides `RestClient.Builder`.
+  - `spring-boot-starter-opentelemetry` (in `common-lib` and the gateway): without it, tracing exports nothing.
+  - the `*-test` modules: MockMvc, WebTestClient, `TestRestTemplate`, metrics and tracing.
+
+  Properties renamed in Boot 4 are no longer read at all. Check a module's `META-INF/spring-configuration-metadata.json` instead of trusting old names. Tracing uses `management.tracing.export.enabled` and `management.opentelemetry.tracing.export.otlp.endpoint` (fed by `TRACING_ENABLED` and `OTEL_EXPORTER_OTLP_ENDPOINT`). `TracingExportTest` and `GatewayTracingExportTest` prove spans reach a collector.
+- **Jackson 3:** `ObjectMapper`/`JsonNode` come from `tools.jackson.databind`, and `JacksonException` is unchecked. Annotations stay in `com.fasterxml.jackson.annotation`. Every service sets `spring.jackson.use-jackson2-defaults: true`, so API JSON behaves as it did under Jackson 2; for example, missing primitive fields aren't rejected.
 - **Tests:** unit tests are `*Test`; Spring MockMvc + H2 tests with profile `test` are `*IntegrationTest`, with downstream Feign clients mocked. `*MigrationIntegrationTest` runs migrations against real MySQL/Postgres via Testcontainers and is skipped when Docker isn't available. Test JWT keys live in each service's `src/test/resources`.
 - **Helm copies of scripts:** CI diffs `docker/mysql/initdb/01-service-users.sh`, `docker/postgres/initdb/01-service-user.sh` and `scripts/backup.sh` against their copies in `deploy/helm/the-club/files/`. Update both when changing either.
 
