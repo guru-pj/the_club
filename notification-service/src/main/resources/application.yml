@@ -74,12 +74,16 @@ management:
         http.server.requests: 100ms,300ms,1s,3s
   tracing:
     # Spans are exported only where an OpenTelemetry collector runs (docker-compose.observability.yml, Helm chart)
-    enabled: ${TRACING_ENABLED:false}
+    export:
+      enabled: ${TRACING_ENABLED:false}
     sampling:
       probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
-  otlp:
+  # Spring Boot 4 names (management.tracing.enabled / management.otlp.tracing.endpoint are no longer read)
+  opentelemetry:
     tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
   # Keep the service healthy when SMTP is down: email is best-effort.
   health:
     mail:
