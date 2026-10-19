@@ -13,12 +13,15 @@
     "build:native": "tsc -b && vite build --mode native",
     "android:sync": "npm run build:native && cap sync android",
     "android:open": "cap open android",
+    "ios:sync": "npm run build:native && cap sync ios",
+    "ios:open": "cap open ios",
     "macos:dev": "tauri dev",
     "macos:build": "tauri build"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
     "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
     "html5-qrcode": "^2.3.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

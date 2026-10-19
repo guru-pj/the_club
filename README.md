@@ -45,7 +45,7 @@ Internal APIs, security model and conventions: [`docs/SERVICE_CONTRACTS.md`](doc
 
 ## 🖥️ Web App
 
-> **Android and macOS apps** wrap this same UI (Capacitor and Tauri). Tagging `app-vX.Y.Z` publishes them as a GitHub Release. [`docs/NATIVE_APPS.md`](docs/NATIVE_APPS.md) covers publishing, downloading and installing, step by step.
+> **Android, iOS and macOS apps** wrap this same UI (Capacitor and Tauri). Tagging `app-vX.Y.Z` publishes Android and macOS as a GitHub Release and uploads iOS to TestFlight. [`docs/NATIVE_APPS.md`](docs/NATIVE_APPS.md) covers publishing, downloading and installing, step by step.
 
 `web-app/` is a React + TypeScript single-page app (Vite) covering every Phase 1 + 2 feature:
 

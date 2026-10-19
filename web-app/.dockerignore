@@ -4,3 +4,4 @@ e2e/screenshots
 *.log
 android
 src-tauri
+ios

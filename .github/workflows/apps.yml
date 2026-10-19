@@ -1,11 +1,12 @@
 name: Native apps
 
-# Builds the Android APK (Capacitor) and the macOS app (Tauri) from web-app/. Both bundle the UI and call the
+# Builds the Android APK and iOS app (Capacitor) and the macOS app (Tauri) from web-app/. Both bundle the UI and call the
 # gateway at APP_API_BASE_URL, so set that repository variable (Settings → Secrets and variables → Actions →
 # Variables), e.g. https://club.example.com. APP_WEB_URL (optional) is shown where a flow must finish on the website.
 #
 # Pushing a tag app-vX.Y.Z publishes a GitHub Release with TheClub-android.apk and TheClub-macos.dmg, also
-# reachable at …/releases/latest/download/<file>. Other runs only upload workflow artifacts (test builds).
+# reachable at …/releases/latest/download/<file>, and uploads the iOS app to TestFlight when the App Store Connect
+# secrets are set. Other runs only upload workflow artifacts (test builds; iOS as a Simulator build).
 # Step-by-step guide: docs/NATIVE_APPS.md
 on:
   workflow_dispatch:
@@ -142,6 +143,80 @@ jobs:
           path: ${{ runner.temp }}/TheClub-macos.dmg
           retention-days: 14
 
+  ios:
+    name: iOS app
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      APP_VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: web-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
+      - run: npm ci
+      - name: Build UI and sync it into the iOS project
+        run: npm run ios:sync
+      - name: Build for the iOS Simulator (unsigned)
+        working-directory: web-app/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_VERSION_CODE" build
+          cd "$RUNNER_TEMP/dd/Build/Products/Release-iphonesimulator"
+          zip -qry "$RUNNER_TEMP/TheClub-ios-simulator.zip" App.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: the-club-ios-simulator
+          path: ${{ runner.temp }}/TheClub-ios-simulator.zip
+          retention-days: 14
+      # iPhones only install apps signed by Apple, so releases go to TestFlight instead of the GitHub Release
+      - name: Sign and upload to TestFlight
+        if: env.IS_RELEASE == 'true'
+        working-directory: web-app/ios/App
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_KEY_P8_BASE64 }}
+        run: |
+          if [ -z "$ASC_KEY_P8_BASE64" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::warning::No App Store Connect secrets: the iOS build was not uploaded to TestFlight (docs/NATIVE_APPS.md)"
+            exit 0
+          fi
+          key="$RUNNER_TEMP/AuthKey.p8"
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$key"
+          # Xcode creates the certificates and profiles itself through the App Store Connect API key
+          auth=(-allowProvisioningUpdates -authenticationKeyPath "$key"
+                -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/TheClub.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="$APP_VERSION" CURRENT_PROJECT_VERSION="$APP_VERSION_CODE" \
+            "${auth[@]}" archive
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/TheClub.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" "${auth[@]}"
+          echo "Uploaded build $APP_VERSION ($APP_VERSION_CODE). It appears in TestFlight after Apple finishes processing."
+
   release:
     name: Publish GitHub Release
     if: startsWith(github.ref, 'refs/tags/app-v')
@@ -169,6 +244,8 @@ jobs:
           |---|---|---|
           | Android | [TheClub-android.apk](${REPO_URL}/releases/download/${GITHUB_REF_NAME}/TheClub-android.apk) | Android 7.0 or later |
           | macOS | [TheClub-macos.dmg](${REPO_URL}/releases/download/${GITHUB_REF_NAME}/TheClub-macos.dmg) | macOS 13 or later, Apple Silicon or Intel |
+
+          iPhone and iPad: install **The Club** from TestFlight (ask a club admin for an invite).
 
           Always-current links: \`${REPO_URL}/releases/latest/download/TheClub-android.apk\` and \`…/TheClub-macos.dmg\`.
 
