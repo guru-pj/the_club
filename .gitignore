@@ -9,6 +9,8 @@
 # ----------------------------
 # Contains passwords, API keys, DB URLs — never commit this!
 .env
+# Copies of .env (e.g. before an upgrade) hold the same settings and must not be committed either
+.env.backup*
 
 # ----------------------------
 # 🏗️ 2. MAVEN / SPRING BOOT BUILDS

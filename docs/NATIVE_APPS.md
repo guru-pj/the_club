@@ -192,7 +192,19 @@ adb install TheClub-android.apk
 
 ### Installing on iPhone and iPad
 
-Works on iOS and iPadOS 15 and later. The app comes through Apple's **TestFlight** app, not as a download link.
+iPhones and iPads only install apps signed by Apple, so there's no file to download as there is for Android. There are three ways to get **The Club** onto one:
+
+| | Who it's for | You need | How long it keeps working |
+|---|---|---|---|
+| **[A. TestFlight](#option-a--testflight-club-members)** | Club members | An invitation from your club. The club needs an Apple Developer membership ([Part 1, step 5](#step-5--set-up-testflight-for-iphone-and-ipad-once-optional)) | 90 days per build; new builds arrive as updates |
+| **[B. From a Mac with Xcode](#option-b--install-from-a-mac-with-xcode-your-own-iphone)** | Developers, or trying it on your own phone | A Mac with Xcode, a cable and an Apple ID (a free one works) | 7 days with a free Apple ID, 1 year with a paid membership |
+| **[C. iOS Simulator](#option-c--ios-simulator-no-iphone-needed)** | Trying it without an iPhone | A Mac with Xcode | No limit |
+
+Works on iOS and iPadOS 15 and later.
+
+> **Status:** the iOS project builds in CI: the unsigned Simulator build passes on GitHub's Mac runners. Signing, TestFlight upload and installing on a real iPhone haven't been run yet, because they need an Apple account. Expect small adjustments the first time.
+
+#### Option A — TestFlight (club members)
 
 1. **Install TestFlight.** On the iPhone, open the **App Store**, search for **TestFlight** (by Apple) and tap **Get**.
 2. **Accept the invitation.** Either:
@@ -205,6 +217,52 @@ Works on iOS and iPadOS 15 and later. The app comes through Apple's **TestFlight
 **Updates:** TestFlight notifies you of new builds. Open **TestFlight** → **The Club** → **Update**. To update automatically, switch on **Automatic Updates** on the app's page in TestFlight.
 
 **Expired build:** a TestFlight build stops opening after 90 days. Install the newest build from TestFlight.
+
+#### Option B — Install from a Mac with Xcode (your own iPhone)
+
+This puts the app straight onto an iPhone plugged into your Mac. It needs no Apple Developer membership and no TestFlight.
+
+**You need:**
+- a Mac with **Xcode 16 or later** (free from the Mac App Store; open it once so it installs its components);
+- **Node.js 22** (`brew install node@22`);
+- an iPhone on iOS 15 or later, and a USB or USB-C cable;
+- an **Apple ID**.
+
+**Steps:**
+
+1. **Get the code on the Mac** and set the server the app should use:
+   ```bash
+   git clone https://github.com/guru-pj/the_club.git && cd the_club/web-app
+   echo 'VITE_API_BASE_URL=https://club.example.com' > .env.native.local   # your server's public address
+   ```
+   For a backend running on that same Mac, use `http://<your-mac-name>.local:8080` instead. Find the name under **System Settings** → **General** → **Sharing** → *Local hostname*. iOS allows plain HTTP only to local addresses like this, and the gateway port must accept connections from the network (by default `docker-compose.override.yml` publishes it on `127.0.0.1` only).
+2. **Build the app and open it in Xcode:**
+   ```bash
+   npm ci
+   npm run ios:sync
+   npm run ios:open
+   ```
+3. **Add your Apple ID to Xcode:** **Xcode** → **Settings…** → **Accounts** → **+** → **Apple ID**, and sign in.
+4. **Choose who signs the app.** In the left sidebar click **App** (the blue project icon), select the **App** target → **Signing & Capabilities**. Tick **Automatically manage signing** and pick your name under **Team** (a free Apple ID shows as *Personal Team*).
+   If Xcode says *"Failed to register bundle identifier"* or that `com.theclub.app` *is not available*, another Apple team already uses that ID. Change **Bundle Identifier** to something unique, such as `com.yourname.theclub`. Keep that change on your Mac only, and don't commit it.
+5. **Connect the iPhone** with the cable and unlock it. Tap **Trust** when it asks *Trust This Computer?*, then enter your passcode.
+6. **Turn on Developer Mode** (iOS 16 and later; iOS 15 doesn't need it). On the iPhone go to **Settings** → **Privacy & Security** → **Developer Mode**, switch it on and tap **Restart**. After the restart, tap **Turn On** and enter your passcode. The switch only appears once the iPhone has been connected to Xcode.
+7. **Install it.** In Xcode's toolbar, choose your iPhone as the run destination (next to the **App** scheme) and press **Run ▶**. The first build takes a few minutes, because Xcode downloads Swift packages and prepares the device.
+8. **Trust the developer** (free Apple ID only). If the iPhone says *Untrusted Developer*, go to **Settings** → **General** → **VPN & Device Management**, tap your Apple ID under *Developer App*, then **Trust** and **Trust** again. Open **The Club** from the Home Screen.
+9. Sign in with your usual email and password. The camera prompt works as described in Option A.
+
+**Limits with a free Apple ID:** the app stops opening after **7 days**. Plug the iPhone in and press **Run ▶** again to renew it, and your sign-in is kept. You can have at most 3 apps installed this way. With a paid Apple Developer membership the app keeps working for a year.
+
+**Updating:** pull the latest code, run `npm run ios:sync`, and press **Run ▶** again.
+
+**Without the cable next time:** with the iPhone connected, open **Window** → **Devices and Simulators**, select it and tick **Connect via network**. From then on Xcode can install over Wi-Fi when both are on the same network.
+
+#### Option C — iOS Simulator (no iPhone needed)
+
+- **From the code:** follow Option B, steps 1–2, then choose an iPhone simulator (for example *iPhone 16*) in Xcode's toolbar and press **Run ▶**. No Apple ID or signing is needed.
+- **From a CI build:** download the `the-club-ios-simulator` artifact, as described in [Test builds](#test-builds-before-releasing).
+
+The Simulator reaches a backend on the same Mac at `http://localhost:8080`. A simulator build doesn't install on a real iPhone.
 
 ### Installing on macOS
 
@@ -259,6 +317,11 @@ To see which version you have:
 | macOS: **"The Club" can't be opened because Apple cannot check it for malicious software** | Follow step 4 of the macOS install. |
 | iPhone: the TestFlight invite says **not available** or the link shows **This beta is full** / **isn't accepting testers** | Ask a club admin: the build may still be in Beta App Review, the group may be full, or the public link was switched off. |
 | iPhone: **The Club** won't open and TestFlight says the build **expired** | Install the latest build from TestFlight. |
+| Xcode: *Failed to register bundle identifier* / *com.theclub.app is not available* | Another Apple team uses the ID. Change **Bundle Identifier** to something unique on your Mac (Option B, step 4). |
+| Xcode: *Developer Mode disabled* or the iPhone isn't listed as a destination | Unlock the iPhone, tap **Trust This Computer**, and turn on **Developer Mode** (Option B, step 6). |
+| iPhone: *Untrusted Developer* | **Settings** → **General** → **VPN & Device Management** → your Apple ID → **Trust** (Option B, step 8). |
+| iPhone: an app installed from Xcode stopped opening after a week | Free Apple ID installs last 7 days. Connect the iPhone and press **Run ▶** in Xcode again. |
+| iPhone: **Cannot reach the server** with a backend on your Mac | Use `http://<your-mac-name>.local:8080`, not `localhost`, and make sure the gateway port is reachable from the network (Option B, step 1). |
 | Maintainers: the iOS step fails with *No profiles for 'com.theclub.app'* or *Cloud signing permission error* | The API key needs the **Admin** role, and the bundle ID and App Store Connect app must exist (Part 1, step 5). |
 | Maintainers: upload fails with *bundle version must be higher* | Every upload needs a new build number. Re-run the workflow; each run uses a higher number. |
 
@@ -299,7 +362,7 @@ npm run ios:open           # opens ios/App/App.xcodeproj in Xcode
 ```
 In Xcode, choose an iPhone simulator in the toolbar and press **Run ▶**. Swift packages are downloaded on the first build.
 
-The simulator reaches a backend on your Mac at `http://localhost:8080`. Plain HTTP to local addresses is allowed for this; anything else must be HTTPS. To run on your own iPhone, select the **App** target → **Signing & Capabilities** → **Team** (a free Apple ID works for your own device, for 7 days at a time), then pick the phone as the run destination.
+The simulator reaches a backend on your Mac at `http://localhost:8080`. Plain HTTP to local addresses is allowed for this; anything else must be HTTPS. To run it on your own iPhone, follow [Installing on iPhone and iPad → Option B](#option-b--install-from-a-mac-with-xcode-your-own-iphone).
 
 Run `npm run ios:sync` again after every UI change.
 
