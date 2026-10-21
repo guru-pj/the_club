@@ -98,10 +98,22 @@ class RegistrationServiceTest {
     }
 
     @Test
-    void nonMembersCannotRegister() {
+    void anyoneSignedInMayRegisterForAnOpenEvent() {
         when(clubAccess.isMember(clubId, memberId)).thenReturn(false);
 
-        assertStatus(() -> service.register(event.getId(), member), HttpStatus.FORBIDDEN, "Join the club to register");
+        assertThat(service.register(event.getId(), member).status()).isEqualTo(RegistrationStatus.CONFIRMED);
+    }
+
+    @Test
+    void subscriberOnlyEventsNeedASubscription() {
+        event.setSubscribersOnly(true);
+        when(clubAccess.isMember(clubId, memberId)).thenReturn(false);
+
+        assertStatus(() -> service.register(event.getId(), member), HttpStatus.FORBIDDEN,
+                "This event is for the club's subscribers; subscribe to the club to register");
+
+        when(clubAccess.isMember(clubId, memberId)).thenReturn(true);
+        assertThat(service.register(event.getId(), member).status()).isEqualTo(RegistrationStatus.CONFIRMED);
     }
 
     @Test

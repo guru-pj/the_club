@@ -18,6 +18,7 @@ import java.util.UUID;
  * @param registrationOpensAt defaults to now when omitted.
  * @param price               0 or omitted means a free event.
  * @param points              points each member earns on check-in (default 10).
+ * @param subscribersOnly     only the club's subscribers may register (default: anyone signed in).
  */
 public record CreateEventRequest(
         @NotNull UUID clubId,
@@ -30,5 +31,7 @@ public record CreateEventRequest(
         @Min(1) Integer capacity,
         @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal price,
         @Pattern(regexp = "^[A-Z]{3}$", message = "must be a 3-letter ISO currency code") String currency,
-        @Min(0) @Max(1000) Integer points) {
+        @Min(0) @Max(1000) Integer points,
+        @Size(max = 10_000) String rules,
+        Boolean subscribersOnly) {
 }

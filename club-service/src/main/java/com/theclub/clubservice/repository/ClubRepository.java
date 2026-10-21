@@ -25,4 +25,20 @@ public interface ClubRepository extends JpaRepository<Club, UUID> {
 
     @Query("select c from Club c where c.id in (select m.clubId from ClubMembership m where m.userId = :userId) order by c.name")
     List<Club> findJoinedBy(@Param("userId") UUID userId);
+
+    /** Clubs with a map position inside the box; callers compute the exact distance. */
+    @Query("""
+            select c from Club c
+            where c.latitude between :minLat and :maxLat and c.longitude between :minLng and :maxLng
+            """)
+    List<Club> findInBox(@Param("minLat") double minLat, @Param("maxLat") double maxLat,
+                         @Param("minLng") double minLng, @Param("maxLng") double maxLng);
+
+    /** Most subscribers plus followers first. */
+    @Query("""
+            select c from Club c
+            order by ((select count(m) from ClubMembership m where m.clubId = c.id)
+                    + (select count(f) from ClubFollow f where f.clubId = c.id)) desc, c.name
+            """)
+    List<Club> findPopular(Pageable pageable);
 }

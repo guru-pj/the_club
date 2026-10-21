@@ -6,7 +6,9 @@ import com.theclub.clubservice.model.Club;
 import com.theclub.clubservice.model.ClubMembership;
 import com.theclub.clubservice.model.ClubType;
 import com.theclub.clubservice.model.MembershipRole;
+import com.theclub.clubservice.repository.ClubFollowRepository;
 import com.theclub.clubservice.repository.ClubMembershipRepository;
+import com.theclub.clubservice.repository.ClubReviewRepository;
 import com.theclub.clubservice.repository.ClubRepository;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.security.Roles;
@@ -39,6 +41,10 @@ class ClubServiceTest {
     @Mock
     ClubMembershipRepository memberships;
     @Mock
+    ClubFollowRepository follows;
+    @Mock
+    ClubReviewRepository reviews;
+    @Mock
     UserClient userClient;
     @InjectMocks
     ClubService clubService;
@@ -48,7 +54,8 @@ class ClubServiceTest {
     }
 
     private static CreateClubRequest request(String name) {
-        return new CreateClubRequest(name, "Weekend running club", "Chennai", ClubType.RUNNING, null);
+        return new CreateClubRequest(name, "Weekend running club", "Chennai", ClubType.RUNNING, null,
+                null, null, null, null, null);
     }
 
     @Test

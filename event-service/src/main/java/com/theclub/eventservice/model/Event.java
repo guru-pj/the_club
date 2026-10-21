@@ -63,6 +63,17 @@ public class Event {
     /** Null means unlimited. */
     private Integer capacity;
 
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
+    /** Rules and instructions for participants (what to bring, pace groups, cut-off times). */
+    @Column(columnDefinition = "TEXT")
+    private String rules;
+
+    /** Only the club's subscribers (members) may register; otherwise anyone signed in may. */
+    @Column(name = "subscribers_only", nullable = false)
+    private boolean subscribersOnly;
+
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal price = BigDecimal.ZERO;
 
@@ -98,6 +109,25 @@ public class Event {
 
     public boolean isFree() {
         return price == null || price.signum() == 0;
+    }
+
+    public RegistrationState registrationState(LocalDateTime now, Long spotsLeft) {
+        if (status == EventStatus.CANCELLED) {
+            return RegistrationState.CANCELLED;
+        }
+        if (status == EventStatus.COMPLETED || !now.isBefore(startTime)) {
+            return RegistrationState.PAST;
+        }
+        if (now.isBefore(registrationOpensAt)) {
+            return RegistrationState.NOT_YET_OPEN;
+        }
+        if (!now.isBefore(effectiveRegistrationClosesAt())) {
+            return RegistrationState.CLOSED;
+        }
+        if (spotsLeft != null && spotsLeft <= 0) {
+            return RegistrationState.FULL;
+        }
+        return RegistrationState.OPEN;
     }
 
     public boolean isRegistrationOpen(LocalDateTime now) {

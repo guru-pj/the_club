@@ -69,7 +69,8 @@ public class PostService {
         BusinessMetrics.increment("clubs.posts", "type", type.name().toLowerCase(java.util.Locale.ROOT),
                 "strava_linked", String.valueOf(request.activityId() != null));
 
-        List<UUID> recipients = clubService.memberIds(clubId).stream()
+        // Subscribers and followers both get the club's updates
+        List<UUID> recipients = clubService.audienceIds(clubId).stream()
                 .filter(id -> !id.equals(caller.id()))
                 .toList();
         notifications.notifyAfterCommit(recipients, "CLUB_POST", club.getName() + ": " + saved.getTitle());

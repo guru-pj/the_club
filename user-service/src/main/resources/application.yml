@@ -2,6 +2,11 @@ server:
   port: 8081
 
 spring:
+  servlet:
+    multipart:
+      # Above theclub.media.max-size, so oversized images get the app's own message instead of a generic error
+      max-file-size: 10MB
+      max-request-size: 11MB
   jackson:
     # Spring Boot 4 uses Jackson 3, whose defaults differ (e.g. missing primitive fields are rejected); keep the
     # behaviour clients relied on with Jackson 2
@@ -77,6 +82,17 @@ management:
           endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 theclub:
+  # Uploaded images (profile pictures, club photos, event images) go to an S3-compatible bucket; off until
+  # MEDIA_S3_ENDPOINT and MEDIA_S3_BUCKET are set. The secret key comes from the media-s3-secret-key secret.
+  media:
+    endpoint: ${MEDIA_S3_ENDPOINT:}
+    region: ${MEDIA_S3_REGION:us-east-1}
+    bucket: ${MEDIA_S3_BUCKET:}
+    access-key: ${MEDIA_S3_ACCESS_KEY:}
+    secret-key: ${MEDIA_S3_SECRET_KEY:}
+    path-style: ${MEDIA_S3_PATH_STYLE:true}
+    public-base-url: ${MEDIA_PUBLIC_BASE_URL:/media}
+    max-size: ${MEDIA_MAX_SIZE:5MB}
   time-zone: ${APP_TIME_ZONE:Asia/Kolkata}
   jwt:
     public-key: ${JWT_PUBLIC_KEY}

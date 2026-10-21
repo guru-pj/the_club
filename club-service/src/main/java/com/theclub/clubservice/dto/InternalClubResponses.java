@@ -24,6 +24,13 @@ public final class InternalClubResponses {
     public record ClubSummary(UUID id, String name, String logoUrl) {
     }
 
-    public record IdsRequest(@NotNull @Size(max = 1000) List<UUID> ids) {
+    /** Clubs the user follows and the clubs they subscribe to (as member or owner). */
+    public record RelatedClubs(List<UUID> followed, List<UUID> subscribed) {
+    }
+
+    public record NearbyClubInfo(UUID id, String name, String logoUrl, double distanceKm) {
+    }
+
+        public record IdsRequest(@NotNull @Size(max = 1000) List<UUID> ids) {
     }
 }

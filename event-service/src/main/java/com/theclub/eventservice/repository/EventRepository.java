@@ -1,6 +1,7 @@
 package com.theclub.eventservice.repository;
 
 import com.theclub.eventservice.model.Event;
+import com.theclub.eventservice.model.EventStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -10,6 +11,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,4 +26,8 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
     Page<Event> findByClubId(UUID clubId, Pageable pageable);
 
     Page<Event> findByClubIdAndStartTimeGreaterThanEqual(UUID clubId, LocalDateTime from, Pageable pageable);
+
+    /** The upcoming-events feed: scheduled events of these clubs that haven't started, soonest first. */
+    List<Event> findByClubIdInAndStatusAndStartTimeAfterOrderByStartTimeAsc(Collection<UUID> clubIds, EventStatus status,
+                                                                          LocalDateTime after, Pageable pageable);
 }
