@@ -4,6 +4,7 @@
 // member review → owner reply. Uploads need the image store (SeaweedFS in docker compose).
 // Needs the backend running with PAYMENT_PROVIDER=mock, the web app (npm run dev), and Chrome/Chromium.
 //   APP_URL=http://localhost:5173 ADMIN_EMAIL=... ADMIN_PASSWORD=... CHROME_PATH=/usr/bin/google-chrome npm run e2e
+import { randomInt } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 
@@ -22,7 +23,7 @@ const MEMBER = { name: 'Mia Member', email: `mia${RUN}@example.com`, password: '
 const CLUB = `Marina Runners ${RUN % 100000}`
 // Owner and member "devices" report the same spot, so the club is ~0 km from the member. Each run picks its own
 // spot, so clubs left by earlier runs aren't "near" this one.
-const HERE = { latitude: Math.round((Math.random() * 120 - 60) * 1e4) / 1e4, longitude: Math.round((Math.random() * 340 - 170) * 1e4) / 1e4 }
+const HERE = { latitude: randomInt(-600_000, 600_000) / 1e4, longitude: randomInt(-1_700_000, 1_700_000) / 1e4 }
 // A real 2×2 PNG, so the server's content check accepts it
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAMAQEBnSg7CgAAAABJRU5ErkJggg==', 'base64')
 const image = (name) => ({ name, mimeType: 'image/png', buffer: PNG })

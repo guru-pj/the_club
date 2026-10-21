@@ -1,12 +1,13 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { ACCEPTED_IMAGE_TYPES, imageProblem } from '../lib/images'
 import { useToast } from './Toast'
 import { Button } from './ui'
 
 
 /**
- * Pick an image and upload it straight away, showing a preview meanwhile. The current image (if any) shows until
- * the upload succeeds; the server stores it and returns its address.
+ * Pick an image and upload it straight away. The current image (if any) shows until the upload succeeds and the
+ * server returns the stored image's address. There's deliberately no local preview: it would put a file the user
+ * picked into the page as an image URL (and need blob: in the Content-Security-Policy).
  */
 export function ImagePicker({ label, currentUrl, onUpload, onRemove, shape = 'square', size = 96 }: {
   label: string
@@ -19,10 +20,7 @@ export function ImagePicker({ label, currentUrl, onUpload, onRemove, shape = 'sq
   const toast = useToast()
   const inputId = useId()
   const input = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<string>()
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
 
   const choose = async (file: File | undefined) => {
     if (!file) return
@@ -31,8 +29,6 @@ export function ImagePicker({ label, currentUrl, onUpload, onRemove, shape = 'sq
       toast.error(problem)
       return
     }
-    const local = URL.createObjectURL(file)
-    setPreview(local)
     setBusy(true)
     try {
       await onUpload(file)
@@ -40,7 +36,6 @@ export function ImagePicker({ label, currentUrl, onUpload, onRemove, shape = 'sq
       toast.error(e)
     } finally {
       setBusy(false)
-      setPreview(undefined)
       if (input.current) input.current.value = ''
     }
   }
@@ -57,12 +52,13 @@ export function ImagePicker({ label, currentUrl, onUpload, onRemove, shape = 'sq
     }
   }
 
-  const shown = preview ?? currentUrl
   const width = shape === 'wide' ? size * 2 : size
   return (
     <div className="image-picker">
       <div className={`image-picker-frame ${shape}`} style={{ width, height: size }}>
-        {shown ? <img src={shown} alt="" /> : <span className="small muted">No image</span>}
+        {busy ? <span className="small muted">Uploading…</span>
+          : currentUrl ? <img src={currentUrl} alt="" />
+          : <span className="small muted">No image</span>}
       </div>
       <div className="stack" style={{ gap: 6 }}>
         <label htmlFor={inputId} className="bold small">{label}</label>
