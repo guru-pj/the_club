@@ -78,10 +78,10 @@ All endpoints are called through the gateway at `http://localhost:8080` with `Au
 | Feature | Endpoints |
 |---|---|
 | Signup / login (JWT) | `POST /api/v1/users/register`, `POST /api/v1/auth/login`, `/refresh`, `/logout`, `GET /api/v1/users/me` |
-| Become a club owner | `POST /api/v1/owner-verification/apply` → admin `POST /requests/{id}/approve` · `/reject` · `/request-info`, then `POST /api/v1/auth/refresh` to pick up `CLUB_OWNER` |
+| Become a club owner (per club) | `POST /api/v1/users/register` with `clubOwner: true`, then `POST /api/v1/owner-verification/apply` (one application per club: details, contact, location, links), private documents `POST /requests/{id}/documents`, `PUT /requests/{id}` + `POST /requests/{id}/resubmit` after changes are requested. Admin `POST /requests/{id}/approve` (creates and links the club under its verified name) · `/reject` · `/request-info`. Then `POST /api/v1/auth/refresh` to pick up `CLUB_OWNER` |
 | Profile setup | `PUT /api/v1/users/{id}` (`latitude`/`longitude` rounded to ~100 m, `profileComplete`), `POST`/`DELETE /api/v1/users/me/photo` (upload) |
 | Discover clubs | `GET /api/v1/clubs/nearby?lat=&lng=&radiusKm=` (closest first, with distance), `GET /api/v1/clubs/popular`, `GET /api/v1/clubs?q=&city=` |
-| Create clubs | `POST /api/v1/clubs` (owners; map position, address, whether subscriptions are offered and their benefits), `POST /api/v1/clubs/{id}/logo`, `POST`/`DELETE /api/v1/clubs/{id}/photos` (gallery) |
+| Club profile | Clubs come from approved applications (`POST /api/v1/clubs` is admin-only). Owner `PUT /api/v1/clubs/{id}` (description, address and map position, contact, website, social links, rules, subscriptions and their benefits; not the verified name), `POST /api/v1/clubs/{id}/logo`, `POST`/`DELETE /api/v1/clubs/{id}/cover`, `POST`/`DELETE /api/v1/clubs/{id}/photos` (gallery) |
 | Follow / subscribe | Follow (updates and event announcements): `POST`/`DELETE /api/v1/clubs/{id}/follow`, `GET /api/v1/clubs/me/following`. Subscribe (free membership): `POST /api/v1/clubs/{id}/join`, `GET /api/v1/clubs/me` |
 | Reviews and ratings | `GET /api/v1/clubs/{id}/reviews`, `PUT`/`DELETE /reviews/me` (subscribers and event attendees, not the owner), owner `PUT /reviews/{rid}/reply`, admin `DELETE /reviews/{rid}` |
 | Upcoming events | `GET /api/v1/events/upcoming?lat=&lng=` (followed, subscribed and nearby clubs, each with `registrationState`) |
@@ -89,7 +89,8 @@ All endpoints are called through the gateway at `http://localhost:8080` with `Au
 | Club feed | `POST /api/v1/clubs/{id}/posts` (owner and subscribers; photos, event recaps, linked Strava activity), `GET /api/v1/clubs/{id}/posts`, `PUT/DELETE …/posts/{postId}/like`, `…/comments`, `POST …/posts/reshare`, public `GET …/posts/{postId}/preview` |
 | Chat | `GET /api/v1/chat/inbox`, `GET /api/v1/chat/clubs/{id}` (subscribers only), `POST /api/v1/chat/direct`, `…/conversations/{id}/messages`, blocks, reports, mutes, live `GET /api/v1/chat/stream` (Server-Sent Events); see [`docs/SERVICE_CONTRACTS.md`](docs/SERVICE_CONTRACTS.md) |
 | Club leaderboard | `GET /api/v1/clubs/{id}/leaderboard?metric=DISTANCE\|TIME\|SESSIONS&period=WEEK\|MONTH\|YEAR\|ALL` |
-| Events + registration window | `POST /api/v1/events` (owner; rules, `subscribersOnly`), `PATCH /api/v1/events/{id}/registration-window`, `GET /api/v1/events/club/{clubId}`, `POST`/`DELETE /api/v1/events/{id}/image` |
+| Events + registration window | `POST /api/v1/events` (owner; rules, `subscribersOnly`, `publish: false` for a draft), `POST /api/v1/events/{id}/publish`, `POST /api/v1/events/{id}/complete`, `PATCH /api/v1/events/{id}/registration-window`, `GET /api/v1/events/club/{clubId}`, `POST`/`DELETE /api/v1/events/{id}/image` |
+| Owner numbers | `GET /api/v1/events/{id}/stats`, `GET /api/v1/events/club/{clubId}/stats` (registrations, check-ins, attendance, revenue) |
 | Register in-app | `POST /api/v1/events/{id}/register`, `DELETE /api/v1/events/{id}/registrations/me`, `GET /api/v1/events/me/registrations` |
 | In-app payment | `POST /api/v1/payments/{id}/confirm` (mock or Razorpay) |
 | Confirmation + email + QR ticket | sent on confirmation; `GET /api/v1/events/registrations/{id}/ticket` (JSON + base64 QR) or `/ticket.png` |
@@ -112,6 +113,7 @@ the-club/
  ┣━ web-app/                (React UI)
  ┣━ docs/SERVICE_CONTRACTS.md
  ┣━ scripts/smoke-test.sh
+ ┣━ scripts/seed-demo.sh   (sample clubs, events and members for a local stack)
  ┣━ docker-compose.yml
  ┗━ enviroinment_variables.env   (template for .env)
 ```
@@ -328,6 +330,8 @@ Run the automated end-to-end check. It signs up users, creates a club and events
 ```
 If the first steps fail with 503, the services are still finding each other. Wait 30 seconds and run it again.
 
+**Sample data** (optional): `./scripts/seed-demo.sh` adds three verified clubs with complete profiles, published, paid and draft events, members who follow, subscribe, register, post, review and chat, and one application waiting for review. It prints the demo logins (password `Demo-pass-2026!`) and is safe to re-run.
+
 | Open | URL |
 |---|---|
 | **The Club** | http://localhost:3000 |
@@ -496,25 +500,35 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
 1. Log in as the bootstrap admin: `ADMIN_EMAIL` from `.env`, with the password in `secrets/admin-password`.
 2. Open the avatar menu → **Owner applications**. Review requests from people who want to run a club.
    **Reported messages** (same menu) lists chat messages people reported: remove them for everyone, or keep them.
-3. **Approve** them, ticking "Create the club now" to set up their club. You can also **Reject** with a reason, or **Request info** to ask for more proof.
+3. Check each application: the club's contact details, address, website and social pages, and the uploaded documents (**Download**). Then:
+   - **Approve**: enter the club's exact official name (as on its documents or Instagram). This creates the club and links it to the applicant. It covers this one club only.
+   - **Ask for changes**: say what to correct; the applicant updates the application and resubmits it.
+   - **Reject** with a reason.
 
 ### Club owner
-1. **Sign up.** When email verification is on, click the link in the verification email first.
-2. **Avatar menu → Become a club owner.** Submit your club's name, city, social links and proof documents, then wait for an admin to approve.
-3. **Log in again** after approval. **Clubs** → your club now shows the owner tools:
-   - **Edit club:** upload a logo, set where the club meets (address, plus **Use my current location** so nearby members find it), and choose whether people can subscribe and what subscribers get.
+1. **Sign up** and choose **I run a club**. When email verification is on, click the link in the verification email first.
+2. **After the first login**, the app opens your club application (also under avatar menu → **Become a club owner**). Give the club's name, category, city and meeting point, a contact email or phone, its website and social pages. After submitting, **upload documents** that show you own or represent it (PDF or photos; only you and the admins can see them).
+3. **Wait for the review.** The application shows **Pending review**, **Changes required** (update the details and **Resubmit for review**), **Approved** or **Rejected**. Nothing is approved automatically, and each club you run needs its own application.
+4. **Once approved**, the club is linked to your account under its verified name and you land on the **Owner dashboard** (also in the header and the avatar menu):
+   - a checklist to **complete the club profile**: description, logo, cover photo, address and map location, contact, rules, social links;
+   - today's events with **Scan tickets**, and quick links to create events, post, members, chat and participation;
+   - numbers: subscribers, followers, rating, upcoming events, drafts, registrations, check-ins, attendance and money collected;
+   - every event with its status and registrations, and buttons to **Publish**, **Check in**, **Complete** or write a **Recap**.
+5. **Club page tools:**
+   - **Edit club:** logo, cover photo, where the club meets (address, plus **Use my current location** so nearby members find it), contact, website, social links, rules, and whether people can subscribe and what subscribers get. The name stays the verified one; ask an admin to change it.
    - **Photos:** upload a gallery of runs, rides and race days.
    - **Feed:** post announcements and event recaps with photos (upload them or paste links). You can attach one of your Strava activities. Followers and subscribers are notified. Subscribers can post too; you can delete any post or comment.
    - **Reshare:** the **Reshare** button on another club's post, or **Reshare to my club** on an event page, shares it into your club's feed.
    - **Chat:** the club's **Chat** tab is a group chat for you and your subscribers. Use a message's **⋯** menu to delete it or **mute** someone (24 hours, 7 days or until you unmute them); **Muted** in the Messages page lists them.
-   - **Create event:** set the date, when registration opens and closes, capacity, price (0 = free), points for attending, and rules and instructions. Tick **Only the club's subscribers can register** to keep it members-only. Add a cover image after creating it. Followers and subscribers are told about new events.
+   - **Create event:** set the date, when registration opens and closes, capacity, price (0 = free), points for attending, and rules and instructions. Tick **Only the club's subscribers can register** to keep it members-only. **Save and review** keeps it as a draft only you can see; check it on its page, add a cover image, then **Publish event**. Followers and subscribers are told when it's published.
    - **Reviews:** reply to reviews (you can't delete them; admins remove abusive ones).
    - **Members**, **Leaderboard** and **Participation** tabs show who is active.
-4. **Event page** (owner panel):
-   - See every registration with its payment status.
+6. **Event page** (owner panel):
+   - Registered, checked in, awaiting payment, attendance and money collected, and every registration with its payment and check-in status.
    - **Refund** a payment.
    - **Cancel event**: everyone who paid is refunded automatically.
-5. **On event day:** Event page → **Check-in scanner** → **Start camera** and scan each member's QR ticket, or type the ticket code. Check-in opens 6 hours before the start.
+7. **On event day:** Event page → **Check-in scanner** → **Start camera** and scan each member's QR ticket, or type the ticket code. Check-in opens 6 hours before the start. A ticket only works for its own event, and only once.
+8. **Afterwards:** **Write a recap** (photos, summary, highlights) to post it in the club feed, then **Mark as completed**: the event moves to past events and keeps its registrations, attendance and recap.
 
 ### Member
 1. **Sign up** and verify your email. On first login, set up your profile: a photo, a few words about you, and **Use my current location** (or your city) so the app can suggest clubs and events near you. **Skip for now** is fine too.
@@ -574,7 +588,7 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
 - **Observability:** Prometheus metrics (including business metrics), OpenTelemetry tracing across services, JSON logs with `traceId`/`requestId`, and Grafana dashboards and alerts. See [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md).
 - **Kubernetes:** a Helm chart in `deploy/helm/the-club` with dev and prod values, HPA, PDBs, NetworkPolicies, ServiceMonitors and hardened pods. Try it locally with `./deploy/kind/up.sh`. Guide: [`docs/KUBERNETES.md`](docs/KUBERNETES.md).
 - **Multiple replicas:** scheduled jobs are safe to run on several replicas: payment reconciliation uses ShedLock, while the email queue and Strava worker use row-level claims.
-- **Proof documents** for owner verification are submitted as URLs. Upload storage (MinIO/S3) is not built yet.
+- **Proof documents** for club applications are uploaded to the same bucket as images, under `private/`, which the web app's nginx never serves; club-service hands them only to the applicant and admins.
 - **Times:** event times are local to `APP_TIME_ZONE` (default `Asia/Kolkata`). Check-in opens 6h before the start and closes 12h after.
 
 ---

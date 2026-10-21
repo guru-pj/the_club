@@ -75,14 +75,15 @@ export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: R
 
 const STATUS_TONES: Record<string, Tone> = {
   CONFIRMED: 'success', CHECKED_IN: 'primary', PENDING_PAYMENT: 'warning', CANCELLED: 'danger',
-  SCHEDULED: 'info', COMPLETED: 'neutral',
+  SCHEDULED: 'info', COMPLETED: 'neutral', DRAFT: 'warning',
   PENDING: 'warning', UNDER_REVIEW: 'info', NEEDS_INFO: 'accent', APPROVED: 'success', REJECTED: 'danger',
   SUCCEEDED: 'success', FAILED: 'danger', CREATED: 'warning', EXPIRED: 'neutral', REFUND_PENDING: 'warning', REFUNDED: 'info',
   OWNER: 'accent', MEMBER: 'primary', STRAVA: 'accent', MANUAL: 'neutral',
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  CHECKED_IN: 'Checked in', PENDING_PAYMENT: 'Awaiting payment', NEEDS_INFO: 'More info needed', UNDER_REVIEW: 'Under review',
+  CHECKED_IN: 'Checked in', PENDING_PAYMENT: 'Awaiting payment', NEEDS_INFO: 'Changes required', UNDER_REVIEW: 'Under review',
+  PENDING: 'Pending review', DRAFT: 'Draft', SCHEDULED: 'Published',
   SUCCEEDED: 'Paid', CREATED: 'Payment started', REFUND_PENDING: 'Refund pending',
 }
 

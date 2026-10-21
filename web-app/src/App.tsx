@@ -30,6 +30,7 @@ const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'))
 const TicketPage = lazy(() => import('./pages/TicketPage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
 const MessagesPage = lazy(() => import('./pages/MessagesPage'))
+const OwnerDashboardPage = lazy(() => import('./pages/OwnerDashboardPage'))
 const PostPage = lazy(() => import('./pages/PostPage'))
 const AdminChatReportsPage = lazy(() => import('./pages/AdminChatReportsPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
@@ -65,7 +66,9 @@ export default function App() {
                 <Route path="activities" element={<ActivitiesPage />} />
                 <Route path="strava/callback" element={<StravaCallbackPage />} />
                 <Route path="clubs" element={<ClubsPage />} />
-                <Route path="clubs/new" element={<RequireRole role="CLUB_OWNER"><CreateClubPage /></RequireRole>} />
+                {/* owners get clubs through approved applications; admins can add one directly */}
+                <Route path="clubs/new" element={<RequireRole role="ADMIN"><CreateClubPage /></RequireRole>} />
+                <Route path="owner" element={<OwnerDashboardPage />} />
                 <Route path="clubs/:clubId" element={<ClubPage />} />
                 <Route path="clubs/:clubId/events/new" element={<EventFormPage />} />
                 <Route path="become-owner" element={<BecomeOwnerPage />} />

@@ -19,6 +19,8 @@ import java.util.UUID;
  * @param price               0 or omitted means a free event.
  * @param points              points each member earns on check-in (default 10).
  * @param subscribersOnly     only the club's subscribers may register (default: anyone signed in).
+ * @param publish             false saves a draft only the owner sees, to review and publish later
+ *                            ({@code POST /{id}/publish}); default true.
  */
 public record CreateEventRequest(
         @NotNull UUID clubId,
@@ -33,5 +35,6 @@ public record CreateEventRequest(
         @Pattern(regexp = "^[A-Z]{3}$", message = "must be a 3-letter ISO currency code") String currency,
         @Min(0) @Max(1000) Integer points,
         @Size(max = 10_000) String rules,
-        Boolean subscribersOnly) {
+        Boolean subscribersOnly,
+        Boolean publish) {
 }

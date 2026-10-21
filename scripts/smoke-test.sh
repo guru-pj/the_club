@@ -39,20 +39,42 @@ OT=$(login owner-$RUN@example.com Str0ng-pass!); MT=$(login mia-$RUN@example.com
 req GET /users/me "$MT"; expect 200 "users/me"
 req GET /users/me ""; expect 401 "no token rejected"
 
-# --- owner verification -> CLUB_OWNER role
-req POST /clubs "$OT" '{"clubName":"Chennai Runners '"$RUN"'","description":"Weekend running"}'; expect 403 "unverified user cannot create club"
-req POST /owner-verification/apply "$OT" '{"clubName":"Chennai Runners '"$RUN"'","clubType":"RUNNING","city":"Chennai","proofFiles":["https://example.com/proof.jpg"]}'; expect 201 "apply for owner"
+# --- club owner journey: one verified application per club, changes required, documents, approval creates the club
+req POST /clubs "$OT" '{"clubName":"Chennai Runners '"$RUN"'","description":"Weekend running"}'; expect 403 "clubs need an approved application"
+req POST /owner-verification/apply "$OT" '{"clubName":"Chennai Runners '"$RUN"'","clubType":"RUNNING","city":"Chennai","proofFiles":["https://example.com/proof.jpg"]}'; expect 400 "application needs a contact"
+req POST /owner-verification/apply "$OT" '{"clubName":"Chennai Runners '"$RUN"'","clubType":"RUNNING","city":"Chennai","contactEmail":"runners@example.com","address":"Lighthouse, Marina Beach","latitude":13.0501,"longitude":80.2825,"proofFiles":["https://example.com/proof.jpg"]}'; expect 201 "apply for the club"
 REQ_ID=$(echo "$BODY" | jq -r .requestId)
-req POST /owner-verification/requests/$REQ_ID/approve "$MT" '{"createClub":false}'; expect 403 "non-admin cannot approve"
-req POST /owner-verification/requests/$REQ_ID/approve "$AT" '{"createClub":false}'; expect 200 "admin approves"
+req POST /owner-verification/requests/$REQ_ID/request-info "$AT" '{"message":"Add the club Instagram page"}'; expect 200 "admin asks for changes"
+req PUT /owner-verification/requests/$REQ_ID "$OT" '{"clubName":"Chennai Runners '"$RUN"'","clubType":"RUNNING","city":"Chennai","contactEmail":"runners@example.com","address":"Lighthouse, Marina Beach","latitude":13.0501,"longitude":80.2825,"socialLinks":{"instagram":"https://instagram.com/chennairunners"},"proofFiles":["https://example.com/proof.jpg"]}'; expect 200 "owner updates the application"
+req POST /owner-verification/requests/$REQ_ID/resubmit "$OT" '{"note":"Added Instagram"}'; expect 200 "owner resubmits"
+[ "$(echo "$BODY" | jq -r .status)" = PENDING ] || fail "resubmitted application not pending"
+PDF=$(mktemp); printf '%%PDF-1.4\n%%%%EOF\n' > "$PDF"
+out=$(curl -s -w '\n%{http_code}' -X POST "$G/owner-verification/requests/$REQ_ID/documents" -H "Authorization: Bearer $OT" -F "file=@$PDF;type=application/pdf;filename=registration.pdf"); CODE=${out##*$'\n'}; BODY=${out%$'\n'*}
+rm -f "$PDF"
+if [ "$CODE" = 503 ]; then
+  echo "skip document upload: no file store configured"
+else
+  expect 201 "upload a proof document"
+  DOC=$(echo "$BODY" | jq -r .id)
+  [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $AT" "$G/owner-verification/requests/$REQ_ID/documents/$DOC")" = 200 ] || fail "admin can't download the document"
+  [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $MT" "$G/owner-verification/requests/$REQ_ID/documents/$DOC")" = 403 ] || fail "others can download the document"
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/media/private/verification/$REQ_ID/x.pdf")" = 404 ] || fail "/media/private is served"
+  echo "ok  documents are private"
+fi
+req POST /owner-verification/requests/$REQ_ID/approve "$MT" '{}'; expect 403 "non-admin cannot approve"
+req POST /owner-verification/requests/$REQ_ID/approve "$AT" '{"clubPayload":{"name":"Chennai Runners '"$RUN"'"}}'; expect 200 "admin approves"
+CLUB=$(echo "$BODY" | jq -r .createdClubId)
+[ "$CLUB" != null ] || fail "approval did not create the club"
 req POST /auth/login "" '{"email":"owner-'"$RUN"'@example.com","password":"Str0ng-pass!"}'; RT=$(echo "$BODY" | jq -r .refreshToken)
 req POST /auth/refresh "" "{\"refreshToken\":\"$RT\"}"; expect 200 "refresh picks up new role"
 OT=$(echo "$BODY" | jq -r .accessToken)
 req GET /auth/validate "$OT"; expect 200 "validate"; echo "$BODY" | jq -e '.roles | index("CLUB_OWNER")' >/dev/null || fail "role missing"
 
-# --- create/join clubs
-req POST /clubs "$OT" '{"clubName":"Chennai Runners '"$RUN"'","description":"Weekend running","city":"Chennai","clubType":"RUNNING"}'; expect 201 "create club"
-CLUB=$(echo "$BODY" | jq -r .id)
+# --- the verified club: profile, join
+req GET /clubs/$CLUB "$OT"; [ "$(echo "$BODY" | jq '.verified and .myRole == "OWNER"')" = true ] || fail "club not linked to its owner"
+req POST /clubs "$OT" '{"name":"Shortcut '"$RUN"'"}'; expect 403 "a verified owner still can't create clubs directly"
+req PUT /clubs/$CLUB "$OT" '{"description":"Weekend running","rules":"Lights after dark","contactPhone":"+91 98765 43210","website":"https://example.com"}'; expect 200 "owner completes the profile"
+req PUT /clubs/$CLUB "$OT" '{"name":"Renamed '"$RUN"'"}'; expect 403 "the verified name is fixed"
 req POST /clubs/$CLUB/join "$MT"; expect 201 "member joins"
 req POST /clubs/$CLUB/join "$MT"; expect 200 "join idempotent"
 req GET /clubs/$CLUB "$MT"; expect 200 "club details"; [ "$(echo "$BODY" | jq .memberCount)" = 2 ] || fail "memberCount"
@@ -76,8 +98,12 @@ req GET /clubs/$CLUB/posts "$MT"; expect 200 "read feed"
 
 # --- Phase 2: events (free)
 req POST /events "$MT" "{\"clubId\":\"$CLUB\",\"title\":\"x\",\"date\":\"$START\"}"; expect 403 "member cannot create event"
-req POST /events "$OT" "{\"clubId\":\"$CLUB\",\"title\":\"Sunday Long Run\",\"location\":\"Marina\",\"date\":\"$START\",\"registrationOpensAt\":\"$OPENS\",\"capacity\":50,\"points\":10}"; expect 201 "create free event"
+req POST /events "$OT" "{\"clubId\":\"$CLUB\",\"title\":\"Sunday Long Run\",\"location\":\"Marina\",\"date\":\"$START\",\"registrationOpensAt\":\"$OPENS\",\"capacity\":50,\"points\":10,\"publish\":false}"; expect 201 "create the free event as a draft"
+[ "$(echo "$BODY" | jq -r .status)" = DRAFT ] || fail "event not a draft"
 EV=$(echo "$BODY" | jq -r .id)
+req GET /events/$EV "$MT"; expect 404 "members don't see drafts"
+req POST /events/$EV/register "$MT"; expect 404 "no registration for drafts"
+req POST /events/$EV/publish "$OT"; expect 200 "publish the event"
 req POST /events/$EV/register "$MT"; expect 201 "register free event"
 REG=$(echo "$BODY" | jq -r .registrationId); echo "$BODY" | jq -e '.status=="CONFIRMED"' >/dev/null || fail "not confirmed"
 req POST /events/$EV/register "$MT"; expect 409 "double registration"
@@ -141,8 +167,10 @@ req POST /clubs/$CLUB/posts/$POST_ID/comments "$FT" '{"content":"See you Sunday!
 req GET /clubs/$CLUB/posts/$POST_ID "$MT"; [ "$(echo "$BODY" | jq '.likeCount == 1 and .commentCount == 1')" = true ] || fail "post counts"
 req GET /clubs/$CLUB/posts/$POST_ID/preview ""; expect 200 "shared link preview without signing in"
 req GET /clubs/$CLUB/posts/$POST_ID/comments ""; expect 401 "comments need an account"
-req POST /clubs "$OT" '{"name":"Chennai Cyclists '"$RUN"'","city":"Chennai","clubType":"CYCLING"}'; expect 201 "owner's second club"
-CLUB2=$(echo "$BODY" | jq -r .id)
+req POST /owner-verification/apply "$OT" '{"clubName":"Chennai Cyclists '"$RUN"'","clubType":"CYCLING","city":"Chennai","contactPhone":"+91 90000 00000"}'; expect 201 "apply for a second club"
+REQ2=$(echo "$BODY" | jq -r .requestId)
+req POST /owner-verification/requests/$REQ2/approve "$AT" '{}'; expect 200 "second club approved on its own"
+CLUB2=$(echo "$BODY" | jq -r .createdClubId)
 req POST /clubs/$CLUB2/posts/reshare "$OT" "{\"postId\":\"$POST_ID\",\"comment\":\"From our running friends\"}"; expect 201 "reshare to another club"
 [ "$(echo "$BODY" | jq -r '.shared.kind + " " + .shared.clubId')" = "POST $CLUB" ] || fail "reshare content"
 req POST /clubs/$CLUB2/posts/reshare "$OT" "{\"eventId\":\"$EV2\"}"; expect 201 "reshare an event"

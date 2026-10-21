@@ -56,25 +56,29 @@ class ClubFlowIntegrationTest {
     }
 
     private JsonNode createClub(UUID ownerId, String name) throws Exception {
-        String body = mvc.perform(post("/api/v1/clubs").header("Authorization", token(ownerId, "USER", "CLUB_OWNER"))
+        // owners get their clubs from approved applications; here an admin creates it for the owner
+        String body = mvc.perform(post("/api/v1/clubs").header("Authorization", token(UUID.randomUUID(), "USER", "ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"clubName":"%s","description":"Weekend running club","city":"Chennai","clubType":"RUNNING","ownerId":"%s"}"""
-                                .formatted(name, UUID.randomUUID())))
+                                .formatted(name, ownerId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.ownerId").value(ownerId.toString()))
                 .andExpect(jsonPath("$.memberCount").value(1))
-                .andExpect(jsonPath("$.myRole").value("OWNER"))
+                .andExpect(jsonPath("$.verified").value(true))
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(body);
     }
 
     @Test
-    void plainUserCannotCreateClub() throws Exception {
-        mvc.perform(post("/api/v1/clubs").header("Authorization", token(UUID.randomUUID(), "USER"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Nope\"}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.detail").value("Only verified club owners can create clubs"));
+    void onlyAdminsCreateClubsDirectly() throws Exception {
+        // a verified owner of one club still needs an approved application for the next one
+        for (String roles : List.of("USER", "USER,CLUB_OWNER")) {
+            mvc.perform(post("/api/v1/clubs").header("Authorization", token(UUID.randomUUID(), roles.split(",")))
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Nope\"}"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("CLUB_VERIFICATION_REQUIRED"));
+        }
     }
 
     @Test
@@ -86,7 +90,7 @@ class ClubFlowIntegrationTest {
         String name = "Chennai Runners " + suffix;
         String clubId = createClub(owner, name).get("id").asText();
 
-        mvc.perform(post("/api/v1/clubs").header("Authorization", token(owner, "USER", "CLUB_OWNER"))
+        mvc.perform(post("/api/v1/clubs").header("Authorization", token(UUID.randomUUID(), "USER", "ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"%s\"}".formatted(name.toLowerCase())))
                 .andExpect(status().isConflict());
 

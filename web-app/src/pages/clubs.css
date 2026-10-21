@@ -75,3 +75,12 @@ a.shared-card:hover { border-color: var(--primary); text-decoration: none; }
 .upload-thumb { position: relative; width: 84px; height: 84px; }
 .upload-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-2); }
 .upload-thumb .icon-button { position: absolute; top: 2px; right: 2px; background: var(--surface); width: 24px; height: 24px; }
+
+/* Club page header with an optional cover photo */
+.club-hero-card.has-cover { padding-top: 0; overflow: hidden; }
+.club-cover { display: block; max-width: none; width: calc(100% + 40px); margin: 0 -20px 16px; height: 200px; object-fit: cover; background: var(--surface-2); }
+@media (max-width: 560px) { .club-cover { height: 140px; } }
+.verified-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  background: var(--info-soft); color: var(--info);
+}

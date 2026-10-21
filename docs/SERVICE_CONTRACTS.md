@@ -38,7 +38,9 @@ How the services fit together. Public endpoints are reached through the gateway 
 * Account emails (verification, password reset) contain single-use links to the web app (`APP_BASE_URL`);
   only SHA-256 hashes of those tokens are stored. Passwords: 8–72 characters, not the email, not a common password.
 * Controllers receive the caller with `@AuthenticationPrincipal AuthenticatedUser`.
-* Roles: `USER` (everyone), `CLUB_OWNER` (granted after owner verification is approved), `ADMIN`.
+* Roles: `USER` (everyone), `CLUB_OWNER` (granted when the first club application is approved), `ADMIN`.
+  Owner permissions are per club: club-service and event-service check that the caller owns *that* club (or is an
+  admin), so the role alone allows nothing. Ownership verification is separate from email verification.
   After a role change the user calls `POST /api/v1/auth/refresh` to get a token with the new role.
 * `/internal/**` requires header `X-Internal-Key: ${INTERNAL_API_KEY}` (added automatically to every Feign call).
 * With the `prod` profile, services refuse to start if `INTERNAL_API_KEY` is shorter than 32 characters or still a
@@ -133,6 +135,52 @@ See [`EMAIL_SETUP.md`](EMAIL_SETUP.md).
 * Times: `LocalDateTime` in the platform zone (`APP_TIME_ZONE`, default `Asia/Kolkata`); "now" always comes from the injected `java.time.Clock`.
 * Feign client base URLs can be pinned with `theclub.clients.<service>.url` (env `USER_SERVICE_URL`, …); empty means resolve through Eureka.
 * Tests: unit tests `*Test`, Spring MockMvc + H2 tests `*IntegrationTest` with profile `test`; downstream Feign clients are mocked.
+
+## Club owner journey (club-service, event-service)
+
+### Club applications (`/api/v1/owner-verification`)
+
+Each club is verified on its own: an application claims one club, an admin reviews it, and approval creates the club
+and links it to the applicant. Approving one club never covers another, and `POST /api/v1/clubs` is for admins only
+(403 `CLUB_VERIFICATION_REQUIRED` for everyone else, owners included).
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| POST | `/apply` | anyone signed in | `{clubName, clubType, city, contactEmail?, contactPhone?, address?, latitude?, longitude?, website?, socialLinks?, description?, proofFiles?}`. Name, category and city are required, plus an email or phone (400 `CONTACT_REQUIRED`). 409 `DUPLICATE_APPLICATION` (an open one for the same club), `TOO_MANY_APPLICATIONS` (3 open), `CLUB_EXISTS` (the club is already on The Club) |
+| GET | `/requests/me`, `/requests/{id}` | applicant, admins | Includes `documents` and, once approved, `createdClubId` |
+| PUT | `/requests/{id}` | applicant | Same body as `/apply`; while `PENDING` or `NEEDS_INFO` |
+| POST | `/requests/{id}/resubmit` | applicant | `{note?}`: `NEEDS_INFO` → `PENDING` |
+| POST | `/requests/{id}/documents` | applicant | Multipart `file`: PDF, JPEG, PNG or WebP (by content), up to `MEDIA_MAX_SIZE`; at most 10 |
+| GET | `/requests/{id}/documents/{docId}` | applicant, admins | The file, as an attachment (`Cache-Control: private, no-store`) |
+| DELETE | `/requests/{id}/documents/{docId}` | applicant | While the application is open |
+| GET | `/requests?status=` | admins | The review queue, oldest first |
+| POST | `/requests/{id}/approve` | admins | `{clubPayload?}`: corrections; `clubPayload.name` is the official, verified name. Creates the club with the application's details, links it, grants `CLUB_OWNER` |
+| POST | `/requests/{id}/request-info` | admins | `{message}`: "changes required" (`NEEDS_INFO`); the applicant is notified |
+| POST | `/requests/{id}/reject` | admins | `{reason}` |
+
+Statuses: `PENDING` (pending review), `NEEDS_INFO` (changes required), `UNDER_REVIEW`, `APPROVED`, `REJECTED`.
+Proof documents are stored in the media bucket under `private/verification/{requestId}/`; nginx refuses
+`/media/private/`, so they are only ever served by this endpoint. Users who sign up with `clubOwner: true`
+(`clubOwnerSignup` on their profile) are taken to their application after the first login; it grants nothing by itself.
+
+### Club profile
+
+`ClubResponse` adds `coverUrl`, `contactEmail`, `contactPhone`, `website`, `socialLinks`, `rules`, `verified` and
+`verifiedAt`. Owners update them with `PUT /api/v1/clubs/{id}` (an empty string clears a field); only admins can change
+the verified `name` (403 `VERIFIED_NAME`). `POST`/`DELETE /api/v1/clubs/{id}/cover` uploads or removes the cover photo.
+
+### Event lifecycle
+
+| Status | Meaning |
+|---|---|
+| `DRAFT` | Created with `publish: false`. Only the club owner and admins see it (others get 404); no registration, no announcement |
+| `SCHEDULED` | Published (`POST /api/v1/events/{id}/publish`, or created without `publish: false`): listed, announced to followers and subscribers, open for registration within its window |
+| `COMPLETED` | `POST /api/v1/events/{id}/complete` once it has started: leaves upcoming listings, keeps registrations, check-ins and recaps; no more edits (409 `EVENT_COMPLETED`) |
+| `CANCELLED` | `POST /api/v1/events/{id}/cancel`: everyone is told, payments are refunded |
+
+`registrationState` gains `DRAFT`. `GET /api/v1/events/{id}/stats` and `GET /api/v1/events/club/{clubId}/stats` (club
+owner) give registered (confirmed + checked in), checked in, awaiting payment, cancelled, attendance rate (once started)
+and revenue by currency; the club version adds counts by status and the 20 most recent events.
 
 ## Club feed and chat (club-service)
 

@@ -4,8 +4,7 @@ import { ApiError, mediaUrl } from '../api/client'
 import { clubsApi } from '../api/endpoints'
 import type { Club } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { EditIcon, PinIcon, PlusIcon, UsersIcon } from '../components/icons'
-import { ImagePicker } from '../components/ImagePicker'
+import { EditIcon, PinIcon, PlusIcon, ShieldIcon, UsersIcon } from '../components/icons'
 import { Stars } from '../components/Stars'
 import { useToast } from '../components/Toast'
 import { Badge, Button, Card, EmptyState, ErrorMessage, LinkButton, Loading, Modal, Tabs } from '../components/ui'
@@ -15,7 +14,9 @@ import { useAsync } from '../lib/useAsync'
 import { ClubForm } from './clubs/ClubForm'
 import { ClubLogo } from './clubs/ClubLogo'
 import { MembershipBadge } from './clubs/MembershipBadge'
+import { AboutTab } from './clubs/AboutTab'
 import { ChatTab } from './clubs/ChatTab'
+import { ClubImages } from './clubs/ClubImages'
 import { ConfirmModal } from './clubs/ConfirmModal'
 import { EventsTab } from './clubs/EventsTab'
 import { FeedTab } from './clubs/FeedTab'
@@ -26,9 +27,10 @@ import { PhotosTab } from './clubs/PhotosTab'
 import { ReviewsTab } from './clubs/ReviewsTab'
 import './clubs.css'
 
-type TabId = 'feed' | 'chat' | 'events' | 'reviews' | 'photos' | 'leaderboard' | 'members' | 'participation'
+type TabId = 'feed' | 'about' | 'chat' | 'events' | 'reviews' | 'photos' | 'leaderboard' | 'members' | 'participation'
 const TABS: { id: TabId; label: string }[] = [
   { id: 'feed', label: 'Feed' },
+  { id: 'about', label: 'About' },
   { id: 'chat', label: 'Chat' },
   { id: 'events', label: 'Events' },
   { id: 'reviews', label: 'Reviews' },
@@ -40,6 +42,7 @@ const TABS: { id: TabId; label: string }[] = [
 
 function ClubHeader({ club, canManage, onChanged }: { club: Club; canManage: boolean; onChanged: (club?: Club) => void }) {
   const toast = useToast()
+  const { hasRole } = useAuth()
   const [busy, setBusy] = useState<'subscribe' | 'follow'>()
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [subscribeOpen, setSubscribeOpen] = useState(false)
@@ -78,12 +81,14 @@ function ClubHeader({ club, canManage, onChanged }: { club: Club; canManage: boo
   }
 
   return (
-    <Card>
+    <Card className={club.coverUrl ? 'club-hero-card has-cover' : 'club-hero-card'}>
+      {club.coverUrl && <img className="club-cover" src={mediaUrl(club.coverUrl)} alt="" />}
       <div className="club-hero">
         <ClubLogo name={club.name} url={club.logoUrl} size={72} />
         <div className="club-hero-main stack" style={{ gap: 6 }}>
           <div className="row">
             <h1>{club.name}</h1>
+            {club.verified && <span className="verified-badge" title="The admin team verified who runs this club"><ShieldIcon size={14} />Verified</span>}
             <MembershipBadge role={club.myRole} />
           </div>
           <div className="row small muted" style={{ gap: 14 }}>
@@ -119,6 +124,7 @@ function ClubHeader({ club, canManage, onChanged }: { club: Club; canManage: boo
           {club.myRole === 'MEMBER' && <Button variant="secondary" onClick={() => setLeaveOpen(true)}>Unsubscribe</Button>}
           {canManage && (
             <>
+              {club.myRole === 'OWNER' && <LinkButton variant="secondary" to={`/owner?club=${club.id}`}>Dashboard</LinkButton>}
               <Button variant="secondary" onClick={() => setEditOpen(true)}><EditIcon size={16} />Edit club</Button>
               <LinkButton to={`/clubs/${club.id}/events/new`}><PlusIcon size={16} />Create event</LinkButton>
             </>
@@ -150,13 +156,8 @@ function ClubHeader({ club, canManage, onChanged }: { club: Club; canManage: boo
         You won't be able to register for subscriber-only events. {club.following ? 'You still follow the club.' : 'Follow the club to keep getting its updates.'}
       </ConfirmModal>
       <Modal open={editOpen} title="Edit club" onClose={() => setEditOpen(false)}>
-        <div style={{ marginBottom: 16 }}>
-          <ImagePicker label="Club logo" currentUrl={mediaUrl(club.logoUrl)} onUpload={async (file) => {
-            onChanged(await clubsApi.uploadLogo(club.id, file))
-            toast.success('Logo updated')
-          }} />
-        </div>
-        <ClubForm initial={club} submitLabel="Save changes" onCancel={() => setEditOpen(false)} onSubmit={async (request) => {
+        <ClubImages club={club} onChanged={onChanged} />
+        <ClubForm initial={club} submitLabel="Save changes" nameLocked={!hasRole('ADMIN')} onCancel={() => setEditOpen(false)} onSubmit={async (request) => {
           const updated = await clubsApi.update(club.id, request)
           toast.success('Club updated')
           setEditOpen(false)
@@ -191,7 +192,8 @@ export default function ClubPage() {
       <ClubHeader club={data} canManage={canManage} onChanged={onChanged} />
       <div key={data.id}>
         <Tabs tabs={TABS} active={tab} onChange={(id) => setParams(id === 'feed' ? {} : { tab: id }, { replace: true })} />
-        {tab === 'feed' && <FeedTab club={data} canManage={canManage} />}
+        {tab === 'feed' && <FeedTab club={data} canManage={canManage} recapEventId={params.get('recap') ?? undefined} />}
+        {tab === 'about' && <AboutTab club={data} />}
         {tab === 'chat' && <ChatTab club={data} onSubscribe={() => setParams({}, { replace: true })} />}
         {tab === 'events' && <EventsTab clubId={data.id} canManage={canManage} />}
         {tab === 'reviews' && <ReviewsTab club={data} canManage={canManage} />}

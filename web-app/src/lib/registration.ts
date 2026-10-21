@@ -17,6 +17,7 @@ export function registrationBadge(event: Pick<ClubEvent, 'registrationState' | '
     OPEN: event.spotsLeft != null && event.spotsLeft <= 5
       ? { label: `Open · ${event.spotsLeft} ${event.spotsLeft === 1 ? 'spot' : 'spots'} left`, tone: 'warning' }
       : { label: 'Registration open', tone: 'primary' },
+    DRAFT: { label: 'Draft', tone: 'neutral' },
     NOT_YET_OPEN: { label: 'Opens soon', tone: 'neutral' },
     CLOSED: { label: 'Registration closed', tone: 'neutral' },
     FULL: { label: 'Full', tone: 'danger' },

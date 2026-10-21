@@ -27,6 +27,7 @@ const HERE = { latitude: randomInt(-600_000, 600_000) / 1e4, longitude: randomIn
 // A real 2×2 PNG, so the server's content check accepts it
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAMAQEBnSg7CgAAAABJRU5ErkJggg==', 'base64')
 const image = (name) => ({ name, mimeType: 'image/png', buffer: PNG })
+const PDF = Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\n%%EOF\n')
 const problems = []
 
 const pad = (n) => String(n).padStart(2, '0')
@@ -54,8 +55,9 @@ async function shot(page, name) { await page.screenshot({ path: `${SHOTS}${Strin
 function step(msg) { console.log('•', msg) }
 
 /** Signs up; new accounts land on profile setup, which is either completed (photo, location, bio) or skipped. */
-async function register(page, u, { setup = false } = {}) {
+async function register(page, u, { setup = false, clubOwner = false } = {}) {
   await page.goto(`${BASE}/register`)
+  if (clubOwner) await page.getByRole('radio', { name: 'I run a club' }).click()
   await page.getByLabel('Name', { exact: true }).fill(u.name)
   await page.getByLabel('Email').fill(u.email)
   await page.getByLabel('Password', { exact: true }).fill(u.password)
@@ -64,7 +66,8 @@ async function register(page, u, { setup = false } = {}) {
   await page.waitForURL(/\/welcome$/)
   if (!setup) {
     await page.getByRole('button', { name: 'Skip for now' }).click()
-    await page.waitForURL(/\/clubs$/)
+    // club owner sign-ups continue to their club application
+    await page.waitForURL(clubOwner ? /\/become-owner$/ : /\/clubs$/)
     return
   }
   await page.locator('input[type=file]').setInputFiles(image('me.png'))
@@ -82,7 +85,7 @@ async function login(page, email, password) {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Log in' }).click()
-  await page.waitForURL(`${BASE}/`)
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
 }
 
 async function logout(page) {
@@ -92,56 +95,91 @@ async function logout(page) {
 }
 
 try {
-  // ---------- owner signs up and applies
+  // ---------- owner signs up as a club owner and applies for the club
   const owner = await newUser('owner')
-  step('owner registers'); await register(owner, OWNER); await shot(owner, 'owner-home')
-  step('owner applies to become a club owner')
-  await owner.goto(`${BASE}/become-owner`)
+  step('owner signs up as a club owner'); await register(owner, OWNER, { clubOwner: true })
+  step('owner submits the club details and a proof document')
   await owner.getByLabel('Club name').fill(CLUB)
+  await owner.getByLabel('Category').selectOption('RUNNING')
   await owner.getByLabel('City').fill('Chennai')
+  await owner.getByLabel('Address or meeting point').fill('Lighthouse, Marina Beach')
+  await owner.getByLabel('Contact email').fill(`club${RUN}@example.com`)
   await owner.getByRole('button', { name: 'Submit application' }).click()
-  await owner.getByText(/pending|submitted|review/i).first().waitFor()
+  await owner.getByText('Pending review').first().waitFor()
+  await owner.getByLabel('Upload a document').setInputFiles({ name: 'club-registration.pdf', mimeType: 'application/pdf', buffer: PDF })
+  await owner.getByText('club-registration.pdf').first().waitFor()
   await shot(owner, 'owner-application-submitted')
+  // nothing to manage before an admin approves the club
+  await owner.goto(`${BASE}/owner`)
+  await owner.getByText('No verified clubs yet').waitFor()
   await logout(owner)
 
-  // ---------- admin approves (and creates the club)
-  step('admin approves')
+  step('admin asks for changes')
   await login(owner, ADMIN_EMAIL, ADMIN_PASSWORD)
   await owner.goto(`${BASE}/admin/verification`)
   await owner.getByText(CLUB).first().click()
+  const [document] = await Promise.all([
+    owner.waitForEvent('download'),
+    owner.getByRole('button', { name: 'Download' }).first().click(),
+  ])
+  if (document.suggestedFilename() !== 'club-registration.pdf') throw new Error(`downloaded ${document.suggestedFilename()}`)
   await shot(owner, 'admin-review')
-  await owner.getByRole('button', { name: 'Approve' }).first().click()
-  await owner.getByRole('dialog').getByRole('button', { name: 'Approve' }).click()
+  await owner.getByRole('button', { name: 'Ask for changes' }).click()
+  await owner.getByLabel('What should the applicant correct or add?').fill("Please add the club's Instagram page.")
+  await owner.getByRole('button', { name: 'Send to the applicant' }).click()
   await owner.getByRole('dialog').waitFor({ state: 'detached' })
   await logout(owner)
 
-  // ---------- owner activates role, lands on club
-  step('owner sees verified status and opens the club created on approval')
+  step('owner updates the application and resubmits')
   await login(owner, OWNER.email, OWNER.password)
-  await shot(owner, 'owner-home-approved')
-  // a fresh login already carries CLUB_OWNER; the approval created the club
-  await owner.goto(`${BASE}/become-owner`)
-  await owner.getByText("You're a verified club owner").waitFor()
-  await owner.goto(`${BASE}/clubs`)
-  await owner.getByText(CLUB).first().click()
-  await owner.waitForURL(/\/clubs\/[0-9a-f-]{36}/)
-  const clubUrl = owner.url().split('?')[0]
-  const clubId = clubUrl.split('/').pop()
-  await owner.getByRole('heading', { level: 1, name: CLUB }).waitFor()
-  await shot(owner, 'club-page-owner')
+  await owner.waitForURL(/\/become-owner$/)
+  await owner.getByText("Please add the club's Instagram page.").waitFor()
+  await owner.getByRole('button', { name: 'Update details' }).click()
+  await owner.getByLabel('Instagram').fill('https://instagram.com/marinarunners')
+  await owner.getByRole('button', { name: 'Save changes' }).click()
+  await owner.getByText('Application updated').first().waitFor()
+  await owner.getByRole('button', { name: 'Resubmit for review' }).click()
+  await owner.getByText('Sent back for review').first().waitFor()
+  await logout(owner)
 
-  step('owner sets the club location, logo and subscriber benefits')
-  await owner.getByRole('button', { name: 'Edit club' }).click()
+  step('admin approves under the official name')
+  await login(owner, ADMIN_EMAIL, ADMIN_PASSWORD)
+  await owner.goto(`${BASE}/admin/verification`)
+  await owner.getByText(CLUB).first().click()
+  await owner.getByRole('button', { name: 'Approve', exact: true }).click()
+  await owner.getByRole('dialog').getByRole('button', { name: 'Approve and create the club' }).click()
+  await owner.getByRole('dialog').waitFor({ state: 'detached' })
+  await logout(owner)
+
+  // ---------- owner lands on the dashboard of the verified club
+  step('owner opens the dashboard and completes the club profile')
+  await login(owner, OWNER.email, OWNER.password)
+  await owner.waitForURL(/\/owner$/)
+  await owner.getByRole('heading', { name: CLUB }).waitFor()
+  await owner.getByText('Complete your club profile').waitFor()
+  await shot(owner, 'owner-dashboard')
+  const clubId = await owner.getByRole('link', { name: 'Public page' }).getAttribute('href').then((h) => h.split('/').pop())
+  const clubUrl = `${BASE}/clubs/${clubId}`
+  await owner.getByRole('button', { name: 'Complete the profile' }).click()
   const edit = owner.getByRole('dialog')
-  await edit.locator('input[type=file]').setInputFiles(image('logo.png'))
+  await edit.locator('input[type=file]').nth(0).setInputFiles(image('logo.png'))
   await owner.getByText('Logo updated').first().waitFor()
-  await edit.getByLabel('Address or meeting point').fill('Lighthouse, Marina Beach')
+  await edit.locator('input[type=file]').nth(1).setInputFiles(image('cover.png'))
+  await owner.getByText('Cover photo updated').first().waitFor()
+  await edit.getByLabel('Description').fill('Sunday long runs and weekday tempo sessions on the Marina.')
   await edit.getByRole('button', { name: 'Use my current location' }).click()
   await owner.waitForFunction((lat) => document.querySelector('#club-lat')?.value.startsWith(String(lat).slice(0, 4)), HERE.latitude)
+  await edit.getByLabel('Club rules').fill('Lights and reflective kit before sunrise. Run on the left.')
   await edit.getByLabel('What subscribers get').fill('Members-only long runs and pacers')
-  await edit.getByRole('button', { name: 'Save changes' }).click()
+  await edit.getByRole('button', { name: 'Save profile' }).click()
+  await owner.getByText('Profile saved').first().waitFor()
+  await owner.goto(clubUrl)
+  await owner.getByRole('heading', { level: 1, name: CLUB }).waitFor()
+  await owner.getByText('Verified', { exact: true }).first().waitFor()
+  await owner.locator('img.club-cover').waitFor()
   await owner.getByRole('link', { name: 'View on map' }).waitFor()
   await owner.locator(`.club-hero img[src*="/media/clubs/${clubId}/"]`).waitFor()
+  await shot(owner, 'club-page-owner')
 
   step('owner adds a gallery photo')
   await owner.goto(`${clubUrl}?tab=photos`)
@@ -167,10 +205,14 @@ try {
   await owner.getByLabel('Opens at').fill(local(-5))
   await owner.getByLabel('Capacity (optional)').fill('30')
   await shot(owner, 'event-form')
-  await owner.getByRole('button', { name: /create event|save|create/i }).last().click()
+  await owner.getByRole('button', { name: 'Save and review' }).click()
   await owner.waitForURL(/\/events\/[0-9a-f-]{36}$/)
   const freeEventUrl = owner.url()
   await owner.getByText('Pace groups: 5, 6 and 7 min/km.').waitFor()
+  await owner.getByText('Draft: only you can see this event').waitFor()
+  await shot(owner, 'event-draft-review')
+  await owner.getByRole('button', { name: 'Publish event' }).click()
+  await owner.getByText(/^Published/).first().waitFor()
   await shot(owner, 'event-page-owner')
 
   step('owner adds a cover image to the event')
@@ -186,9 +228,11 @@ try {
   await owner.getByLabel('Starts at').fill(local(90))
   await owner.getByLabel('Opens at').fill(local(-5))
   await owner.getByLabel('Price').fill('499')
-  await owner.getByRole('button', { name: /create event|save|create/i }).last().click()
+  await owner.getByRole('button', { name: 'Save and review' }).click()
   await owner.waitForURL(/\/events\/[0-9a-f-]{36}$/)
   const paidEventUrl = owner.url()
+  await owner.getByRole('button', { name: 'Publish event' }).click()
+  await owner.getByText(/^Published/).first().waitFor()
 
   // ---------- member joins, logs activity, registers
   const member = await newUser('member')
@@ -280,6 +324,13 @@ try {
   await owner.getByLabel('Ticket code').fill(code)
   await owner.getByRole('button', { name: 'Check in' }).click()
   await owner.getByText(/already checked in/i).first().waitFor()
+
+  step('owner sees registrations and check-ins on the dashboard')
+  await owner.goto(`${BASE}/owner`)
+  const freeRow = owner.locator('tr', { hasText: 'Sunday Long Run' })
+  await freeRow.getByRole('link', { name: /Check in/ }).waitFor()
+  await freeRow.locator('td', { hasText: /^1/ }).first().waitFor()
+  await shot(owner, 'owner-dashboard-event-day')
 
   step('member reviews the club; the owner replies')
   await member.goto(`${clubUrl}?tab=reviews`)

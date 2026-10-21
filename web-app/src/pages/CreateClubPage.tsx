@@ -10,7 +10,7 @@ export default function CreateClubPage() {
   const toast = useToast()
   return (
     <div className="page page-narrow">
-      <PageHeader title="Create a club" subtitle="Members can find and join your club once it's created."
+      <PageHeader title="Add a club" subtitle="Admins only: add an official club directly. Club owners get theirs by applying, one verified club at a time."
                   back={{ to: '/clubs', label: 'Clubs' }} />
       <Card>
         <ClubForm submitLabel="Create club" onCancel={() => navigate('/clubs')} onSubmit={async (request) => {

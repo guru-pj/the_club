@@ -11,7 +11,7 @@ Three kinds of people use The Club. Everyone starts as a **Member**; the other t
 | Role | Who they are | How they get the role | What they can do |
 | --- | --- | --- | --- |
 | **Member** | Anyone who signs up | Sign up with name, email and password, then click the link in the welcome email | Join clubs, log workouts, connect Strava, register and pay for events, carry QR tickets, earn points and stars, see leaderboards, receive notifications |
-| **Club owner** | The person who runs a club (a coach or organiser) | Applies inside the app with the club's details and proof (social links, documents); an Admin approves | Everything a Member can do, plus: create and edit their club, post announcements and event recaps, create events with dates, capacity, price and points, see who registered, refund payments, cancel events, scan QR tickets at the door |
+| **Club owner** | The person who runs a club (a coach or organiser) | Applies inside the app for each club, with its details and proof (social links, documents); an Admin approves each club | Everything a Member can do, plus, for each club verified for them: complete the club profile, post announcements and event recaps, create, publish and complete events with dates, capacity, price and points, see who registered and the club's numbers, refund payments, cancel events, scan QR tickets at the door |
 | **Admin** | The platform operator (us) | Created automatically when the system is first installed | Review club-owner applications: approve (and create the club in one step), reject with a reason, or ask for more information |
 
 A person can only own clubs after approval. This keeps fake or spam clubs off the platform, because events can take real money.
@@ -156,10 +156,19 @@ Every action below starts the same way: the browser sends a request to the **gat
 
 ### …someone becomes a club owner
 
-1. A member submits an application (club name, city, social links, proof links).
-2. The **club service** stores it as Pending. An Admin sees it in Owner applications.
-3. The Admin approves, rejects with a reason, or asks for more information (the member can then update and resubmit).
-4. On approval, the **user service** upgrades the person to Club owner and, if the Admin chose, the club is created in the same step. The person gets a notification and sees owner tools after logging in again.
+1. The person signs up choosing "I run a club" (or applies later from their account). After the first login they apply for **one club**: its name, category, city and meeting point, a contact email or phone, website and social pages. Then they upload documents that show they own or represent it; those are private to them and the Admins.
+2. The **club service** stores it as Pending review. An Admin sees it in Owner applications and checks the club's pages and documents.
+3. The Admin approves, rejects with a reason, or asks for changes. The person then updates the application and resubmits it, and it goes back to Pending review.
+4. On approval the club is created under its exact verified name and linked to the person's account, and the **user service** gives them the Club owner role. They get a notification and land on the **Owner dashboard**: complete the profile (logo, cover photo, rules, contact, links), then create events.
+5. Verification is per club: someone who runs a second club applies for it separately, and approving one never covers another. Nobody can create a club without an approved application (only Admins can add one directly).
+
+### …a club owner runs an event
+
+1. **Create** it as a draft (date, place, registration window, capacity, fee, rules) and **review** it on its page; only the owner sees drafts.
+2. **Publish** it: followers and subscribers are told, and it shows up in discovery, so members can register when registration opens. The event shows whether registration is upcoming, open, full or closed.
+3. **Manage registrations** on the event page or the dashboard: who registered, payment status, check-ins, capacity.
+4. **On the day**, scan tickets. A ticket only checks in at its own event, and only once.
+5. **Afterwards**, write a recap with photos, then **mark it completed**: it moves to past events with its registrations, attendance and recap.
 
 ### …a member joins a club and logs a workout
 

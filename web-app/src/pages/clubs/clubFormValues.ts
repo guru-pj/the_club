@@ -15,6 +15,24 @@ export interface ClubFormValues {
   subscriptionBenefits: string
   /** the club had a map position when the form opened (clearing both fields then removes it) */
   hadLocation: boolean
+  contactEmail: string
+  contactPhone: string
+  website: string
+  /** social network → link */
+  socialLinks: Record<SocialNetwork, string>
+  rules: string
+}
+
+export const SOCIAL_NETWORKS = [
+  { key: 'instagram', label: 'Instagram' },
+  { key: 'facebook', label: 'Facebook' },
+  { key: 'strava', label: 'Strava club' },
+  { key: 'youtube', label: 'YouTube' },
+] as const
+export type SocialNetwork = (typeof SOCIAL_NETWORKS)[number]['key']
+
+function socialValues(links: Record<string, string> | null | undefined): Record<SocialNetwork, string> {
+  return Object.fromEntries(SOCIAL_NETWORKS.map(({ key }) => [key, links?.[key] ?? ''])) as Record<SocialNetwork, string>
 }
 
 export function clubFormValues(club?: Partial<Club> | null): ClubFormValues {
@@ -31,6 +49,11 @@ export function clubFormValues(club?: Partial<Club> | null): ClubFormValues {
     subscriptionsEnabled: club?.subscriptionsEnabled ?? true,
     subscriptionBenefits: club?.subscriptionBenefits ?? '',
     hadLocation: club?.latitude != null && club?.longitude != null,
+    contactEmail: club?.contactEmail ?? '',
+    contactPhone: club?.contactPhone ?? '',
+    website: club?.website ?? '',
+    socialLinks: socialValues(club?.socialLinks),
+    rules: club?.rules ?? '',
   }
 }
 
@@ -47,6 +70,12 @@ export function locationProblem(v: Pick<ClubFormValues, 'latitude' | 'longitude'
   return null
 }
 
+/** Whether a typed website or social link isn't a full http(s) URL. */
+export function linkProblem(v: Pick<ClubFormValues, 'website' | 'socialLinks'>): boolean {
+  const bad = (url: string) => url.trim() !== '' && !/^https?:\/\/\S+$/i.test(url.trim())
+  return bad(v.website) || Object.values(v.socialLinks).some(bad)
+}
+
 export function toClubRequest(v: ClubFormValues): ClubRequest {
   const lat = v.latitude.trim()
   const lng = v.longitude.trim()
@@ -61,5 +90,11 @@ export function toClubRequest(v: ClubFormValues): ClubRequest {
     ...(lat && lng ? { latitude: Number(lat), longitude: Number(lng) } : v.hadLocation ? { clearLocation: true } : {}),
     subscriptionsEnabled: v.subscriptionsEnabled,
     subscriptionBenefits: v.subscriptionBenefits.trim(),
+    // '' clears a field; empty links are dropped
+    contactEmail: v.contactEmail.trim(),
+    contactPhone: v.contactPhone.trim(),
+    website: v.website.trim(),
+    socialLinks: Object.fromEntries(Object.entries(v.socialLinks).map(([k, url]) => [k, url.trim()]).filter(([, url]) => url)),
+    rules: v.rules.trim(),
   }
 }

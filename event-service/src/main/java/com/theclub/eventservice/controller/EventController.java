@@ -8,6 +8,7 @@ import com.theclub.eventservice.dto.CreateEventRequest;
 import com.theclub.eventservice.dto.EventRegistrationRow;
 import com.theclub.eventservice.dto.EventCard;
 import com.theclub.eventservice.dto.EventResponse;
+import com.theclub.eventservice.dto.EventStats;
 import com.theclub.eventservice.dto.PagedResponse;
 import com.theclub.eventservice.dto.RegisterResponse;
 import com.theclub.eventservice.dto.RegistrationWindowRequest;
@@ -16,6 +17,7 @@ import com.theclub.eventservice.dto.UpdateEventRequest;
 import com.theclub.eventservice.dto.UserEventRegistration;
 import com.theclub.eventservice.service.CheckInService;
 import com.theclub.eventservice.service.EventService;
+import com.theclub.eventservice.service.EventStatsService;
 import com.theclub.eventservice.service.FeedService;
 import com.theclub.eventservice.service.RegistrationService;
 import jakarta.validation.Valid;
@@ -46,9 +48,11 @@ public class EventController {
     private final RegistrationService registrationService;
     private final CheckInService checkInService;
     private final FeedService feedService;
+    private final EventStatsService statsService;
 
     public EventController(EventService eventService, RegistrationService registrationService,
-                           CheckInService checkInService, FeedService feedService) {
+                           CheckInService checkInService, FeedService feedService, EventStatsService statsService) {
+        this.statsService = statsService;
         this.eventService = eventService;
         this.registrationService = registrationService;
         this.checkInService = checkInService;
@@ -103,6 +107,30 @@ public class EventController {
                                                   @Valid @RequestBody RegistrationWindowRequest request,
                                                   @AuthenticationPrincipal AuthenticatedUser caller) {
         return eventService.updateRegistrationWindow(eventId, request, caller);
+    }
+
+    /** Publishes a draft: it becomes visible, and registration opens within its window. */
+    @PostMapping("/{eventId}/publish")
+    public EventResponse publish(@PathVariable UUID eventId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        return eventService.publish(eventId, caller);
+    }
+
+    /** Marks a finished event completed; it moves to the club's past events. */
+    @PostMapping("/{eventId}/complete")
+    public EventResponse complete(@PathVariable UUID eventId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        return eventService.complete(eventId, caller);
+    }
+
+    /** Club owner: registrations, check-ins, attendance and revenue of one event. */
+    @GetMapping("/{eventId}/stats")
+    public EventStats.Event stats(@PathVariable UUID eventId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        return statsService.event(eventId, caller);
+    }
+
+    /** Club owner: the same for all of the club's events, plus the most recent ones. */
+    @GetMapping("/club/{clubId}/stats")
+    public EventStats.Club clubStats(@PathVariable UUID clubId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        return statsService.club(clubId, caller);
     }
 
     @PostMapping("/{eventId}/cancel")

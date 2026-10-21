@@ -8,6 +8,7 @@ import { LocationControl } from '../components/LocationControl'
 import { useToast } from '../components/Toast'
 import { Button, Card, ErrorMessage, Field, Loading, PageHeader } from '../components/ui'
 import { fieldError } from '../lib/fieldError'
+import { afterProfileSetup } from '../lib/startPage'
 import './account.css'
 
 /**
@@ -30,11 +31,12 @@ export default function ProfileSetupPage() {
     setSaving(finish ? 'finish' : 'skip')
     setError(undefined)
     try {
-      setUser(await usersApi.update(user.id, finish
+      const updated = await usersApi.update(user.id, finish
         ? { name: name.trim(), city: city.trim(), bio: bio.trim(), profileComplete: true }
-        : { profileComplete: true }))
+        : { profileComplete: true })
+      setUser(updated)
       if (finish) toast.success('Profile ready')
-      navigate('/clubs', { replace: true })
+      navigate(afterProfileSetup(updated), { replace: true })
     } catch (e) {
       setError(e)
     } finally {

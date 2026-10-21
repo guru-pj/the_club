@@ -372,3 +372,13 @@ table.table { width: 100%; border-collapse: collapse; }
 @media (max-width: 520px) {
   .review-summary { grid-template-columns: 1fr; gap: 12px; }
 }
+
+/* Two-option switch (e.g. account type on sign-up) */
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: var(--radius); background: var(--surface-2); }
+.segmented button {
+  border: none; background: none; padding: 10px 8px; border-radius: var(--radius-sm); font: inherit; font-weight: 600;
+  color: var(--text-muted); cursor: pointer;
+}
+.segmented button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+.stats-row .stat { padding: 10px 12px; background: var(--surface-2); border-radius: var(--radius-sm); }

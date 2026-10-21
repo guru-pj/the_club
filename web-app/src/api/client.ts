@@ -242,6 +242,23 @@ export function upload<T>(path: string, file: File | Blob, fields: Record<string
   return request<T>('POST', path, { form })
 }
 
+/** Fetches a private file with the session's token, for saving or opening it. */
+export async function download(path: string): Promise<Blob> {
+  const send = () => fetch(apiUrl(path), {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    credentials: 'same-origin',
+  })
+  let res: Response
+  try {
+    res = await send()
+    if (res.status === 401 && accessToken && (await refreshTokens())) res = await send()
+  } catch {
+    throw new ApiError(0, 'Cannot reach the server. Check your connection.')
+  }
+  if (!res.ok) throw await toError(res)
+  return res.blob()
+}
+
 /**
  * Where to load an uploaded image from. Stored images have site-relative URLs ("/media/…"); the native apps load
  * the UI from the device, so those need the server's address in front. Other URLs are returned unchanged.

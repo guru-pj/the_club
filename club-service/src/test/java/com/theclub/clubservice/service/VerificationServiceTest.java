@@ -11,6 +11,8 @@ import com.theclub.clubservice.model.ClubType;
 import com.theclub.clubservice.model.VerificationRequest;
 import com.theclub.clubservice.model.VerificationStatus;
 import com.theclub.clubservice.repository.VerificationAuditRepository;
+import com.theclub.clubservice.repository.VerificationDocumentRepository;
+import com.theclub.common.media.MediaStore;
 import com.theclub.clubservice.repository.VerificationRequestRepository;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.security.Roles;
@@ -57,6 +59,10 @@ class VerificationServiceTest {
     UserClient userClient;
     @Mock
     NotificationPublisher notifications;
+    @Mock
+    VerificationDocumentRepository documents;
+    @Mock
+    MediaStore media;
     VerificationService service;
 
     private final AuthenticatedUser applicant = new AuthenticatedUser(UUID.randomUUID(), "a@example.com", "A", Set.of(Roles.USER));
@@ -64,7 +70,7 @@ class VerificationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new VerificationService(requests, audits, clubService, userClient, notifications,
+        service = new VerificationService(requests, audits, documents, clubService, userClient, notifications, media,
                 Clock.fixed(Instant.parse("2026-10-18T00:00:00Z"), ZoneOffset.UTC));
         when(requests.save(any(VerificationRequest.class))).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -80,7 +86,8 @@ class VerificationServiceTest {
 
     private static ApplyVerificationRequest application() {
         return new ApplyVerificationRequest("Chennai Runners", ClubType.RUNNING, "Chennai",
-                Map.of("instagram", "https://instagram.com/cr"), List.of("https://files/proof.pdf"), "We run", "+91 98765 43210");
+                Map.of("instagram", "https://instagram.com/cr"), List.of("https://files/proof.pdf"), "We run", "+91 98765 43210",
+                "hello@chennairunners.in", "Marina Beach, Chennai", 13.05, 80.28, "https://chennairunners.in");
     }
 
     @Test
@@ -94,19 +101,54 @@ class VerificationServiceTest {
     }
 
     @Test
-    void cannotApplyTwiceWhileOpen() {
-        when(requests.existsByUserIdAndStatusIn(applicant.id(), VerificationStatus.OPEN)).thenReturn(true);
+    void cannotApplyTwiceForTheSameClubWhileOpen() {
+        when(requests.existsByUserIdAndClubNameIgnoreCaseAndStatusIn(applicant.id(), "Chennai Runners", VerificationStatus.OPEN))
+                .thenReturn(true);
 
         assertThatThrownBy(() -> service.apply(applicant, application()))
-                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT));
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("DUPLICATE_APPLICATION"));
     }
 
     @Test
-    void existingOwnersCannotApply() {
+    void existingOwnersApplyForEachFurtherClub() {
         AuthenticatedUser owner = new AuthenticatedUser(UUID.randomUUID(), "o@x.com", "O", Set.of(Roles.USER, Roles.CLUB_OWNER));
 
-        assertThatThrownBy(() -> service.apply(owner, application()))
-                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT));
+        assertThat(service.apply(owner, application()).getStatus()).isEqualTo(VerificationStatus.PENDING);
+    }
+
+    @Test
+    void clubsAlreadyOnTheClubCannotBeClaimed() {
+        when(clubService.nameTaken("Chennai Runners")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.apply(applicant, application()))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("CLUB_EXISTS"));
+    }
+
+    @Test
+    void applicationsNeedAContact() {
+        ApplyVerificationRequest a = application();
+        ApplyVerificationRequest noContact = new ApplyVerificationRequest(a.clubName(), a.clubType(), a.city(), a.socialLinks(),
+                a.proofFiles(), a.description(), null, " ", null, null, null, null);
+
+        assertThatThrownBy(() -> service.apply(applicant, noContact))
+                .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getCode()).isEqualTo("CONTACT_REQUIRED"));
+    }
+
+    @Test
+    void changesRequiredThenUpdateAndResubmitGoesBackToPending() {
+        VerificationRequest request = stored(VerificationStatus.PENDING);
+        service.requestInfo(admin, request.getId(), "Add the club's Instagram");
+
+        ApplyVerificationRequest a = application();
+        service.update(applicant, request.getId(), new ApplyVerificationRequest(a.clubName(), a.clubType(), a.city(),
+                Map.of("instagram", "https://instagram.com/chennairunners"), a.proofFiles(), a.description(),
+                a.contactPhone(), a.contactEmail(), a.address(), a.latitude(), a.longitude(), a.website()));
+        assertThat(request.getStatus()).isEqualTo(VerificationStatus.NEEDS_INFO);
+        assertThat(request.getSocialLinks()).containsEntry("instagram", "https://instagram.com/chennairunners");
+
+        service.resubmit(applicant, request.getId(), null);
+        assertThat(request.getStatus()).isEqualTo(VerificationStatus.PENDING);
+        assertThatThrownBy(() -> service.resubmit(applicant, request.getId(), null)).isInstanceOf(ApiException.class);
     }
 
     @Test
@@ -115,10 +157,11 @@ class VerificationServiceTest {
         Club club = new Club("Chennai Runners", null, "Chennai", ClubType.RUNNING, null, applicant.id());
         when(clubService.createFor(eq(applicant.id()), any())).thenReturn(club);
 
-        VerificationResponse response = service.approve(admin, request.getId(), new ApproveVerificationRequest(true, null));
+        VerificationResponse response = service.approve(admin, request.getId(), new ApproveVerificationRequest(null));
 
         assertThat(response.status()).isEqualTo(VerificationStatus.APPROVED);
         assertThat(response.createdClubId()).isEqualTo(club.getId());
+        assertThat(request.getClubId()).isEqualTo(club.getId());
         assertThat(request.getReviewedBy()).isEqualTo(admin.id());
         ArgumentCaptor<UserClient.RoleRequest> role = ArgumentCaptor.forClass(UserClient.RoleRequest.class);
         verify(userClient).addRole(eq(applicant.id()), role.capture());
@@ -135,7 +178,7 @@ class VerificationServiceTest {
         VerificationRequest request = stored(VerificationStatus.PENDING);
         when(userClient.addRole(any(), any())).thenThrow(new RuntimeException("user-service down"));
 
-        assertThatThrownBy(() -> service.approve(admin, request.getId(), new ApproveVerificationRequest(true, null)))
+        assertThatThrownBy(() -> service.approve(admin, request.getId(), new ApproveVerificationRequest(null)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY));
         verify(clubService, never()).createFor(any(), any());
         verify(notifications, never()).notifyAfterCommit(any(UUID.class), anyString(), anyString());
@@ -146,7 +189,7 @@ class VerificationServiceTest {
         VerificationRequest request = stored(VerificationStatus.PENDING);
         when(clubService.nameTaken("Chennai Runners")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.approve(admin, request.getId(), new ApproveVerificationRequest(true, null)))
+        assertThatThrownBy(() -> service.approve(admin, request.getId(), new ApproveVerificationRequest(null)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT));
         verify(userClient, never()).addRole(any(), any());
     }
@@ -177,14 +220,14 @@ class VerificationServiceTest {
     }
 
     @Test
-    void needsInfoThenUploadMovesToUnderReview() {
+    void needsInfoThenUploadGoesBackToPending() {
         VerificationRequest request = stored(VerificationStatus.PENDING);
 
         service.requestInfo(admin, request.getId(), "Please add your Strava club link");
         assertThat(request.getStatus()).isEqualTo(VerificationStatus.NEEDS_INFO);
 
         service.uploadProof(applicant, request.getId(), new UploadProofRequest(List.of("https://files/strava.png"), null));
-        assertThat(request.getStatus()).isEqualTo(VerificationStatus.UNDER_REVIEW);
+        assertThat(request.getStatus()).isEqualTo(VerificationStatus.PENDING);
         assertThat(request.getProofFiles()).contains("https://files/strava.png");
     }
 

@@ -5,21 +5,24 @@ import { Button, ErrorMessage, Field } from '../../components/ui'
 import { fieldError } from '../../lib/fieldError'
 import { humanize } from '../../lib/format'
 import { currentPosition } from '../../lib/location'
-import { clubFormValues, locationProblem, toClubRequest, type ClubFormValues } from './clubFormValues'
+import { clubFormValues, linkProblem, locationProblem, SOCIAL_NETWORKS, toClubRequest, type ClubFormValues } from './clubFormValues'
 import { isHttpUrl } from './urls'
 
 /** Club fields as controlled inputs; reused by create, edit and admin approval. */
-export function ClubFields({ values, onChange, error, nameRequired = true }: {
+export function ClubFields({ values, onChange, error, nameRequired = true, nameLocked = false }: {
   values: ClubFormValues
   onChange: (v: ClubFormValues) => void
   error?: unknown
   nameRequired?: boolean
+  /** the club's verified name, which only admins change */
+  nameLocked?: boolean
 }) {
   const set = <K extends keyof ClubFormValues>(key: K, value: ClubFormValues[K]) => onChange({ ...values, [key]: value })
   const nameError = error instanceof ApiError && error.status === 409
     ? 'A club with this name already exists'
     : fieldError(error, 'name')
   const logoInvalid = values.logoUrl.trim() !== '' && !isHttpUrl(values.logoUrl)
+  const websiteInvalid = values.website.trim() !== '' && !isHttpUrl(values.website)
   const locationError = locationProblem(values) ?? undefined
   const [locating, setLocating] = useState(false)
   const [locateProblem, setLocateProblem] = useState<string>()
@@ -37,9 +40,10 @@ export function ClubFields({ values, onChange, error, nameRequired = true }: {
   }
   return (
     <>
-      <Field label="Club name" htmlFor="club-name" error={nameError}>
+      <Field label="Club name" htmlFor="club-name" error={nameError}
+             hint={nameLocked ? 'The verified name from your application. Ask the admin team to change it.' : undefined}>
         <input id="club-name" className={nameError ? 'input has-error' : 'input'} required={nameRequired} maxLength={120}
-               value={values.name} onChange={(e) => set('name', e.target.value)} />
+               value={values.name} readOnly={nameLocked} onChange={(e) => set('name', e.target.value)} />
       </Field>
       <Field label="Description" htmlFor="club-description" error={fieldError(error, 'description')}>
         <textarea id="club-description" className="input" maxLength={2000} value={values.description}
@@ -86,6 +90,37 @@ export function ClubFields({ values, onChange, error, nameRequired = true }: {
         {locateProblem && <p className="small" role="alert">{locateProblem}</p>}
       </fieldset>
       <fieldset className="fieldset">
+        <legend className="bold small">Contact and links</legend>
+        <div className="form-row">
+          <Field label="Contact email" htmlFor="club-email" error={fieldError(error, 'contactEmail')}>
+            <input id="club-email" className="input" type="email" maxLength={255} value={values.contactEmail}
+                   onChange={(e) => set('contactEmail', e.target.value)} />
+          </Field>
+          <Field label="Contact phone" htmlFor="club-phone" error={fieldError(error, 'contactPhone')}>
+            <input id="club-phone" className="input" type="tel" maxLength={30} value={values.contactPhone}
+                   onChange={(e) => set('contactPhone', e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Website" htmlFor="club-website" error={websiteInvalid ? 'Enter a full http(s) URL' : fieldError(error, 'website')}>
+          <input id="club-website" className="input" type="url" maxLength={500} placeholder="https://…" value={values.website}
+                 onChange={(e) => set('website', e.target.value)} />
+        </Field>
+        <div className="form-row">
+          {SOCIAL_NETWORKS.map(({ key, label }) => (
+            <Field key={key} label={label} htmlFor={`club-social-${key}`}
+                   error={values.socialLinks[key].trim() && !isHttpUrl(values.socialLinks[key]) ? 'Enter a full http(s) URL' : undefined}>
+              <input id={`club-social-${key}`} className="input" type="url" maxLength={500} placeholder="https://…"
+                     value={values.socialLinks[key]}
+                     onChange={(e) => set('socialLinks', { ...values.socialLinks, [key]: e.target.value })} />
+            </Field>
+          ))}
+        </div>
+      </fieldset>
+      <Field label="Club rules" htmlFor="club-rules" hint="Safety, etiquette, kit: what members agree to (optional)"
+             error={fieldError(error, 'rules')}>
+        <textarea id="club-rules" className="input" maxLength={5000} value={values.rules} onChange={(e) => set('rules', e.target.value)} />
+      </Field>
+      <fieldset className="fieldset">
         <legend className="bold small">Subscriptions</legend>
         <label className="row" style={{ gap: 8 }}>
           <input type="checkbox" checked={values.subscriptionsEnabled} onChange={(e) => set('subscriptionsEnabled', e.target.checked)} />
@@ -103,11 +138,12 @@ export function ClubFields({ values, onChange, error, nameRequired = true }: {
   )
 }
 
-export function ClubForm({ initial, submitLabel, onSubmit, onCancel }: {
+export function ClubForm({ initial, submitLabel, onSubmit, onCancel, nameLocked = false }: {
   initial?: Club | null
   submitLabel: string
   onSubmit: (request: ClubRequest) => Promise<void>
   onCancel?: () => void
+  nameLocked?: boolean
 }) {
   const [values, setValues] = useState(() => clubFormValues(initial))
   const [error, setError] = useState<unknown>()
@@ -115,11 +151,12 @@ export function ClubForm({ initial, submitLabel, onSubmit, onCancel }: {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if ((values.logoUrl.trim() && !isHttpUrl(values.logoUrl)) || locationProblem(values)) return
+    if ((values.logoUrl.trim() && !isHttpUrl(values.logoUrl)) || locationProblem(values) || linkProblem(values)) return
     setSaving(true)
     setError(undefined)
     try {
-      await onSubmit(toClubRequest(values))
+      const request = toClubRequest(values)
+      await onSubmit(nameLocked ? { ...request, name: undefined } : request)
     } catch (err) {
       setError(err)
     } finally {
@@ -132,7 +169,7 @@ export function ClubForm({ initial, submitLabel, onSubmit, onCancel }: {
   return (
     <form className="form" onSubmit={submit} noValidate={false}>
       <ErrorMessage error={generalError} />
-      <ClubFields values={values} onChange={setValues} error={error} />
+      <ClubFields values={values} onChange={setValues} error={error} nameLocked={nameLocked} />
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         {onCancel && <Button variant="secondary" onClick={onCancel}>Cancel</Button>}
         <Button type="submit" loading={saving} disabled={!values.name.trim()}>{submitLabel}</Button>
