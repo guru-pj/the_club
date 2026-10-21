@@ -111,6 +111,43 @@ sleep 1
 req GET /notifications/me "$MT"; expect 200 "notifications"; echo "$BODY" | jq -r '.items[].type' | sort | uniq -c
 
 # --- strava webhook verification + internal blocked
+# --- user journey: profile location, discovery, follow, upcoming feed, reviews, image upload
+req PUT /users/$MIA_ID "$MT" '{"latitude":13.0500,"longitude":80.2824,"profileComplete":true}'; expect 200 "member saves location"
+[ "$(echo "$BODY" | jq .profileComplete)" = true ] || fail "profile setup not marked complete"
+req PUT /clubs/$CLUB "$OT" '{"latitude":13.0501,"longitude":80.2825,"address":"Lighthouse, Marina Beach","subscriptionBenefits":"Members-only long runs"}'; expect 200 "owner sets club location"
+req GET "/clubs/nearby?lat=13.05&lng=80.2824&radiusKm=5" "$MT"; expect 200 "nearby clubs"
+echo "$BODY" | jq -e --arg c "$CLUB" 'map(select(.id == $c and .distanceKm < 1)) | length == 1' >/dev/null || fail "club not listed nearby"
+req GET "/clubs/popular?limit=5" "$MT"; expect 200 "popular clubs"
+req POST /users/register "" '{"name":"Fan Farah","email":"fan-'"$RUN"'@example.com","password":"Str0ng-pass!"}'; expect 201 "register follower"
+FT=$(login fan-$RUN@example.com Str0ng-pass!)
+req POST /clubs/$CLUB/follow "$FT"; expect 201 "follow club"
+req POST /clubs/$CLUB/follow "$FT"; expect 200 "follow idempotent"
+req GET /clubs/$CLUB "$FT"; [ "$(echo "$BODY" | jq '.following and .followerCount == 1 and .myRole == null')" = true ] || fail "follow state"
+echo "ok  follower is not a member"
+req GET "/events/upcoming?lat=13.05&lng=80.2824" "$FT"; expect 200 "upcoming feed"
+echo "$BODY" | jq -e --arg e "$EV2" 'map(select(.event.id == $e and (.sources | index("FOLLOWING")) and (.sources | index("NEARBY")))) | length == 1' >/dev/null || fail "followed nearby event missing from feed"
+req PUT /clubs/$CLUB/reviews/me "$FT" '{"rating":1}'; expect 403 "follower cannot review"
+req PUT /clubs/$CLUB/reviews/me "$MT" '{"rating":5,"comment":"Great pacers"}'; expect 200 "subscriber reviews"
+req GET /clubs/$CLUB/reviews "$FT"; expect 200 "read reviews"
+[ "$(echo "$BODY" | jq '.summary.count == 1 and .summary.average == 5')" = true ] || fail "review summary"
+req DELETE /clubs/$CLUB/follow "$FT"; expect 204 "unfollow"
+# A real PNG through the gateway, then read back through the web app's /media (SeaweedFS by default)
+WEB=${WEB_URL:-http://localhost:${WEB_APP_PORT:-3000}}
+PNG=$(mktemp); printf 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAMAQEBnSg7CgAAAABJRU5ErkJggg==' | base64 -d > "$PNG"
+out=$(curl -s -w '\n%{http_code}' -X POST "$G/users/me/photo" -H "Authorization: Bearer $MT" -F "file=@$PNG;type=image/png"); CODE=${out##*$'\n'}; BODY=${out%$'\n'*}
+rm -f "$PNG"
+if [ "$CODE" = 503 ]; then
+  echo "skip image upload: no image store configured ($(echo "$BODY" | jq -r .code))"
+else
+  expect 200 "upload profile picture"
+  PIC=$(echo "$BODY" | jq -r .profilePicUrl)
+  case "$PIC" in /media/profiles/*.png) ;; *) fail "unexpected picture URL $PIC" ;; esac
+  [ "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' "$WEB$PIC")" = "200 image/png" ] || fail "picture not served at $WEB$PIC"
+  echo "ok  picture served from $PIC"
+  [ "$(curl -s -o /dev/null -w '%{http_code}' -X PUT --data-binary x "$WEB/media/profiles/forged.png")" != 200 ] || fail "anonymous upload to /media accepted"
+  echo "ok  /media is read-only"
+fi
+
 curl -s "$G/strava/webhook?hub.mode=subscribe&hub.verify_token=$VERIFY_TOKEN&hub.challenge=abc" | grep -q abc && echo "ok  strava webhook challenge" || fail "strava challenge"
 [ "$(curl -s -o /dev/null -w '%{http_code}' ${GATEWAY_URL:-http://localhost:8080}/internal/users/by-email/x)" = 404 ] && echo "ok  /internal blocked at gateway" || fail "internal exposed"
 echo "ALL PASSED"

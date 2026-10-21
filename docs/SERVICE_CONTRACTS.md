@@ -74,11 +74,15 @@ How the services fit together. Public endpoints are reached through the gateway 
 | GET  | `/internal/clubs/{clubId}` | — | `{id, name, ownerId, memberCount}`; 404 if missing |
 | GET  | `/internal/clubs/{clubId}/members/{userId}` | — | `{member: boolean, role: "OWNER"/"MEMBER"/null}` |
 | POST | `/internal/clubs/summaries` | `{ids: [uuid]}` | `[{id, name, logoUrl}]` |
+| GET  | `/internal/clubs/{clubId}/audience` | — | `[uuid]`: subscribers and followers, each once (event announcements) |
+| GET  | `/internal/clubs/users/{userId}/related` | — | `{followed: [uuid], subscribed: [uuid]}` (the upcoming-events feed) |
+| GET  | `/internal/clubs/nearby?lat=&lng=&radiusKm=&limit=` | — | `[{id, name, logoUrl, distanceKm}]`, closest first |
 
 ### event-service
 | Method | Path | Body | Response |
 |---|---|---|---|
 | GET | `/internal/events/{eventId}` | — | `{id, clubId, title, startTime, status}`; 404 if missing |
+| GET | `/internal/events/attendance?clubId=&userId=` | — | `{attended: boolean}`: checked in at any of the club's events (club-service lets attendees review) |
 
 ### notification-service
 | Method | Path | Body | Response |
@@ -122,6 +126,9 @@ See [`EMAIL_SETUP.md`](EMAIL_SETUP.md).
 
 ## Conventions
 
+* Following vs subscribing: a **follow** (`club_follows`) only subscribes to updates. A **subscription** is a membership (`club_memberships`, role `MEMBER`): leaderboards, subscriber-only events and reviews. Clubs can turn subscriptions off (`subscriptionsEnabled`). Club posts and new-event announcements go to both groups.
+* Uploaded images: user-, club- and event-service accept multipart uploads (field `file`, JPEG/PNG/WebP recognised by their bytes, at most `MEDIA_MAX_SIZE`, default 5 MB) through `common-lib`'s `MediaStore`, which writes them to an S3 bucket under random names. Entities store the public URL (`MEDIA_PUBLIC_BASE_URL` + key, `/media/…` by default, which the web app's nginx proxies read-only to the bucket). Without a bucket configured, uploads answer `503` with `code: MEDIA_NOT_CONFIGURED`.
+* Locations: user locations are rounded to 3 decimals (~100 m) and only returned to the user themself; club locations are public. "Nearby" filters by a bounding box in SQL and the exact great-circle distance in Java.
 * IDs: UUIDv7 from `com.theclub.common.util.UuidGenerator`, stored as `CHAR(36)` (`@JdbcTypeCode(SqlTypes.CHAR)`).
 * Times: `LocalDateTime` in the platform zone (`APP_TIME_ZONE`, default `Asia/Kolkata`); "now" always comes from the injected `java.time.Clock`.
 * Feign client base URLs can be pinned with `theclub.clients.<service>.url` (env `USER_SERVICE_URL`, …); empty means resolve through Eureka.

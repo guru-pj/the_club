@@ -262,6 +262,27 @@ curl -s http://127.0.0.1:8080/actuator/health            # gateway, from the hos
 
 Rate-limited responses are `429` with a `Retry-After` header. Token refresh is deliberately excluded from the strict bucket: the web app calls it on every page load, and guessing a 256-bit refresh token is not feasible. Per-account login lockout is enforced separately by auth-service.
 
+## 6a. Uploaded images
+
+Profile pictures, club logos and photos, and event images go to an S3-compatible bucket.
+
+- **Default (single host):** the bundled `seaweedfs` container, with data in the `media_data` volume. `scripts/generate-secrets.sh` creates its key (`secrets/media-s3-secret-key`) and access rules (`secrets/seaweedfs-s3.json`): only the services can write, and anyone can read. The web app's nginx serves the bucket read-only at `/media/`, so nothing else is exposed.
+- **Managed storage (AWS S3, Cloudflare R2, …):**
+  1. Create a bucket that allows public reads of its objects, or put a CDN in front of it.
+  2. Set these in `.env`:
+     ```bash
+     MEDIA_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com   # or https://s3.<region>.amazonaws.com
+     MEDIA_S3_BUCKET=<bucket>
+     MEDIA_S3_ACCESS_KEY=<access key id>
+     MEDIA_S3_REGION=auto                                          # R2; your AWS region otherwise
+     MEDIA_S3_PATH_STYLE=false
+     MEDIA_PUBLIC_BASE_URL=https://media.example.com               # the bucket's public URL or CDN
+     ```
+  3. Put the provider's secret key in `secrets/media-s3-secret-key`.
+  4. Restart user-, club- and event-service. The `seaweedfs` container can then be removed.
+- **Limits:** JPEG, PNG and WebP only (checked by content, so SVG and renamed files are refused), up to `MEDIA_MAX_SIZE` (5 MB).
+- **Backups:** the database backups don't include images. With SeaweedFS, copy the `media_data` volume off the host as well, for example `docker run --rm -v the_club_media_data:/data:ro -v "$PWD":/out alpine tar czf /out/media-$(date +%F).tgz -C /data .`. Managed object storage has its own versioning and replication.
+
 ## 7. Backups and restore
 
 - **Schedule:** `db-backup-mysql` and `db-backup-postgres` dump every database nightly at `BACKUP_SCHEDULE` (default 02:30 in `APP_TIME_ZONE`).
@@ -351,6 +372,7 @@ Recommended repository settings:
 - [ ] TLS terminated in front of `web-app`, real-IP configured in nginx if the proxy adds `X-Forwarded-For`, HSTS enabled
 - [ ] Deployed with `docker compose -f docker-compose.yml` (no dev override)
 - [ ] Off-site backup copy scheduled, and a restore tested
+- [ ] Uploaded images: `media_data` copied off-site too, or managed S3 storage configured (§6a)
 - [ ] Admin password changed after first login, `ADMIN_EMAIL` set to a real mailbox
 - [ ] Branch protection and required CI checks on `main`
 

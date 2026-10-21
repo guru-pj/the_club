@@ -34,7 +34,7 @@ The `.github/workflows/apps.yml` workflow (**Native apps** in the Actions tab) b
 The apps can't discover your server; its address is built into them.
 
 1. On GitHub, open the repository → **Settings** → **Secrets and variables** → **Actions** → **Variables** tab → **New repository variable**.
-2. Add `APP_API_BASE_URL`: your public HTTPS address, the same one members open in a browser, e.g. `https://club.example.com`. No trailing slash.
+2. Add `APP_API_BASE_URL`: your public HTTPS address, the same one members open in a browser, e.g. `https://club.example.com`. No trailing slash. Use the website's address, not the gateway's port 8080: the website also serves uploaded images at `/media/`.
 3. Optionally, add `APP_WEB_URL` with the same address. The apps show it where members must use the website (connecting Strava).
 
 Without `APP_API_BASE_URL`, every job in the workflow is skipped.
@@ -346,7 +346,9 @@ npm run android:open       # open in Android Studio, then Run ▶
 cd android && ./gradlew assembleDebug    # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-To test against a backend running on your computer, the emulator reaches it at `http://10.0.2.2:8080`. A real phone on the same Wi-Fi uses `http://<your-computer-ip>:8080`, which requires the gateway port to be exposed beyond `127.0.0.1`. Plain `http://` is for local testing only; the build then allows cleartext traffic.
+To test against a backend running on your computer, point the app at the web app's port, which serves both `/api` and the uploaded images at `/media`. The emulator reaches it at `http://10.0.2.2:3000`; a real phone on the same Wi-Fi uses `http://<your-computer-ip>:3000`. Plain `http://` is for local testing only; the build then allows cleartext traffic.
+
+Over plain `http://`, Android's web view still blocks uploaded **images** inside the app (mixed content: the app itself runs on `https://localhost`), although everything else works. With an `https://` server, as in production, images load normally.
 
 To build a signed release locally, set `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`, plus `APP_VERSION` and `APP_VERSION_CODE`, then run `./gradlew assembleRelease`.
 
@@ -397,6 +399,8 @@ GitHub Releases are enough for a club. Store distribution needs extra accounts a
 ---
 
 ## How the apps differ from the website
+
+- **Location:** "Use my current location" (profile setup, Profile, club settings) shows the phone's own permission prompt: Android asks to allow location *while using the app* (you can pick *Approximate*), and iOS and macOS use the message in `Info.plist`. The app asks for a quick low-accuracy fix first and falls back to GPS, and the server rounds the result to about 100 m.
 
 - **Session:** the website keeps the refresh token in an HttpOnly cookie. The apps call the API from another origin, so that cookie is never sent. Instead, the apps store the refresh token in their own sandboxed storage and send it in the body of `/api/v1/auth/refresh` and `/logout` (see `src/api/client.ts`). Android cloud backup is disabled so the token stays on the device.
 - **CORS:** the gateway must allow all three app origins (Part 1, step 2). The development defaults already do.
