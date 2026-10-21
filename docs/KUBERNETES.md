@@ -250,6 +250,7 @@ helm -n the-club rollback the-club <revision> --wait
   - The Strava webhook worker (activity-service) leases rows with a conditional `UPDATE`.
   - Creating the bootstrap admin tolerates two user-service pods racing.
 - **Rate limits count per gateway pod.** The limiter is in memory, so the effective limit per client IP is the configured value × the number of gateway pods. Size `config.gateway.rateLimitStrictPerMinute` accordingly; a shared Redis-backed limiter is on the roadmap.
+- **Live chat:** `/api/v1/chat/stream` is a Server-Sent Events response that stays open up to 15 minutes, with a keep-alive every 20 seconds. Make sure the ingress controller or load balancer doesn't buffer responses and allows at least 60 seconds idle (Traefik's defaults are fine; for an AWS ALB, keep the idle timeout at 60 s or more). With several club-service replicas, messages reach people connected to another replica within about 2 seconds (each replica checks the database), so no broker or sticky sessions are needed.
 - **Real client IPs:** nginx in the web app trusts `X-Forwarded-For` from `webApp.realIpFrom` (private ranges by default), so rate limits see real client IPs behind the ingress controller. Narrow it to your controller or load-balancer range.
 
 ---

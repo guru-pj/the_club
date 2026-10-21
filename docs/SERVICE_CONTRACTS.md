@@ -11,7 +11,7 @@ How the services fit together. Public endpoints are reached through the gateway 
 | user-service         | 8081 | MySQL `userdb`           | Users, profiles, roles                                                  |
 | auth-service         | 8082 | MySQL `authdb`           | Login, JWT access + refresh tokens                                      |
 | activity-service     | 8083 | PostgreSQL `activitydb`  | Manual activities, Strava connection + webhook, activity stats          |
-| club-service         | 8084 | MySQL `clubdb`           | Clubs, memberships, feed posts, club leaderboard, owner verification    |
+| club-service         | 8084 | MySQL `clubdb`           | Clubs, memberships, feed posts, likes/comments, chat, club leaderboard, owner verification |
 | event-service        | 8086 | MySQL `eventdb`          | Events, registration, payments, QR tickets, check-in, points, monthly leaderboard |
 | notification-service | 8087 | MySQL `notificationdb`   | In-app notifications, email delivery                                    |
 | discovery-service    | 8761 | —                        | Eureka registry                                                         |
@@ -119,7 +119,7 @@ See [`EMAIL_SETUP.md`](EMAIL_SETUP.md).
 | `/api/v1/users/**` | user-service |
 | `/api/v1/auth/**` | auth-service |
 | `/api/v1/activities/**`, `/api/v1/strava/**` | activity-service |
-| `/api/v1/clubs/**`, `/api/v1/owner-verification/**` | club-service |
+| `/api/v1/clubs/**`, `/api/v1/owner-verification/**`, `/api/v1/chat/**` | club-service |
 | `/api/v1/events/**`, `/api/v1/payments/**`, `/api/v1/participation/**`, `/api/v1/leaderboards/**` | event-service |
 | `/api/v1/notifications/**` | notification-service |
 | `/internal/**` | blocked (404) |
@@ -133,6 +133,66 @@ See [`EMAIL_SETUP.md`](EMAIL_SETUP.md).
 * Times: `LocalDateTime` in the platform zone (`APP_TIME_ZONE`, default `Asia/Kolkata`); "now" always comes from the injected `java.time.Clock`.
 * Feign client base URLs can be pinned with `theclub.clients.<service>.url` (env `USER_SERVICE_URL`, …); empty means resolve through Eureka.
 * Tests: unit tests `*Test`, Spring MockMvc + H2 tests `*IntegrationTest` with profile `test`; downstream Feign clients are mocked.
+
+## Club feed and chat (club-service)
+
+### Feed posts, likes, comments, reshares
+
+All under `/api/v1/clubs/{clubId}/posts`; every endpoint needs a signed-in user except the preview.
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| GET | (none) | anyone signed in | Page of posts, newest first, with `authorName`, `authorPhotoUrl`, `likeCount`, `commentCount`, `likedByMe` and, for a reshare, `shared` |
+| POST | (none) | owner/admin, subscribers | Owner: `ANNOUNCEMENT` (default) or `EVENT_RECAP`. A subscriber always writes a `POST` (403 `SUBSCRIBERS_ONLY` for anyone else). Strava activities: the owner's for the owner, your own for a subscriber |
+| POST | `/photos` | owner/admin, subscribers | Multipart `file` → `{url}`; put it in `photoUrls`. Uploaded photos (`/media/posts/{clubId}/…`) only work for that club; pasted `http(s)` links still work |
+| POST | `/reshare` | owner/admin of `clubId` | `{postId}` (another club's post; a reshare of a reshare points at the original) or `{eventId}` (not cancelled), plus `comment?`. 409 `ALREADY_RESHARED` |
+| GET | `/{postId}` | anyone signed in | One post |
+| GET | `/{postId}/preview` | **public** | `{id, clubId, clubName, clubLogoUrl, type, title, excerpt, photoUrl, authorName, createdAt}`: what a shared link shows before signing in |
+| PUT | `/{postId}` | the author, admins | Partial update; removed uploaded photos are deleted from the bucket |
+| DELETE | `/{postId}` | the author, the club owner, admins | Likes and comments go with it; a reshare of it then shows `shared.available: false` |
+| PUT / DELETE | `/{postId}/like` | anyone signed in | Idempotent; `{liked, likeCount}` |
+| GET | `/{postId}/comments` | anyone signed in | Oldest first |
+| POST | `/{postId}/comments` | owner/admin, subscribers, followers | `{content}` (≤ 1000). 403 `AUDIENCE_ONLY` otherwise |
+| DELETE | `/{postId}/comments/{commentId}` | the author, the club owner, admins | |
+
+Notifications (in-app): `CLUB_POST` to subscribers and followers for the owner's posts and reshares,
+`CLUB_MEMBER_POST` to the owner for a subscriber's post, `POST_COMMENT` to a post's author, `POST_RESHARED` to the
+author of a reshared post.
+
+### Chat
+
+Each club has one group chat for its subscribers and owner (followers can't read it), and two people who are both in
+at least one club (subscriber or owner) can message each other directly. Messages are stored in `clubdb`
+(`chat_conversations`, `chat_messages`, `chat_reads`, `chat_blocks`, `chat_reports`, `club_chat_mutes`), then pushed to
+whoever is connected. They are not end-to-end encrypted.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/v1/chat/inbox` | The caller's club chats and direct conversations, most recent first, with `lastMessage` and `unread`. A club chat nobody opened yet has `id: null` |
+| GET | `/api/v1/chat/clubs/{clubId}` | Opens (creates once) the club's group chat. 403 `SUBSCRIBERS_ONLY` |
+| POST | `/api/v1/chat/direct` | `{userId}`: opens or starts a direct conversation. 403 `CHAT_NOT_CONNECTED` (no shared club) or `CHAT_BLOCKED` |
+| GET | `/api/v1/chat/conversations/{id}` | `canSend` (false with `reason` `MUTED`, `BLOCKED` or `NOT_CONNECTED`), `canModerate` (the club owner in a club chat). Other people's direct conversations answer 404, also for admins |
+| GET | `/api/v1/chat/conversations/{id}/messages?before&limit` | Oldest first, up to 100; `before` is a message ID. Messages from people the caller blocked are left out. Deleted messages stay in place with `deleted: true` and no content |
+| POST | `/api/v1/chat/conversations/{id}/messages` | `{body?, photoUrl?}`: at least one; body ≤ 2000. Photos come from `POST /api/v1/chat/photos` (only the uploader can send them). 403 `CHAT_MUTED` |
+| POST | `/api/v1/chat/conversations/{id}/read` | Everything up to now counts as read |
+| POST | `/api/v1/chat/photos` | Multipart `file` → `{url}` |
+| DELETE | `/api/v1/chat/messages/{id}` | The sender; in a club chat also the club owner; admins |
+| POST | `/api/v1/chat/messages/{id}/report` | `{reason?}`; once per person and message |
+| GET / PUT / DELETE | `/api/v1/chat/blocks[/{userId}]` | A block stops direct messages both ways and hides the blocked person's club-chat messages from the blocker |
+| GET / PUT / DELETE | `/api/v1/chat/clubs/{clubId}/mutes[/{userId}]` | Owner/admin. `PUT {hours?}` (1–720; empty = until unmuted). Muted people still read the club chat |
+| GET | `/api/v1/chat/reports?status=OPEN\|REMOVED\|DISMISSED` | Admins; shows the reported message even if it was deleted since |
+| POST | `/api/v1/chat/reports/{id}/resolve` | Admins: `{removeMessage: true}` deletes the message and closes every open report about it; `false` keeps it |
+| GET | `/api/v1/chat/stream` | Server-Sent Events, see below |
+
+A direct conversation gets one `CHAT_MESSAGE` notification when its first unread message arrives, not one per message.
+
+**Live updates.** `GET /api/v1/chat/stream` (with the usual `Authorization` header, so clients use `fetch`, not
+`EventSource`) sends `event: ready`, then `event: message` with `{type, conversationId, message}` for every new or
+deleted message in the caller's conversations, and a `:keep-alive` comment every 20 seconds. The server ends the stream
+after `theclub.chat.stream-timeout` (15 minutes); clients reconnect and reload open conversations, since messages may have
+arrived meanwhile. With several club-service replicas, each one checks the database every 2 seconds
+(`theclub.chat.relay-interval`) for messages written on the others, so no shared message broker is needed. The web app's
+nginx passes `/api/v1/chat/stream` on unbuffered (and club-service sends `X-Accel-Buffering: no`).
 
 ## Payments
 

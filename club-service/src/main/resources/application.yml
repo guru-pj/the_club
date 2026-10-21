@@ -101,6 +101,9 @@ theclub:
     expiration: ${JWT_EXPIRATION:PT15M}
   security:
     internal-api-key: ${INTERNAL_API_KEY}
+    public-paths:
+      # what a shared post link shows before signing in
+      - /api/v1/clubs/*/posts/*/preview
   clients:
     user-service:
       url: ${USER_SERVICE_URL:}

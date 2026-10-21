@@ -85,6 +85,26 @@ public class Post {
     @Column(name = "activity_start_time")
     private LocalDateTime activityStartTime;
 
+    /** A reshare of another club's post (always the original, never a reshare of a reshare). */
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "shared_post_id", length = 36)
+    private UUID sharedPostId;
+
+    /** A reshared event, with what's shown of it; the event itself lives in event-service. */
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "shared_event_id", length = 36)
+    private UUID sharedEventId;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "shared_event_club_id", length = 36)
+    private UUID sharedEventClubId;
+
+    @Column(name = "shared_event_title", length = 150)
+    private String sharedEventTitle;
+
+    @Column(name = "shared_event_start_time")
+    private LocalDateTime sharedEventStartTime;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

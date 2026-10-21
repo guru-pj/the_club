@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { clubsApi } from '../../api/endpoints'
+import { useNavigate } from 'react-router-dom'
+import { chatApi, clubsApi } from '../../api/endpoints'
 import type { Membership } from '../../api/types'
+import { useAuth } from '../../auth/AuthContext'
 import { useToast } from '../../components/Toast'
 import { Avatar, Button, Card, EmptyState, ErrorMessage, Loading, Pagination, StatusBadge } from '../../components/ui'
 import { formatDate } from '../../lib/format'
@@ -9,8 +11,25 @@ import { ConfirmModal } from './ConfirmModal'
 
 const PAGE_SIZE = 20
 
-export function MembersTab({ clubId, canManage, onChanged }: { clubId: string; canManage: boolean; onChanged: () => void }) {
+/** `canMessage`: the caller is in the club too, so they can message its members directly. */
+export function MembersTab({ clubId, canManage, canMessage, onChanged }:
+  { clubId: string; canManage: boolean; canMessage: boolean; onChanged: () => void }) {
+  const { user } = useAuth()
   const toast = useToast()
+  const navigate = useNavigate()
+  const [opening, setOpening] = useState<string>()
+
+  const message = async (m: Membership) => {
+    setOpening(m.userId)
+    try {
+      const dm = await chatApi.direct(m.userId)
+      if (dm.id) navigate(`/messages/${dm.id}`)
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setOpening(undefined)
+    }
+  }
   const [page, setPage] = useState(0)
   const [toRemove, setToRemove] = useState<Membership | null>(null)
   const members = useAsync(() => clubsApi.members(clubId, { page, size: PAGE_SIZE }), [clubId, page])
@@ -30,6 +49,9 @@ export function MembersTab({ clubId, canManage, onChanged }: { clubId: string; c
               <div className="muted small">Joined {formatDate(m.joinedAt)}</div>
             </div>
             <StatusBadge status={m.role} />
+            {canMessage && m.userId !== user?.id && (
+              <Button size="sm" variant="secondary" loading={opening === m.userId} onClick={() => void message(m)}>Message</Button>
+            )}
             {canManage && m.role === 'MEMBER' && (
               <Button size="sm" variant="ghost" onClick={() => setToRemove(m)}>Remove</Button>
             )}

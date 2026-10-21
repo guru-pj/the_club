@@ -7,6 +7,8 @@ import com.theclub.clubservice.model.Club;
 import com.theclub.clubservice.model.Post;
 import com.theclub.clubservice.model.PostType;
 import com.theclub.clubservice.repository.PostRepository;
+import com.theclub.common.media.MediaProperties;
+import com.theclub.common.media.MediaStore;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.security.Roles;
 import com.theclub.common.web.ApiException;
@@ -53,6 +55,12 @@ class PostServiceTest {
     EventClient eventClient;
     @Mock
     NotificationPublisher notifications;
+    @Mock
+    PostViews views;
+    @Mock
+    MediaStore media;
+    @Mock
+    MediaProperties mediaProperties;
     @InjectMocks
     PostService postService;
 
@@ -65,6 +73,7 @@ class PostServiceTest {
         club = new Club("Chennai Runners", null, null, null, null, ownerId);
         when(clubService.get(club.getId())).thenReturn(club);
         when(posts.save(any(Post.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(mediaProperties.publicBaseUrl()).thenReturn("/media");
     }
 
     private static CreatePostRequest request(PostType type, UUID eventId, UUID activityId) {

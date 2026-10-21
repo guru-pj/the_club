@@ -135,7 +135,11 @@ class ClubFlowIntegrationTest {
         String post = """
                 {"title":"Sunday long run","content":"21k done","photoUrls":["https://img/1.jpg"],"activityId":"%s"}"""
                 .formatted(activityId);
+        // subscribers post too, but can only link their own Strava activities
         mvc.perform(post("/api/v1/clubs/{id}/posts", clubId).header("Authorization", token(member, "USER"))
+                        .contentType(MediaType.APPLICATION_JSON).content(post))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/clubs/{id}/posts", clubId).header("Authorization", token(UUID.randomUUID(), "USER"))
                         .contentType(MediaType.APPLICATION_JSON).content(post))
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/v1/clubs/{id}/posts", clubId).header("Authorization", token(owner, "USER", "CLUB_OWNER"))

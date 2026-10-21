@@ -3,7 +3,8 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { notificationsApi } from '../api/endpoints'
 import { useAuth } from '../auth/AuthContext'
 import { onNotificationsChanged } from '../lib/notificationsBus'
-import { ActivityIcon, BellIcon, CalendarIcon, HomeIcon, LogoutIcon, ShieldIcon, TicketIcon, TrophyIcon, UserIcon, UsersIcon } from './icons'
+import { ChatProvider, useChat } from './chat/ChatContext'
+import { ActivityIcon, BellIcon, CalendarIcon, ChatIcon, FlagIcon, HomeIcon, LogoutIcon, ShieldIcon, TicketIcon, TrophyIcon, UserIcon, UsersIcon } from './icons'
 import { Avatar } from './ui'
 
 const NAV = [
@@ -58,6 +59,7 @@ function UserMenu() {
           <Link to="/leaderboard"><span className="row"><TrophyIcon size={16} />Leaderboard</span></Link>
           {!hasRole('CLUB_OWNER') && <Link to="/become-owner"><span className="row"><ShieldIcon size={16} />Become a club owner</span></Link>}
           {hasRole('ADMIN') && <Link to="/admin/verification"><span className="row"><ShieldIcon size={16} />Owner applications</span></Link>}
+          {hasRole('ADMIN') && <Link to="/admin/chat-reports"><span className="row"><FlagIcon size={16} />Reported messages</span></Link>}
           <button onClick={async () => { await logout(); navigate('/login') }}>
             <span className="row"><LogoutIcon size={16} />Log out</span>
           </button>
@@ -67,10 +69,20 @@ function UserMenu() {
   )
 }
 
+function MessagesLink() {
+  const { unread } = useChat()
+  return (
+    <Link to="/messages" className="icon-button" aria-label={`Messages${unread ? ` (${unread} unread)` : ''}`}>
+      <ChatIcon />
+      {unread > 0 && <span className="dot-count">{unread > 99 ? '99+' : unread}</span>}
+    </Link>
+  )
+}
+
 export function Layout() {
   const unread = useUnreadCount()
   return (
-    <>
+    <ChatProvider>
       <header className="app-header">
         <div className="app-header-inner">
           <Link to="/" className="brand">
@@ -83,6 +95,7 @@ export function Layout() {
             ))}
           </nav>
           <div className="header-actions">
+            <MessagesLink />
             <Link to="/notifications" className="icon-button" aria-label={`Notifications${unread ? ` (${unread} unread)` : ''}`}>
               <BellIcon />
               {unread > 0 && <span className="dot-count">{unread > 99 ? '99+' : unread}</span>}
@@ -99,6 +112,6 @@ export function Layout() {
           <NavLink key={to} to={to} end={end}><Icon size={22} />{label}</NavLink>
         ))}
       </nav>
-    </>
+    </ChatProvider>
   )
 }

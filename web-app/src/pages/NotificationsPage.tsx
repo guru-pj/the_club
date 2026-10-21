@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { notificationsApi } from '../api/endpoints'
 import type { AppNotification } from '../api/types'
-import { BellIcon, CalendarIcon, CloseIcon, ShieldIcon, UsersIcon } from '../components/icons'
+import { BellIcon, CalendarIcon, ChatIcon, CloseIcon, HeartIcon, RepeatIcon, ShieldIcon, UsersIcon } from '../components/icons'
 import { useToast } from '../components/Toast'
 import { Button, Card, EmptyState, ErrorMessage, Loading, PageHeader, Pagination } from '../components/ui'
 import { timeAgo } from '../lib/format'
@@ -13,7 +13,11 @@ const PAGE_SIZE = 20
 
 function TypeIcon({ type }: { type: string }) {
   switch (type) {
-    case 'CLUB_POST': return <UsersIcon size={18} />
+    case 'CLUB_POST':
+    case 'CLUB_MEMBER_POST': return <UsersIcon size={18} />
+    case 'POST_COMMENT': return <HeartIcon size={18} />
+    case 'POST_RESHARED': return <RepeatIcon size={18} />
+    case 'CHAT_MESSAGE': return <ChatIcon size={18} />
     case 'EVENT_REGISTRATION_CONFIRMED': return <CalendarIcon size={18} />
     case 'OWNER_VERIFICATION': return <ShieldIcon size={18} />
     case 'EVENT_CANCELLED': return <CloseIcon size={18} />

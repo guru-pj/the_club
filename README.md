@@ -30,7 +30,7 @@
 | 🧑‍💻 User Service | Users, profiles, roles, registration | 8081 | MySQL `userdb` |
 | 🔐 Auth Service | Login, JWT access + refresh tokens | 8082 | MySQL `authdb` |
 | 🏃 Activity Service | Manual activity logging, Strava connect/webhook/sync | 8083 | PostgreSQL `activitydb` |
-| 🏟️ Club Service | Clubs, membership, club feed, club leaderboard, owner verification | 8084 | MySQL `clubdb` |
+| 🏟️ Club Service | Clubs, membership, club feed (likes, comments, reshares), club chat and direct messages, club leaderboard, owner verification | 8084 | MySQL `clubdb` |
 | 📅 Event Service | Events, registration, payments, QR tickets, check-in, points, monthly leaderboard | 8086 | MySQL `eventdb` |
 | 🔔 Notification Service | In-app notifications + email (QR ticket attached) | 8087 | MySQL `notificationdb` |
 | 🧭 Discovery Service | Eureka service registry | 8761 | — |
@@ -52,8 +52,8 @@ Internal APIs, security model and conventions: [`docs/SERVICE_CONTRACTS.md`](doc
 
 | Who | What they can do |
 |---|---|
-| Member | Sign up / log in, dashboard, browse & join clubs, club feed, log activities, connect Strava, register & pay for events, QR tickets, leaderboards, notifications |
-| Club owner | Apply for ownership, create/edit club, post announcements & event recaps (photos, linked Strava activity), create events with registration windows, view registrations, scan QR tickets with the phone camera to check members in |
+| Member | Sign up / log in, dashboard, browse & join clubs, club feed (post, like, comment, share), club chat and direct messages, log activities, connect Strava, register & pay for events, QR tickets, leaderboards, notifications |
+| Club owner | Apply for ownership, create/edit club, post announcements & event recaps (photos, linked Strava activity), reshare other clubs' posts and events, moderate the club chat, create events with registration windows, view registrations, scan QR tickets with the phone camera to check members in |
 | Admin | Review owner applications (approve + create club, reject, request more info) |
 
 **With Docker:** `docker compose up -d --build` serves it at http://localhost:3000. nginx proxies `/api` to the gateway.
@@ -86,7 +86,8 @@ All endpoints are called through the gateway at `http://localhost:8080` with `Au
 | Reviews and ratings | `GET /api/v1/clubs/{id}/reviews`, `PUT`/`DELETE /reviews/me` (subscribers and event attendees, not the owner), owner `PUT /reviews/{rid}/reply`, admin `DELETE /reviews/{rid}` |
 | Upcoming events | `GET /api/v1/events/upcoming?lat=&lng=` (followed, subscribed and nearby clubs, each with `registrationState`) |
 | Log activities | `POST /api/v1/activities`, `GET /api/v1/activities/me`, `PUT`/`DELETE /api/v1/activities/{id}` |
-| Club feed | `POST /api/v1/clubs/{id}/posts` (owner; photos, event recaps, linked Strava activity), `GET /api/v1/clubs/{id}/posts` |
+| Club feed | `POST /api/v1/clubs/{id}/posts` (owner and subscribers; photos, event recaps, linked Strava activity), `GET /api/v1/clubs/{id}/posts`, `PUT/DELETE …/posts/{postId}/like`, `…/comments`, `POST …/posts/reshare`, public `GET …/posts/{postId}/preview` |
+| Chat | `GET /api/v1/chat/inbox`, `GET /api/v1/chat/clubs/{id}` (subscribers only), `POST /api/v1/chat/direct`, `…/conversations/{id}/messages`, blocks, reports, mutes, live `GET /api/v1/chat/stream` (Server-Sent Events); see [`docs/SERVICE_CONTRACTS.md`](docs/SERVICE_CONTRACTS.md) |
 | Club leaderboard | `GET /api/v1/clubs/{id}/leaderboard?metric=DISTANCE\|TIME\|SESSIONS&period=WEEK\|MONTH\|YEAR\|ALL` |
 | Events + registration window | `POST /api/v1/events` (owner; rules, `subscribersOnly`), `PATCH /api/v1/events/{id}/registration-window`, `GET /api/v1/events/club/{clubId}`, `POST`/`DELETE /api/v1/events/{id}/image` |
 | Register in-app | `POST /api/v1/events/{id}/register`, `DELETE /api/v1/events/{id}/registrations/me`, `GET /api/v1/events/me/registrations` |
@@ -429,7 +430,7 @@ Each service owns its own database:
 |---|---|---|
 | MySQL | `userdb` | users, roles, verification and reset tokens |
 | MySQL | `authdb` | refresh-token sessions, login lockouts |
-| MySQL | `clubdb` | clubs, memberships, posts, owner applications |
+| MySQL | `clubdb` | clubs, memberships, posts, likes, comments, chat messages, owner applications |
 | MySQL | `eventdb` | events, registrations, payments, points |
 | MySQL | `notificationdb` | in-app notifications |
 | PostgreSQL | `activitydb` | activities, Strava connections |
@@ -494,6 +495,7 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
 ### Admin
 1. Log in as the bootstrap admin: `ADMIN_EMAIL` from `.env`, with the password in `secrets/admin-password`.
 2. Open the avatar menu → **Owner applications**. Review requests from people who want to run a club.
+   **Reported messages** (same menu) lists chat messages people reported: remove them for everyone, or keep them.
 3. **Approve** them, ticking "Create the club now" to set up their club. You can also **Reject** with a reason, or **Request info** to ask for more proof.
 
 ### Club owner
@@ -502,7 +504,9 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
 3. **Log in again** after approval. **Clubs** → your club now shows the owner tools:
    - **Edit club:** upload a logo, set where the club meets (address, plus **Use my current location** so nearby members find it), and choose whether people can subscribe and what subscribers get.
    - **Photos:** upload a gallery of runs, rides and race days.
-   - **Feed:** post announcements and event recaps with photo links. You can attach one of your Strava activities. Followers and subscribers are notified.
+   - **Feed:** post announcements and event recaps with photos (upload them or paste links). You can attach one of your Strava activities. Followers and subscribers are notified. Subscribers can post too; you can delete any post or comment.
+   - **Reshare:** the **Reshare** button on another club's post, or **Reshare to my club** on an event page, shares it into your club's feed.
+   - **Chat:** the club's **Chat** tab is a group chat for you and your subscribers. Use a message's **⋯** menu to delete it or **mute** someone (24 hours, 7 days or until you unmute them); **Muted** in the Messages page lists them.
    - **Create event:** set the date, when registration opens and closes, capacity, price (0 = free), points for attending, and rules and instructions. Tick **Only the club's subscribers can register** to keep it members-only. Add a cover image after creating it. Followers and subscribers are told about new events.
    - **Reviews:** reply to reviews (you can't delete them; admins remove abusive ones).
    - **Members**, **Leaderboard** and **Participation** tabs show who is active.
@@ -518,6 +522,8 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
    - **Follow** to get its updates and event announcements.
    - **Subscribe** (free, where the club offers it) to become a member: you appear on its leaderboard, can register for subscriber-only events and can review the club.
    - **Reviews** and **Photos** tabs show what others think and what the club gets up to.
+   - **Feed:** like posts, comment (followers and subscribers), **Share** a link (anyone can open it; people who aren't signed in see a preview), and, as a subscriber, write posts with photos.
+   - **Chat** (subscribers): talk with the club live. **Members** → **Message** starts a direct conversation with someone in your club. Everything is in **Messages** (the speech-bubble icon in the header): **Block** someone from a conversation, or **Report** a message from its **⋯** menu.
 3. **Events** lists upcoming events from clubs you follow or subscribe to and clubs near you, with the price and whether registration is open.
 4. **Activities** → **Log activity** for runs, rides and more, or **Connect with Strava** to import them automatically. They count toward the club's **Leaderboard** (distance, time, sessions).
 5. Open an event → **Register**. Anyone signed in can register unless it's subscribers only.
@@ -534,7 +540,7 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
   - **Change password**
   - **Sign out of all devices**
   - **Resend verification email** if your email isn't verified
-- 🔔 **Notifications** lists club posts and new events from clubs you follow or subscribe to, registration confirmations, refunds and owner-application updates.
+- 🔔 **Notifications** lists club posts and new events from clubs you follow or subscribe to, comments on your posts, new direct messages, registration confirmations, refunds and owner-application updates.
 - After 5 wrong passwords, login is locked for 15 minutes.
 
 > **Local trial:** payments run in test mode (no real money). Emails are caught by Mailpit at http://localhost:8025, and email verification is off.

@@ -21,4 +21,9 @@ public interface ClubMembershipRepository extends JpaRepository<ClubMembership, 
 
     @Query("select m.userId from ClubMembership m where m.clubId = :clubId")
     List<UUID> findUserIdsByClubId(@Param("clubId") UUID clubId);
+
+    /** Whether the two people are both subscribers (or the owner) of at least one club. */
+    @Query("select count(m) > 0 from ClubMembership m where m.userId = :a "
+            + "and m.clubId in (select n.clubId from ClubMembership n where n.userId = :b)")
+    boolean shareAClub(@Param("a") UUID a, @Param("b") UUID b);
 }

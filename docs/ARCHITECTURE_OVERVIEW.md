@@ -26,7 +26,8 @@ The Club was built in two phases. Both are complete.
 | **Discover** | Clubs near you (closest first, with distance), popular clubs, and upcoming events from nearby clubs; search by name and city | "Near" means within 25 km of the location the member shared; without one, clubs in their city |
 | **Clubs** | Club page with logo, photo gallery, address and map link, members, events, posts, and reviews. **Follow** a club for its updates and event announcements, or **subscribe** (free membership) where the club offers it. | Following and subscribing are separate. Subscribers appear on leaderboards, can register for subscriber-only events and can review. Club types: running, cycling, triathlon, swimming, fitness, other |
 | **Reviews & ratings** | 1–5 stars and a comment per person, shown with the average and a breakdown; the owner can reply | Only subscribers and people who checked in at one of the club's events review; never the owner. Owners can't delete reviews; admins remove abusive ones. |
-| **Club feed** | Owners post announcements and event recaps with photo links, optionally attaching one of their own Strava workouts. Members read the feed and get a notification. | Only owners post; members read |
+| **Club feed** | Owners post announcements and event recaps with photos, optionally attaching one of their own Strava workouts, and reshare other clubs' posts and events. Subscribers post too. Anyone signed in can like and share a post; followers and subscribers comment. A shared link shows a preview to people who aren't signed in. | Only the owner posts announcements and reshares. Authors are told about comments. The owner can remove any post or comment. |
+| **Club chat & messages** | Each club has a live group chat for its subscribers and owner. People in the same club can message each other directly. Photos can be sent too. | Followers can't read the club chat. Anyone can block someone or report a message to the admins; the owner can delete messages and mute people in the club chat. Messages are stored on the server and are not end-to-end encrypted. |
 | **Activities** | Members log workouts by hand (run, ride, walk, hike, swim, workout, yoga, other) with distance and time, or import them from Strava | Private Strava workouts are imported but don't count on club leaderboards unless the member opts in |
 | **Strava link** | "Connect with Strava" once; new, edited and deleted Strava workouts then mirror into The Club automatically within about a minute | First connection imports the last 90 days. Members can disconnect and delete imported data at any time. |
 | **Club leaderboard** | Ranks club members by distance, time or number of sessions, for this week, month, year or all time | Built from the activities above |
@@ -51,7 +52,7 @@ Think of The Club as an **office building**. Visitors enter through one receptio
 | **Gateway** | Reception desk | The single entry point for every request. It checks the visitor's badge (login), turns away anyone sending too many requests (to stop attacks), and forwards the request to the right department. It never lets outsiders reach internal-only phone lines. |
 | **Auth service** | Security office | Handles logging in and out: checks the typed password, issues the digital badge that proves who you are (valid 15 minutes, renewed silently), locks accounts after repeated wrong passwords, and can cancel all of a person's sessions. |
 | **User service** | HR / member records | Keeps each person's profile, role (member, club owner, admin) and scrambled password. Runs email confirmation, forgot-password and change-password. Creates the first admin when the system is installed. |
-| **Club service** | Club management office | Clubs, who belongs to which club, club feeds and posts, club leaderboards, and the club-owner application process. |
+| **Club service** | Club management office | Clubs, who belongs to which club, club feeds, posts, likes and comments, club chat and direct messages, club leaderboards, and the club-owner application process. |
 | **Activity service** | Training log office | Workouts logged by hand, the Strava connection, and the automatic import of Strava workouts. |
 | **Event service** | Events and box office | Events, registration windows, seats, payments and refunds, QR tickets, check-in, points, stars and the monthly leaderboard. |
 | **Notification service** | Mailroom | Delivers in-app notifications and sends emails. Emails are queued first and posted afterwards, so none are lost if the email provider is briefly down. |
@@ -214,7 +215,7 @@ Each department has its own database, a structured store that keeps information 
 | --- | --- | --- | --- |
 | userdb | User service | Profiles (name, email, city, bio, photo link), roles, scrambled passwords, email-confirmation and password-reset links | MySQL |
 | authdb | Auth service | Active login sessions (renewal passes), recent login attempts used for lockouts | MySQL |
-| clubdb | Club service | Clubs, memberships, feed posts, club-owner applications and admin decisions | MySQL |
+| clubdb | Club service | Clubs, memberships, feed posts, likes, comments, chat messages, club-owner applications and admin decisions | MySQL |
 | activitydb | Activity service | Workouts (manual and from Strava), Strava connections with encrypted keys, the Strava event inbox, Strava usage counters | PostgreSQL |
 | eventdb | Event service | Events, registrations, payments and refunds, ticket codes, check-ins, points and stars | MySQL |
 | notificationdb | Notification service | In-app notifications, the email queue with delivery status, addresses that bounced (so we stop emailing them) | MySQL |
@@ -327,7 +328,7 @@ Details: [OBSERVABILITY.md](OBSERVABILITY.md).
 
 | Gap | Impact | Effort to close |
 | --- | --- | --- |
-| Photos and proof documents are links, not uploads | Owners must host images elsewhere (Google Drive, Instagram) and paste links | Medium: add file storage (S3 or similar) |
+| Owner proof documents are links, not uploads | Applicants must host documents elsewhere and paste links | Small: reuse the image storage |
 | Club-owner decisions arrive as in-app notifications only | Applicants who don't log in won't notice the decision | Small: the email template exists; it needs connecting |
 | Members can't cancel a paid ticket themselves | They must contact the owner for a refund | Small to medium, depending on refund policy |
 | No waiting list for full events | Full means full; a released seat goes to whoever registers next | Medium |
@@ -335,15 +336,13 @@ Details: [OBSERVABILITY.md](OBSERVABILITY.md).
 | Expired one-time links and old login attempts aren't cleaned up | Tables grow slowly over time | Small: a nightly clean-up job |
 | Live ZeptoMail, Razorpay and Strava accounts not yet tested end to end | Must be verified before launch | Run the go-live checks in the deployment guides |
 | Event times use one time zone (default India) | Clubs in other countries see times in that zone | Medium |
-| No mobile app | Members use the mobile website; the QR scanner works in the phone browser | Large |
+| No push notifications | New messages and posts show up only when the app or site is open | Medium: phone push services |
 
 ### Planned next (Phase 3 ideas)
 
 - Competitions between clubs
 - Training plans
 - Linking Strava workouts to events automatically (attendance proof)
-- Club chat
-- Push notifications to phones
 - Paid club memberships
 - Analytics dashboards for owners
 

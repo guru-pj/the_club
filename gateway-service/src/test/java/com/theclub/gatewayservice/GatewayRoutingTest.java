@@ -36,7 +36,7 @@ class GatewayRoutingTest {
     @Test
     void routesPublicApisAndForwardsAuthorization() {
         for (String path : new String[]{"/api/v1/users/me", "/api/v1/auth/login", "/api/v1/activities/me",
-                "/api/v1/strava/connect", "/api/v1/clubs", "/api/v1/owner-verification/requests/me",
+                "/api/v1/strava/connect", "/api/v1/clubs", "/api/v1/owner-verification/requests/me", "/api/v1/chat/inbox",
                 "/api/v1/events/club/x", "/api/v1/payments/x", "/api/v1/participation/me",
                 "/api/v1/leaderboards/monthly", "/api/v1/notifications/me"}) {
             client.get().uri(path).header("Authorization", "Bearer abc").exchange()

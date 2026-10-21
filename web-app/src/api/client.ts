@@ -126,6 +126,11 @@ channel?.addEventListener('message', (event: MessageEvent<AuthMessage>) => {
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ''
 
+/** The full address of an API path: the gateway's address in the native apps, same-origin in the browser. */
+export function apiUrl(path: string): string {
+  return `${BASE}${path}`
+}
+
 let refreshing: Promise<boolean> | null = null
 
 /**

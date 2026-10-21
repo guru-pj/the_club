@@ -1,11 +1,15 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { clubsApi, eventsApi } from '../api/endpoints'
 import { useAuth } from '../auth/AuthContext'
-import { CalendarIcon, ClockIcon, PinIcon, StarIcon, UsersIcon } from '../components/icons'
+import { CalendarIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, StarIcon, UsersIcon } from '../components/icons'
+import { useToast } from '../components/Toast'
 import { mediaUrl } from '../api/client'
-import { Badge, Card, ErrorMessage, Loading, PageHeader, StatusBadge } from '../components/ui'
+import { Badge, Button, Card, ErrorMessage, Loading, PageHeader, StatusBadge } from '../components/ui'
 import { formatDateTime, formatMoney } from '../lib/format'
 import { registrationBadge } from '../lib/registration'
+import { publicUrl, shareLink } from '../lib/share'
+import { ReshareModal } from './clubs/ReshareModal'
 import { useAsync } from '../lib/useAsync'
 import { OwnerPanel } from './events/OwnerPanel'
 import { RegistrationPanel } from './events/RegistrationPanel'
@@ -16,6 +20,8 @@ import './events.css'
 export default function EventPage() {
   const { eventId = '' } = useParams()
   const { hasRole } = useAuth()
+  const toast = useToast()
+  const [reshareOpen, setReshareOpen] = useState(false)
   const state = useAsync(async () => {
     const event = await eventsApi.get(eventId)
     const [club, registrations] = await Promise.all([
@@ -79,10 +85,24 @@ export default function EventPage() {
               <p className="pre-wrap">{event.rules}</p>
             </Card>
           )}
+          {event.status !== 'CANCELLED' && (
+            <div className="row">
+              <Button variant="secondary" size="sm" onClick={async () => {
+                const result = await shareLink(event.title, publicUrl(`/events/${event.id}`, window.location.origin), `${club.name} on The Club`)
+                if (result === 'copied') toast.success('Link copied')
+              }}><ShareIcon size={16} />Share</Button>
+              {hasRole('CLUB_OWNER') && (
+                <Button variant="secondary" size="sm" onClick={() => setReshareOpen(true)}><RepeatIcon size={16} />Reshare to my club</Button>
+              )}
+            </div>
+          )}
           {manage && <OwnerPanel event={event} onChanged={state.reload} />}
         </div>
         <RegistrationPanel event={event} club={club} registrationId={registrationId} onChanged={state.reload} />
       </div>
+      {reshareOpen && (
+        <ReshareModal open source={{ eventId: event.id, title: event.title }} onClose={() => setReshareOpen(false)} />
+      )}
     </div>
   )
 }

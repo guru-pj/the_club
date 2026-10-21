@@ -15,6 +15,7 @@ import { useAsync } from '../lib/useAsync'
 import { ClubForm } from './clubs/ClubForm'
 import { ClubLogo } from './clubs/ClubLogo'
 import { MembershipBadge } from './clubs/MembershipBadge'
+import { ChatTab } from './clubs/ChatTab'
 import { ConfirmModal } from './clubs/ConfirmModal'
 import { EventsTab } from './clubs/EventsTab'
 import { FeedTab } from './clubs/FeedTab'
@@ -25,9 +26,10 @@ import { PhotosTab } from './clubs/PhotosTab'
 import { ReviewsTab } from './clubs/ReviewsTab'
 import './clubs.css'
 
-type TabId = 'feed' | 'events' | 'reviews' | 'photos' | 'leaderboard' | 'members' | 'participation'
+type TabId = 'feed' | 'chat' | 'events' | 'reviews' | 'photos' | 'leaderboard' | 'members' | 'participation'
 const TABS: { id: TabId; label: string }[] = [
   { id: 'feed', label: 'Feed' },
+  { id: 'chat', label: 'Chat' },
   { id: 'events', label: 'Events' },
   { id: 'reviews', label: 'Reviews' },
   { id: 'photos', label: 'Photos' },
@@ -190,11 +192,12 @@ export default function ClubPage() {
       <div key={data.id}>
         <Tabs tabs={TABS} active={tab} onChange={(id) => setParams(id === 'feed' ? {} : { tab: id }, { replace: true })} />
         {tab === 'feed' && <FeedTab club={data} canManage={canManage} />}
+        {tab === 'chat' && <ChatTab club={data} onSubscribe={() => setParams({}, { replace: true })} />}
         {tab === 'events' && <EventsTab clubId={data.id} canManage={canManage} />}
         {tab === 'reviews' && <ReviewsTab club={data} canManage={canManage} />}
         {tab === 'photos' && <PhotosTab clubId={data.id} canManage={canManage} />}
         {tab === 'leaderboard' && <LeaderboardTab clubId={data.id} />}
-        {tab === 'members' && <MembersTab clubId={data.id} canManage={canManage} onChanged={() => club.reload()} />}
+        {tab === 'members' && <MembersTab clubId={data.id} canManage={canManage} canMessage={!!data.myRole} onChanged={() => club.reload()} />}
         {tab === 'participation' && <ParticipationTab clubId={data.id} />}
       </div>
     </div>

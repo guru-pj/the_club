@@ -36,3 +36,13 @@ export const TrashIcon = (p: IconProps) => <Svg {...p}><path d="M4 7h16M10 11v6M
 export const EditIcon = (p: IconProps) => <Svg {...p}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="m13.5 6.5 4 4" /></Svg>
 export const RefreshIcon = (p: IconProps) => <Svg {...p}><path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4" /></Svg>
 export const MenuIcon = (p: IconProps) => <Svg {...p}><path d="M4 6h16M4 12h16M4 18h16" /></Svg>
+export const ChatIcon = (p: IconProps) => <Svg {...p}><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4V6a1 1 0 0 1 1-1z" /></Svg>
+export const HeartIcon = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
+  <Svg {...p}><path fill={filled ? 'currentColor' : 'none'} d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></Svg>
+)
+export const ShareIcon = (p: IconProps) => <Svg {...p}><path d="M12 15V3M8 7l4-4 4 4M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" /></Svg>
+export const RepeatIcon = (p: IconProps) => <Svg {...p}><path d="M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4" /></Svg>
+export const MoreIcon = (p: IconProps) => <Svg {...p}><circle cx="5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /></Svg>
+export const ImageIcon = (p: IconProps) => <Svg {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" /></Svg>
+export const SendIcon = (p: IconProps) => <Svg {...p}><path d="M4 12 20 4l-4 16-4-6z" /><path d="m12 14 8-10" /></Svg>
+export const FlagIcon = (p: IconProps) => <Svg {...p}><path d="M5 21V4M5 4h11l-2 4 2 4H5" /></Svg>

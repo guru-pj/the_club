@@ -1,9 +1,10 @@
 import { nativeRefreshToken, request, upload } from './client'
 import type {
   Activity, ActivityRequest, AppNotification, ApplyVerificationRequest, CheckInResponse, Club, ClubEvent,
-  ClubLeaderboard, ClubPhoto, ClubRequest, CreatePostRequest, EventCard, EventRegistrationRow, EventRequest, LeaderboardMetric,
+  BlockedUser, ChatMessage, ChatMute, ChatReport, ChatReportStatus, ClubLeaderboard, ClubPhoto, ClubRequest,
+  Conversation, CreatePostRequest, EventCard, EventRegistrationRow, EventRequest, LeaderboardMetric,
   LeaderboardPeriod, LocalDateTime, MemberParticipation, Membership, MonthlyLeaderboard, Page, Participation,
-  Payment, Post, RegisterResponse, Review, ReviewPage, StravaConnection, Ticket, TokenResponse, UpdateUserRequest, User,
+  Payment, Post, PostComment, PostPreview, RegisterResponse, Review, ReviewPage, StravaConnection, Ticket, TokenResponse, UpdateUserRequest, User,
   UserEventRegistration, UUID, VerificationAudit, VerificationRequest, VerificationStatus,
 } from './types'
 
@@ -99,10 +100,61 @@ export const clubsApi = {
 
 export const postsApi = {
   feed: (clubId: UUID, q: Paging = {}) => request<Page<Post>>('GET', `/api/v1/clubs/${clubId}/posts`, { query: q }),
+  get: (clubId: UUID, postId: UUID) => request<Post>('GET', `/api/v1/clubs/${clubId}/posts/${postId}`),
+  /** no sign-in needed: what a shared link shows */
+  preview: (clubId: UUID, postId: UUID) =>
+    request<PostPreview>('GET', `/api/v1/clubs/${clubId}/posts/${postId}/preview`, { anonymous: true }),
   create: (clubId: UUID, body: CreatePostRequest) => request<Post>('POST', `/api/v1/clubs/${clubId}/posts`, { body }),
+  /** a photo for a post about to be written; put the returned url in photoUrls */
+  uploadPhoto: (clubId: UUID, file: File | Blob) => upload<{ url: string }>(`/api/v1/clubs/${clubId}/posts/photos`, file),
+  /** owner: share another club's post (postId) or an event (eventId) into this club's feed */
+  reshare: (clubId: UUID, body: { postId?: UUID; eventId?: UUID; comment?: string }) =>
+    request<Post>('POST', `/api/v1/clubs/${clubId}/posts/reshare`, { body }),
   update: (clubId: UUID, postId: UUID, body: Partial<Pick<CreatePostRequest, 'title' | 'content' | 'photoUrls'>>) =>
     request<Post>('PUT', `/api/v1/clubs/${clubId}/posts/${postId}`, { body }),
   remove: (clubId: UUID, postId: UUID) => request<void>('DELETE', `/api/v1/clubs/${clubId}/posts/${postId}`),
+  like: (clubId: UUID, postId: UUID) =>
+    request<{ liked: boolean; likeCount: number }>('PUT', `/api/v1/clubs/${clubId}/posts/${postId}/like`),
+  unlike: (clubId: UUID, postId: UUID) =>
+    request<{ liked: boolean; likeCount: number }>('DELETE', `/api/v1/clubs/${clubId}/posts/${postId}/like`),
+  comments: (clubId: UUID, postId: UUID, q: Paging = {}) =>
+    request<Page<PostComment>>('GET', `/api/v1/clubs/${clubId}/posts/${postId}/comments`, { query: q }),
+  addComment: (clubId: UUID, postId: UUID, content: string) =>
+    request<PostComment>('POST', `/api/v1/clubs/${clubId}/posts/${postId}/comments`, { body: { content } }),
+  removeComment: (clubId: UUID, postId: UUID, commentId: UUID) =>
+    request<void>('DELETE', `/api/v1/clubs/${clubId}/posts/${postId}/comments/${commentId}`),
+}
+
+const CHAT = '/api/v1/chat'
+export const chatApi = {
+  inbox: () => request<Conversation[]>('GET', `${CHAT}/inbox`),
+  /** the club's group chat (created the first time it's opened) */
+  club: (clubId: UUID) => request<Conversation>('GET', `${CHAT}/clubs/${clubId}`),
+  /** opens or starts a direct conversation with someone who shares a club with you */
+  direct: (userId: UUID) => request<Conversation>('POST', `${CHAT}/direct`, { body: { userId } }),
+  get: (id: UUID) => request<Conversation>('GET', `${CHAT}/conversations/${id}`),
+  /** oldest first; `before` (a message ID) pages back */
+  messages: (id: UUID, q: { before?: UUID; limit?: number } = {}) =>
+    request<ChatMessage[]>('GET', `${CHAT}/conversations/${id}/messages`, { query: q }),
+  send: (id: UUID, body: { body?: string; photoUrl?: string }) =>
+    request<ChatMessage>('POST', `${CHAT}/conversations/${id}/messages`, { body }),
+  markRead: (id: UUID) => request<void>('POST', `${CHAT}/conversations/${id}/read`),
+  uploadPhoto: (file: File | Blob) => upload<{ url: string }>(`${CHAT}/photos`, file),
+  removeMessage: (messageId: UUID) => request<void>('DELETE', `${CHAT}/messages/${messageId}`),
+  report: (messageId: UUID, reason?: string) =>
+    request<void>('POST', `${CHAT}/messages/${messageId}/report`, { body: { reason: reason || undefined } }),
+  blocked: () => request<BlockedUser[]>('GET', `${CHAT}/blocks`),
+  block: (userId: UUID) => request<void>('PUT', `${CHAT}/blocks/${userId}`),
+  unblock: (userId: UUID) => request<void>('DELETE', `${CHAT}/blocks/${userId}`),
+  mutes: (clubId: UUID) => request<ChatMute[]>('GET', `${CHAT}/clubs/${clubId}/mutes`),
+  /** without hours: until unmuted */
+  mute: (clubId: UUID, userId: UUID, hours?: number) =>
+    request<ChatMute>('PUT', `${CHAT}/clubs/${clubId}/mutes/${userId}`, { body: hours ? { hours } : {} }),
+  unmute: (clubId: UUID, userId: UUID) => request<void>('DELETE', `${CHAT}/clubs/${clubId}/mutes/${userId}`),
+  /** admins */
+  reports: (q: Paging & { status?: ChatReportStatus } = {}) => request<Page<ChatReport>>('GET', `${CHAT}/reports`, { query: q }),
+  resolveReport: (reportId: UUID, removeMessage: boolean) =>
+    request<void>('POST', `${CHAT}/reports/${reportId}/resolve`, { body: { removeMessage } }),
 }
 
 export const reviewsApi = {

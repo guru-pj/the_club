@@ -178,15 +178,36 @@ export interface Membership {
   joinedAt: LocalDateTime
 }
 
-export type PostType = 'ANNOUNCEMENT' | 'EVENT_RECAP'
+/** ANNOUNCEMENT and EVENT_RECAP are the owner's; POST is a subscriber's; RESHARE shares another club's post or an event */
+export type PostType = 'ANNOUNCEMENT' | 'EVENT_RECAP' | 'POST' | 'RESHARE'
+
+/** What a reshare points at */
+export interface SharedContent {
+  kind: 'POST' | 'EVENT'
+  /** false once the original post was deleted */
+  available: boolean
+  postId: UUID | null
+  eventId: UUID | null
+  clubId: UUID | null
+  clubName: string | null
+  clubLogoUrl: string | null
+  title: string | null
+  excerpt: string | null
+  photoUrl: string | null
+  /** an event's start */
+  startTime: LocalDateTime | null
+  createdAt: LocalDateTime | null
+}
 
 export interface Post {
   id: UUID
   clubId: UUID
   authorId: UUID
+  authorName: string | null
+  authorPhotoUrl: string | null
   type: PostType
   title: string
-  content: string
+  content: string | null
   photoUrls: string[]
   eventId: UUID | null
   activity?: {
@@ -197,6 +218,10 @@ export interface Post {
     durationSeconds: number | null
     startTime: LocalDateTime | null
   }
+  shared?: SharedContent
+  likeCount: number
+  commentCount: number
+  likedByMe: boolean
   createdAt: LocalDateTime
   updatedAt: LocalDateTime
 }
@@ -208,6 +233,96 @@ export interface CreatePostRequest {
   photoUrls?: string[]
   eventId?: UUID
   activityId?: UUID
+}
+
+export interface PostComment {
+  id: UUID
+  postId: UUID
+  authorId: UUID
+  authorName: string | null
+  authorPhotoUrl: string | null
+  content: string
+  createdAt: LocalDateTime
+}
+
+/** What a shared link shows before signing in */
+export interface PostPreview {
+  id: UUID
+  clubId: UUID
+  clubName: string
+  clubLogoUrl: string | null
+  type: PostType
+  title: string
+  excerpt: string | null
+  photoUrl: string | null
+  authorName: string | null
+  createdAt: LocalDateTime
+}
+
+export type ConversationKind = 'GROUP' | 'DIRECT'
+export type CantSendReason = 'MUTED' | 'BLOCKED' | 'NOT_CONNECTED'
+
+export interface ChatMessage {
+  id: UUID
+  conversationId: UUID
+  senderId: UUID
+  senderName: string | null
+  senderPhotoUrl: string | null
+  body: string | null
+  photoUrl: string | null
+  deleted: boolean
+  createdAt: LocalDateTime
+}
+
+export interface Conversation {
+  /** null for a club chat nobody has opened yet */
+  id: UUID | null
+  kind: ConversationKind
+  clubId: UUID | null
+  /** the club's name, or the other person's */
+  title: string | null
+  imageUrl: string | null
+  otherUserId: UUID | null
+  lastMessage?: ChatMessage
+  lastMessageAt: LocalDateTime | null
+  unread: number
+  canSend: boolean
+  reason?: CantSendReason
+  mutedUntil?: LocalDateTime
+  /** the club owner (or an admin) in a club chat: can delete anyone's messages and mute people */
+  canModerate: boolean
+}
+
+export interface BlockedUser {
+  userId: UUID
+  name: string | null
+  photoUrl: string | null
+  blockedAt: LocalDateTime
+}
+
+export interface ChatMute {
+  userId: UUID
+  name: string | null
+  /** null: until unmuted */
+  mutedUntil: LocalDateTime | null
+  mutedAt: LocalDateTime
+}
+
+export type ChatReportStatus = 'OPEN' | 'REMOVED' | 'DISMISSED'
+
+export interface ChatReport {
+  id: UUID
+  status: ChatReportStatus
+  reason: string | null
+  reporterId: UUID
+  reporterName: string | null
+  /** what was written, even if it has been deleted since */
+  message: ChatMessage | null
+  kind: ConversationKind | null
+  clubId: UUID | null
+  clubName: string | null
+  createdAt: LocalDateTime
+  resolvedAt: LocalDateTime | null
 }
 
 export type LeaderboardMetric = 'DISTANCE' | 'TIME' | 'SESSIONS'

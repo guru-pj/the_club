@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
-import { AuthProvider } from './auth/AuthContext'
+import { BrowserRouter, Outlet, Route, Routes } from 'react-router-dom'
+import { AuthProvider, useAuth } from './auth/AuthContext'
 import { GuestOnly, RequireAuth, RequireRole } from './components/guards'
 import { Layout } from './components/Layout'
 import { ToastProvider } from './components/Toast'
@@ -29,7 +29,17 @@ const CheckInPage = lazy(() => import('./pages/CheckInPage'))
 const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'))
 const TicketPage = lazy(() => import('./pages/TicketPage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
+const MessagesPage = lazy(() => import('./pages/MessagesPage'))
+const PostPage = lazy(() => import('./pages/PostPage'))
+const AdminChatReportsPage = lazy(() => import('./pages/AdminChatReportsPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+
+/** Shared post links open for everyone: inside the app when signed in, as a preview otherwise. */
+function SharedLinkShell() {
+  const { user } = useAuth()
+  if (user === undefined) return <Loading />
+  return user ? <RequireAuth><Layout /></RequireAuth> : <Outlet />
+}
 
 export default function App() {
   return (
@@ -44,6 +54,9 @@ export default function App() {
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route element={<SharedLinkShell />}>
+                <Route path="clubs/:clubId/posts/:postId" element={<PostPage />} />
+              </Route>
               <Route element={<RequireAuth><Layout /></RequireAuth>}>
                 <Route index element={<HomePage />} />
                 <Route path="welcome" element={<ProfileSetupPage />} />
@@ -57,6 +70,9 @@ export default function App() {
                 <Route path="clubs/:clubId/events/new" element={<EventFormPage />} />
                 <Route path="become-owner" element={<BecomeOwnerPage />} />
                 <Route path="admin/verification" element={<RequireRole role="ADMIN"><AdminVerificationPage /></RequireRole>} />
+                <Route path="admin/chat-reports" element={<RequireRole role="ADMIN"><AdminChatReportsPage /></RequireRole>} />
+                <Route path="messages" element={<MessagesPage />} />
+                <Route path="messages/:conversationId" element={<MessagesPage />} />
                 <Route path="events" element={<EventsPage />} />
                 <Route path="events/:eventId" element={<EventPage />} />
                 <Route path="events/:eventId/edit" element={<EventFormPage />} />

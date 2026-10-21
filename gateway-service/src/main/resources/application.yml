@@ -44,7 +44,7 @@ spring:
             - id: club-service
               uri: ${CLUB_SERVICE_URI:lb://club-service}
               predicates:
-                - Path=/api/v1/clubs/**,/api/v1/owner-verification/**
+                - Path=/api/v1/clubs/**,/api/v1/owner-verification/**,/api/v1/chat/**
             - id: event-service
               uri: ${EVENT_SERVICE_URI:lb://event-service}
               predicates:
