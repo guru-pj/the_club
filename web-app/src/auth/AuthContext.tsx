@@ -12,12 +12,15 @@ interface AuthState {
   /** Resolves with the signed-in user (null if the profile couldn't be loaded). */
   login: (email: string, password: string) => Promise<User | null>
   /** Creates the account, then tries to log in (which fails with EMAIL_NOT_VERIFIED when verification is required). */
-  register: (name: string, email: string, password: string) => Promise<User | null>
+  /** clubOwner: signed up "as a club owner"; owner access still needs an approved club application */
+  register: (name: string, email: string, password: string, clubOwner?: boolean) => Promise<User | null>
   logout: () => Promise<void>
   /** Revokes every session of this user (all devices), then signs out here. */
   logoutEverywhere: () => Promise<void>
   /** Drops the local session without calling the server (e.g. after a password change revoked it). */
   forgetSession: () => void
+  /** the session ended because someone signed out here (not because it expired) */
+  signedOut: boolean
   /** Gets a fresh token (e.g. after becoming a club owner) and reloads the profile. */
   refreshSession: () => Promise<void>
   setUser: (user: User) => void
@@ -32,6 +35,7 @@ function rolesOf(token: string | null): Role[] {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState(tokenStore.get())
   const [user, setUser] = useState<User | null | undefined>(undefined)
+  const [signedOut, setSignedOut] = useState(false)
 
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
@@ -78,25 +82,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await authApi.login(email, password)
     tokenStore.set(res.accessToken, res.expiresIn, res.refreshToken)
+    setSignedOut(false)
     return loadUser()
   }, [loadUser])
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
-    await usersApi.register(name, email, password)
+  const register = useCallback(async (name: string, email: string, password: string, clubOwner = false) => {
+    await usersApi.register(name, email, password, clubOwner)
     return login(email, password)
   }, [login])
 
   const logout = useCallback(async () => {
     await authApi.logout().catch(() => undefined)
+    setSignedOut(true)
     tokenStore.clearEverywhere()
   }, [])
 
   const logoutEverywhere = useCallback(async () => {
     await authApi.logoutAll()
+    setSignedOut(true)
     tokenStore.clearEverywhere()
   }, [])
 
-  const forgetSession = useCallback(() => tokenStore.clearEverywhere(), [])
+  const forgetSession = useCallback(() => {
+    setSignedOut(true)
+    tokenStore.clearEverywhere()
+  }, [])
 
   const refreshSession = useCallback(async () => {
     if (await refreshTokens()) await loadUser()
@@ -106,9 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const roles = rolesOf(token)
     return {
       user, roles, hasRole: (r) => roles.includes(r), login, register, logout, logoutEverywhere, forgetSession,
-      refreshSession, setUser: (u) => setUser(u),
+      refreshSession, setUser: (u) => setUser(u), signedOut,
     }
-  }, [user, token, login, register, logout, logoutEverywhere, forgetSession, refreshSession])
+  }, [user, token, login, register, logout, logoutEverywhere, forgetSession, refreshSession, signedOut])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

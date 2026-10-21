@@ -112,6 +112,9 @@ public class Event {
     }
 
     public RegistrationState registrationState(LocalDateTime now, Long spotsLeft) {
+        if (status == EventStatus.DRAFT) {
+            return RegistrationState.DRAFT;
+        }
         if (status == EventStatus.CANCELLED) {
             return RegistrationState.CANCELLED;
         }

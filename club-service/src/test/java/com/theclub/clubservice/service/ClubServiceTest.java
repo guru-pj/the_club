@@ -17,12 +17,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.Spy;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -46,6 +52,8 @@ class ClubServiceTest {
     ClubReviewRepository reviews;
     @Mock
     UserClient userClient;
+    @Spy
+    Clock clock = Clock.fixed(Instant.parse("2026-10-21T06:00:00Z"), ZoneOffset.UTC);
     @InjectMocks
     ClubService clubService;
 
@@ -55,27 +63,32 @@ class ClubServiceTest {
 
     private static CreateClubRequest request(String name) {
         return new CreateClubRequest(name, "Weekend running club", "Chennai", ClubType.RUNNING, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @Test
-    void plainUsersCannotCreateClubs() {
-        assertThatThrownBy(() -> clubService.create(user(Roles.USER), request("Chennai Runners")))
-                .isInstanceOfSatisfying(ApiException.class, e -> {
-                    assertThat(e.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-                    assertThat(e.getMessage()).isEqualTo("Only verified club owners can create clubs");
-                });
+    void ownersAndUsersCannotCreateClubsDirectly() {
+        // every club comes from its own approved application, even for someone who already owns one
+        for (AuthenticatedUser caller : List.of(user(Roles.USER), user(Roles.USER, Roles.CLUB_OWNER))) {
+            assertThatThrownBy(() -> clubService.create(caller, request("Chennai Runners")))
+                    .isInstanceOfSatisfying(ApiException.class, e -> {
+                        assertThat(e.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                        assertThat(e.getCode()).isEqualTo("CLUB_VERIFICATION_REQUIRED");
+                    });
+        }
         verify(clubs, never()).save(any());
     }
 
     @Test
-    void ownerCreatesClubAndBecomesOwnerMember() {
-        AuthenticatedUser owner = user(Roles.USER, Roles.CLUB_OWNER);
+    void approvedClubBelongsToItsOwnerAndIsVerified() {
+        UUID ownerId = UUID.randomUUID();
         when(clubs.existsByNameIgnoreCase("Chennai Runners")).thenReturn(false);
         when(clubs.save(any(Club.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        Club club = clubService.create(owner, request("  Chennai Runners "));
+        Club club = clubService.createFor(ownerId, request("  Chennai Runners "));
+        AuthenticatedUser owner = new AuthenticatedUser(ownerId, "o@example.com", "O", Set.of(Roles.USER, Roles.CLUB_OWNER));
 
+        assertThat(club.getVerifiedAt()).isEqualTo(LocalDateTime.of(2026, 10, 21, 6, 0));
         assertThat(club.getOwnerId()).isEqualTo(owner.id());
         assertThat(club.getName()).isEqualTo("Chennai Runners");
         ArgumentCaptor<ClubMembership> membership = ArgumentCaptor.forClass(ClubMembership.class);
@@ -96,7 +109,7 @@ class ClubServiceTest {
     void duplicateNameIsConflict() {
         when(clubs.existsByNameIgnoreCase("Chennai Runners")).thenReturn(true);
 
-        assertThatThrownBy(() -> clubService.create(user(Roles.CLUB_OWNER), request("Chennai Runners")))
+        assertThatThrownBy(() -> clubService.create(user(Roles.ADMIN), request("Chennai Runners")))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }
 

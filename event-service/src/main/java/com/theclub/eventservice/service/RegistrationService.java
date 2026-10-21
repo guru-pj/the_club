@@ -55,7 +55,10 @@ public class RegistrationService {
             throw ApiException.forbidden("This event is for the club's subscribers; subscribe to the club to register")
                     .withCode("SUBSCRIBERS_ONLY");
         }
-        Event event = events.findByIdForUpdate(eventId).orElseThrow(() -> ApiException.notFound("Event not found"));
+        Event event = events.findByIdForUpdate(eventId)
+                // a draft doesn't exist for anyone but its club owner
+                .filter(e -> e.getStatus() != EventStatus.DRAFT)
+                .orElseThrow(() -> ApiException.notFound("Event not found"));
         LocalDateTime now = LocalDateTime.now(clock);
         if (event.getStatus() != EventStatus.SCHEDULED) {
             throw ApiException.conflict("Event is not open for registration");

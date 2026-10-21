@@ -72,4 +72,24 @@ public class ClubPhotoService {
         media.deleteByUrl(previous);
         return club;
     }
+
+    /** Uploads a new cover photo and replaces the previous one. */
+    @Transactional
+    public Club uploadCover(AuthenticatedUser caller, UUID clubId, MultipartFile file) {
+        Club club = clubService.get(clubId);
+        ClubService.requireOwnerOrAdmin(club, caller);
+        String previous = club.getCoverUrl();
+        club.setCoverUrl(media.storeImage("clubs/" + clubId, file).url());
+        media.deleteByUrl(previous);
+        return club;
+    }
+
+    @Transactional
+    public Club removeCover(AuthenticatedUser caller, UUID clubId) {
+        Club club = clubService.get(clubId);
+        ClubService.requireOwnerOrAdmin(club, caller);
+        media.deleteByUrl(club.getCoverUrl());
+        club.setCoverUrl(null);
+        return club;
+    }
 }

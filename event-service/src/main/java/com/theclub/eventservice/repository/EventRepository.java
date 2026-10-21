@@ -25,6 +25,13 @@ public interface EventRepository extends JpaRepository<Event, UUID> {
 
     Page<Event> findByClubId(UUID clubId, Pageable pageable);
 
+    Page<Event> findByClubIdAndStatusNot(UUID clubId, EventStatus status, Pageable pageable);
+
+    Page<Event> findByClubIdAndStatusNotAndStartTimeGreaterThanEqual(UUID clubId, EventStatus status, LocalDateTime from,
+                                                                   Pageable pageable);
+
+    List<Event> findByClubIdOrderByStartTimeDesc(UUID clubId);
+
     Page<Event> findByClubIdAndStartTimeGreaterThanEqual(UUID clubId, LocalDateTime from, Pageable pageable);
 
     /** The upcoming-events feed: scheduled events of these clubs that haven't started, soonest first. */

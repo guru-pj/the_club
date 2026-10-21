@@ -14,6 +14,11 @@ public interface VerificationRequestRepository extends JpaRepository<Verificatio
 
     boolean existsByUserIdAndStatusIn(UUID userId, Collection<VerificationStatus> statuses);
 
+    long countByUserIdAndStatusIn(UUID userId, Collection<VerificationStatus> statuses);
+
+    boolean existsByUserIdAndClubNameIgnoreCaseAndStatusIn(UUID userId, String clubName,
+                                                         Collection<VerificationStatus> statuses);
+
     List<VerificationRequest> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
     Page<VerificationRequest> findByStatusOrderByCreatedAtAsc(VerificationStatus status, Pageable pageable);

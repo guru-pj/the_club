@@ -66,6 +66,26 @@ public class VerificationRequest {
     @Column(name = "contact_phone", length = 20)
     private String contactPhone;
 
+    @Column(name = "contact_email", length = 255)
+    private String contactEmail;
+
+    @Column(length = 255)
+    private String address;
+
+    @Column
+    private Double latitude;
+
+    @Column
+    private Double longitude;
+
+    @Column(length = 500)
+    private String website;
+
+    /** The club created when the application was approved. */
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "club_id", length = 36)
+    private UUID clubId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private VerificationStatus status = VerificationStatus.PENDING;

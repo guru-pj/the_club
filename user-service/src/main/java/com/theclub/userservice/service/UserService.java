@@ -50,6 +50,7 @@ public class UserService {
         passwordPolicy.check(request.password(), email, "password");
         User user = users.save(new User(request.name().trim(), email, passwordEncoder.encode(request.password()),
                 EnumSet.of(Role.USER)));
+        user.setClubOwnerSignup(Boolean.TRUE.equals(request.clubOwner()));
         accounts.startEmailVerification(user);
         BusinessMetrics.increment("users.registrations");
         return user;

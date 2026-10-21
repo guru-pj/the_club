@@ -4,7 +4,8 @@ import type { ClubEvent, EventRegistrationRow, RegistrationStatus } from '../../
 import { EditIcon, ScanIcon } from '../../components/icons'
 import { useToast } from '../../components/Toast'
 import { Badge, Button, Card, EmptyState, ErrorMessage, LinkButton, Loading, Modal, StatusBadge } from '../../components/ui'
-import { formatDateTime, humanize } from '../../lib/format'
+import { formatDateTime, formatMoney, humanize } from '../../lib/format'
+import { isPast } from './time'
 import { useAsync } from '../../lib/useAsync'
 import { RefundModal } from './RefundModal'
 
@@ -16,7 +17,30 @@ export function OwnerPanel({ event, onChanged }: { event: ClubEvent; onChanged: 
   const [cancelling, setCancelling] = useState(false)
   const [refunding, setRefunding] = useState<EventRegistrationRow | null>(null)
   const regs = useAsync(() => eventsApi.registrations(event.id), [event.id])
+  const stats = useAsync(() => eventsApi.stats(event.id), [event.id, event.status, event.registeredCount])
+  const [busy, setBusy] = useState<'publish' | 'complete'>()
   const cancelled = event.status === 'CANCELLED'
+  const draft = event.status === 'DRAFT'
+  const completed = event.status === 'COMPLETED'
+  const started = isPast(event.startTime)
+
+  async function change(action: 'publish' | 'complete') {
+    setBusy(action)
+    try {
+      if (action === 'publish') {
+        await eventsApi.publish(event.id)
+        toast.success('Published. Followers and subscribers have been told about it.')
+      } else {
+        await eventsApi.complete(event.id)
+        toast.success('Marked as completed. It now shows under past events.')
+      }
+      onChanged()
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setBusy(undefined)
+    }
+  }
 
   async function cancelEvent() {
     setCancelling(true)
@@ -44,11 +68,38 @@ export function OwnerPanel({ event, onChanged }: { event: ClubEvent; onChanged: 
   return (
     <Card title="Manage event">
       <div className="stack">
+        {draft && (
+          <div className="alert alert-info" style={{ alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <div className="bold">Draft: only you can see this event</div>
+              <div className="small">Check the date, registration window, capacity and fee above, then publish it. Publishing tells
+                the club's followers and subscribers, and registration opens at the time you set.</div>
+            </div>
+            <Button loading={busy === 'publish'} onClick={() => void change('publish')}>Publish event</Button>
+          </div>
+        )}
+        {!draft && stats.data && (
+          <div className="stats-row">
+            <div className="stat"><span className="stat-label">Registered</span>
+              <span className="stat-value">{stats.data.registered}{stats.data.capacity != null && <span className="muted small"> / {stats.data.capacity}</span>}</span></div>
+            <div className="stat"><span className="stat-label">Checked in</span><span className="stat-value">{stats.data.checkedIn}</span></div>
+            {stats.data.pendingPayment > 0 && <div className="stat"><span className="stat-label">Awaiting payment</span><span className="stat-value">{stats.data.pendingPayment}</span></div>}
+            {stats.data.attendanceRate != null && <div className="stat"><span className="stat-label">Attendance</span><span className="stat-value">{Math.round(stats.data.attendanceRate * 100)}%</span></div>}
+            {Object.entries(stats.data.revenue).map(([currency, amount]) => (
+              <div key={currency} className="stat"><span className="stat-label">Collected</span><span className="stat-value">{formatMoney(amount, currency)}</span></div>
+            ))}
+          </div>
+        )}
         <div className="row">
-          {!cancelled && <LinkButton to={`/events/${event.id}/check-in`}><ScanIcon size={18} />Check-in scanner</LinkButton>}
-          {!cancelled && <LinkButton variant="secondary" to={`/events/${event.id}/edit`}><EditIcon size={16} />Edit event</LinkButton>}
-          <LinkButton variant="secondary" to={`/clubs/${event.clubId}?tab=feed`}>Post a recap</LinkButton>
-          {!cancelled && <Button variant="danger" onClick={() => setConfirmCancel(true)}>Cancel event</Button>}
+          {!cancelled && !draft && !completed && <LinkButton to={`/events/${event.id}/check-in`}><ScanIcon size={18} />Check-in scanner</LinkButton>}
+          {!cancelled && !completed && <LinkButton variant="secondary" to={`/events/${event.id}/edit`}><EditIcon size={16} />Edit event</LinkButton>}
+          {(started || completed) && !cancelled && !draft && (
+            <LinkButton variant="secondary" to={`/clubs/${event.clubId}?recap=${event.id}`}>Write a recap</LinkButton>
+          )}
+          {started && event.status === 'SCHEDULED' && (
+            <Button variant="secondary" loading={busy === 'complete'} onClick={() => void change('complete')}>Mark as completed</Button>
+          )}
+          {!cancelled && !completed && <Button variant="danger" onClick={() => setConfirmCancel(true)}>{draft ? 'Discard draft' : 'Cancel event'}</Button>}
         </div>
 
         <div className="row-between" style={{ marginTop: 8 }}>

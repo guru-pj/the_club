@@ -84,10 +84,11 @@ class ClubJourneyIntegrationTest {
 
     private String createClub(UUID ownerId, String name, Double lat, Double lng, String extra) throws Exception {
         String location = lat == null ? "" : ",\"latitude\":%s,\"longitude\":%s".formatted(lat, lng);
-        String body = mvc.perform(post("/api/v1/clubs").header("Authorization", owner(ownerId))
+        // owners get their clubs from approved applications; here an admin creates it for them
+        String body = mvc.perform(post("/api/v1/clubs").header("Authorization", token(UUID.randomUUID(), "USER", "ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"%s\",\"city\":\"Chennai\",\"clubType\":\"RUNNING\"%s%s}"
-                                .formatted(name, location, extra)))
+                        .content("{\"name\":\"%s\",\"city\":\"Chennai\",\"clubType\":\"RUNNING\",\"ownerId\":\"%s\"%s%s}"
+                                .formatted(name, ownerId, location, extra)))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(body).get("id").asString();

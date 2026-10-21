@@ -26,6 +26,10 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 
     long countByEventIdAndStatusIn(UUID eventId, Collection<RegistrationStatus> statuses);
 
+    /** Event ID, status, number of registrations. */
+    @Query("select r.eventId, r.status, count(r) from Registration r where r.eventId in :eventIds group by r.eventId, r.status")
+    List<Object[]> countByEventAndStatus(@Param("eventIds") Collection<UUID> eventIds);
+
     /** Whether the user checked in at any event of the club. */
     @Query("""
             select count(r) > 0 from Registration r

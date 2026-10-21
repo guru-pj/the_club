@@ -161,7 +161,7 @@ public class PostService {
         } catch (FeignException.NotFound e) {
             event = null;
         }
-        if (event == null) {
+        if (event == null || "DRAFT".equals(event.status())) {
             throw ApiException.notFound("Event not found");
         }
         if ("CANCELLED".equals(event.status())) {

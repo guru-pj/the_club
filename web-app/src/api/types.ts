@@ -31,6 +31,8 @@ export interface User {
   longitude?: number | null
   /** false until the profile setup after the first login is finished or skipped; only on your own profile */
   profileComplete?: boolean
+  /** signed up as a club owner (only on your own profile); owner access still needs an approved application */
+  clubOwnerSignup?: boolean
 }
 
 export interface TokenResponse {
@@ -112,6 +114,15 @@ export interface Club {
   address: string | null
   subscriptionsEnabled: boolean
   subscriptionBenefits: string | null
+  coverUrl: string | null
+  contactEmail: string | null
+  contactPhone: string | null
+  website: string | null
+  socialLinks: Record<string, string>
+  rules: string | null
+  /** an admin verified who runs the club */
+  verified: boolean
+  verifiedAt: LocalDateTime | null
   followerCount: number
   following: boolean
   /** 1–5, one decimal; null without reviews */
@@ -134,6 +145,13 @@ export interface ClubRequest {
   address?: string
   subscriptionsEnabled?: boolean
   subscriptionBenefits?: string
+  /** empty string clears */
+  contactEmail?: string
+  contactPhone?: string
+  website?: string
+  /** replaces all links, e.g. { instagram: 'https://…' } */
+  socialLinks?: Record<string, string>
+  rules?: string
 }
 
 export interface ClubPhoto {
@@ -357,23 +375,44 @@ export interface VerificationRequest {
   proofFiles: string[]
   description: string | null
   contactPhone: string | null
+  contactEmail: string | null
+  address: string | null
+  latitude: number | null
+  longitude: number | null
+  website: string | null
   status: VerificationStatus
   adminNotes: string | null
   reviewedBy: UUID | null
   reviewedAt: LocalDateTime | null
   createdAt: LocalDateTime
   updatedAt: LocalDateTime
+  /** the club created when it was approved */
   createdClubId?: UUID
+  documents: VerificationDocument[]
 }
 
+export interface VerificationDocument {
+  id: UUID
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  uploadedAt: LocalDateTime
+}
+
+/** One application per club; a contact email or phone is required */
 export interface ApplyVerificationRequest {
   clubName: string
-  clubType?: ClubType
-  city?: string
+  clubType: ClubType
+  city: string
   socialLinks?: Record<string, string>
   proofFiles?: string[]
   description?: string
   contactPhone?: string
+  contactEmail?: string
+  address?: string
+  latitude?: number
+  longitude?: number
+  website?: string
 }
 
 export interface VerificationAudit {
@@ -386,7 +425,7 @@ export interface VerificationAudit {
 }
 
 // ---------- events / payments / participation
-export type EventStatus = 'SCHEDULED' | 'CANCELLED' | 'COMPLETED'
+export type EventStatus = 'DRAFT' | 'SCHEDULED' | 'CANCELLED' | 'COMPLETED'
 export type RegistrationStatus = 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'CHECKED_IN'
 export type PaymentProvider = 'MOCK' | 'RAZORPAY'
 export type PaymentStatus = 'CREATED' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED' | 'REFUND_PENDING' | 'REFUNDED'
@@ -420,7 +459,7 @@ export interface ClubEvent {
   registrationState: RegistrationState
 }
 
-export type RegistrationState = 'OPEN' | 'NOT_YET_OPEN' | 'CLOSED' | 'FULL' | 'PAST' | 'CANCELLED'
+export type RegistrationState = 'DRAFT' | 'OPEN' | 'NOT_YET_OPEN' | 'CLOSED' | 'FULL' | 'PAST' | 'CANCELLED'
 
 export type FeedSource = 'FOLLOWING' | 'SUBSCRIBED' | 'NEARBY'
 
@@ -448,6 +487,40 @@ export interface EventRequest {
   points?: number
   rules?: string
   subscribersOnly?: boolean
+  /** create only: false saves a draft to review and publish later */
+  publish?: boolean
+}
+
+/** One event's numbers for the club owner */
+export interface EventStatsRow {
+  eventId: UUID
+  title: string
+  startTime: LocalDateTime
+  status: EventStatus
+  capacity: number | null
+  /** confirmed + checked in */
+  registered: number
+  checkedIn: number
+  pendingPayment: number
+  cancelled: number
+  /** successful payments by currency */
+  revenue: Record<string, number>
+  /** checked in ÷ registered once it started; null before */
+  attendanceRate: number | null
+}
+
+export interface ClubEventStats {
+  clubId: UUID
+  drafts: number
+  upcoming: number
+  completed: number
+  cancelled: number
+  registrations: number
+  checkIns: number
+  attendanceRate: number | null
+  revenue: Record<string, number>
+  /** the most recent events, newest first */
+  events: EventStatsRow[]
 }
 
 export interface CheckoutInfo {

@@ -5,6 +5,7 @@ import com.theclub.clubservice.model.ClubType;
 import com.theclub.clubservice.model.MembershipRole;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -13,11 +14,14 @@ import java.util.UUID;
  * @param following       whether the caller follows the club
  * @param ratingAverage   mean review rating (1–5), null without reviews
  * @param distanceKm      distance from the point a nearby search was made from; null elsewhere
+ * @param verified        an admin verified who runs the club (from the club owner application)
  */
 public record ClubResponse(UUID id, String name, String description, String city, ClubType clubType, String logoUrl,
                            UUID ownerId, long memberCount, MembershipRole myRole, LocalDateTime createdAt,
                            Double latitude, Double longitude, String address,
                            boolean subscriptionsEnabled, String subscriptionBenefits,
+                           String coverUrl, String contactEmail, String contactPhone, String website,
+                           Map<String, String> socialLinks, String rules, boolean verified, LocalDateTime verifiedAt,
                            long followerCount, boolean following, Double ratingAverage, long ratingCount,
                            Double distanceKm) {
 
@@ -30,7 +34,9 @@ public record ClubResponse(UUID id, String name, String description, String city
         return new ClubResponse(club.getId(), club.getName(), club.getDescription(), club.getCity(),
                 club.getClubType(), club.getLogoUrl(), club.getOwnerId(), stats.memberCount(), stats.myRole(),
                 club.getCreatedAt(), club.getLatitude(), club.getLongitude(), club.getAddress(),
-                club.isSubscriptionsEnabled(), club.getSubscriptionBenefits(), stats.followerCount(),
+                club.isSubscriptionsEnabled(), club.getSubscriptionBenefits(), club.getCoverUrl(), club.getContactEmail(),
+                club.getContactPhone(), club.getWebsite(), Map.copyOf(club.getSocialLinks()), club.getRules(),
+                club.getVerifiedAt() != null, club.getVerifiedAt(), stats.followerCount(),
                 stats.following(), stats.ratingAverage(), stats.ratingCount(), distanceKm);
     }
 }

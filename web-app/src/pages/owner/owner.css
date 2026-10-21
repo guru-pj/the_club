@@ -1,0 +1,13 @@
+/* Owner dashboard */
+.owner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; }
+.checklist li { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.checklist li.done { color: var(--text); }
+.checklist .bullet {
+  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0;
+  border: 2px solid var(--border);
+}
+.checklist li.done .bullet { background: var(--success); border-color: var(--success); color: #fff; }
+.owner-events td { vertical-align: middle; }
+button.club-chip { font: inherit; cursor: pointer; }
+.club-chip.active { border-color: var(--primary); background: var(--primary-soft); }

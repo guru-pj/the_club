@@ -10,11 +10,14 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 /** Keeps images in an S3-compatible bucket; objects are public-read through {@link MediaProperties#publicBaseUrl()}. */
@@ -24,6 +27,8 @@ public class S3MediaStore implements MediaStore {
     private static final Pattern SAFE_FOLDER = Pattern.compile("[a-z0-9]+(/[a-z0-9-]+)*");
     /** Names are random, so an object never changes and can be cached for good. */
     private static final String CACHE_CONTROL = "public, max-age=31536000, immutable";
+    /** Never served by the web app's /media proxy (nginx refuses /media/private/). */
+    static final String PRIVATE_PREFIX = "private/";
 
     private final S3Client s3;
     private final MediaProperties properties;
@@ -43,11 +48,54 @@ public class S3MediaStore implements MediaStore {
                 .orElseThrow(() -> ApiException.badRequest("Upload a JPEG, PNG or WebP image")
                         .withCode("UNSUPPORTED_IMAGE"));
         String key = folder + "/" + UuidGenerator.generate() + "." + type.extension();
+        put(key, type.contentType(), CACHE_CONTROL, bytes, "image");
+        return new StoredImage(properties.publicBaseUrl() + "/" + key, key);
+    }
+
+    @Override
+    public StoredDocument storePrivate(String folder, MultipartFile file) {
+        if (!SAFE_FOLDER.matcher(folder).matches()) {
+            throw new IllegalArgumentException("Unsafe media folder: " + folder);
+        }
+        byte[] bytes = read(file);
+        String type = DocumentType.detect(Arrays.copyOf(bytes, Math.min(bytes.length, 12)))
+                .orElseThrow(() -> ApiException.badRequest("Upload a PDF, JPEG, PNG or WebP file")
+                        .withCode("UNSUPPORTED_DOCUMENT"));
+        String key = PRIVATE_PREFIX + folder + "/" + UuidGenerator.generate() + "." + DocumentType.extension(type);
+        put(key, type, "private, no-store", bytes, "document");
+        return new StoredDocument(key, type, bytes.length);
+    }
+
+    @Override
+    public Optional<byte[]> readPrivate(String key) {
+        if (key == null || !key.startsWith(PRIVATE_PREFIX)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(s3.getObjectAsBytes(GetObjectRequest.builder().bucket(properties.bucket()).key(key).build())
+                    .asByteArray());
+        } catch (NoSuchKeyException | NoSuchBucketException e) {
+            return Optional.empty();
+        } catch (SdkException e) {
+            log.warn("Reading document {} failed: {}", key, e.getMessage());
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "The file couldn't be loaded; try again shortly")
+                    .withCode("MEDIA_UNAVAILABLE");
+        }
+    }
+
+    @Override
+    public void deletePrivate(String key) {
+        if (key != null && key.startsWith(PRIVATE_PREFIX)) {
+            delete(key);
+        }
+    }
+
+    private void put(String key, String contentType, String cacheControl, byte[] bytes, String what) {
         PutObjectRequest put = PutObjectRequest.builder()
                 .bucket(properties.bucket())
                 .key(key)
-                .contentType(type.contentType())
-                .cacheControl(CACHE_CONTROL)
+                .contentType(contentType)
+                .cacheControl(cacheControl)
                 .build();
         try {
             try {
@@ -58,11 +106,10 @@ public class S3MediaStore implements MediaStore {
                 s3.putObject(put, RequestBody.fromBytes(bytes));
             }
         } catch (SdkException e) {
-            log.warn("Storing image {} failed: {}", key, e.getMessage());
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "The image couldn't be saved; try again shortly")
+            log.warn("Storing {} {} failed: {}", what, key, e.getMessage());
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "The " + what + " couldn't be saved; try again shortly")
                     .withCode("MEDIA_UNAVAILABLE");
         }
-        return new StoredImage(properties.publicBaseUrl() + "/" + key, key);
     }
 
     @Override
@@ -71,12 +118,15 @@ public class S3MediaStore implements MediaStore {
         if (url == null || !url.startsWith(prefix)) {
             return;
         }
-        String key = url.substring(prefix.length());
+        delete(url.substring(prefix.length()));
+    }
+
+    private void delete(String key) {
         try {
             s3.deleteObject(DeleteObjectRequest.builder().bucket(properties.bucket()).key(key).build());
         } catch (SdkException e) {
             // An orphaned object is harmless; the entity no longer points at it
-            log.warn("Deleting image {} failed: {}", key, e.getMessage());
+            log.warn("Deleting {} failed: {}", key, e.getMessage());
         }
     }
 
@@ -100,6 +150,6 @@ public class S3MediaStore implements MediaStore {
 
     private ApiException tooLarge() {
         return new ApiException(HttpStatus.CONTENT_TOO_LARGE,
-                "Images can be at most " + properties.maxSize().toMegabytes() + " MB").withCode("IMAGE_TOO_LARGE");
+                "Uploads can be at most " + properties.maxSize().toMegabytes() + " MB").withCode("IMAGE_TOO_LARGE");
     }
 }

@@ -86,10 +86,11 @@ class ChatIntegrationTest {
     }
 
     private String createClub(UUID ownerId) throws Exception {
-        String body = mvc.perform(post("/api/v1/clubs").header("Authorization", owner(ownerId))
+        // owners get their clubs from approved applications; here an admin creates it for them
+        String body = mvc.perform(post("/api/v1/clubs").header("Authorization", token(UUID.randomUUID(), "USER", "ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Chat %s\",\"city\":\"Chennai\",\"clubType\":\"RUNNING\"}"
-                                .formatted(UUID.randomUUID().toString().substring(0, 8))))
+                        .content("{\"name\":\"Chat %s\",\"city\":\"Chennai\",\"clubType\":\"RUNNING\",\"ownerId\":\"%s\"}"
+                                .formatted(UUID.randomUUID().toString().substring(0, 8), ownerId)))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(body).get("id").asString();

@@ -71,6 +71,10 @@ public class User {
     @Column(name = "profile_completed_at")
     private LocalDateTime profileCompletedAt;
 
+    /** Signed up as a club owner: the app leads them to the club application. Grants nothing by itself. */
+    @Column(name = "club_owner_signup", nullable = false)
+    private boolean clubOwnerSignup;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 

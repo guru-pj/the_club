@@ -2,6 +2,8 @@ package com.theclub.eventservice.model;
 
 /** Whether someone can register for an event right now, and if not, why not (shown on event cards). */
 public enum RegistrationState {
+    /** Not published yet. */
+    DRAFT,
     OPEN,
     NOT_YET_OPEN,
     CLOSED,

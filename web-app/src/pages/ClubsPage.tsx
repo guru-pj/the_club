@@ -161,7 +161,7 @@ export default function ClubsPage() {
     <div className="page">
       <PageHeader title="Discover clubs" subtitle="Find a club to run, ride and train with."
                   actions={hasRole('CLUB_OWNER')
-                    ? <LinkButton to="/clubs/new"><PlusIcon size={18} />Create club</LinkButton>
+                    ? <LinkButton to="/become-owner"><PlusIcon size={18} />Add a club</LinkButton>
                     : <LinkButton to="/become-owner" variant="secondary">Become a club owner</LinkButton>} />
       <YourClubs />
       {!dq && !dcity && <Discover />}
@@ -179,7 +179,7 @@ export default function ClubsPage() {
         : !clubs.data?.items.length ? (
           <Card>
             <EmptyState icon={<UsersIcon size={32} />} title={dq || dcity ? 'No clubs match your search' : 'No clubs yet'}
-                        action={hasRole('CLUB_OWNER') ? <LinkButton to="/clubs/new">Create the first club</LinkButton> : undefined}>
+                        action={<LinkButton to="/become-owner">Run a club? Apply to add it</LinkButton>}>
               {dq || dcity ? 'Try a different name or city.' : 'Clubs appear here once verified owners create them.'}
             </EmptyState>
           </Card>

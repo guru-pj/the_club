@@ -67,13 +67,15 @@ function PhotoUploads({ clubId, value, onChange, max = 10 }:
 }
 
 /** The owner writes announcements and event recaps; a subscriber writes a post. */
-function Composer({ club, canManage, onPosted }: { club: Club; canManage: boolean; onPosted: (post: Post) => void }) {
+function Composer({ club, canManage, onPosted, recapEventId }:
+  { club: Club; canManage: boolean; onPosted: (post: Post) => void; recapEventId?: string }) {
   const { user } = useAuth()
   const toast = useToast()
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [type, setType] = useState<PostType>('ANNOUNCEMENT')
-  const [eventId, setEventId] = useState('')
+  const [type, setType] = useState<PostType>(canManage && recapEventId ? 'EVENT_RECAP' : 'ANNOUNCEMENT')
+  const [eventId, setEventId] = useState(canManage && recapEventId ? recapEventId : '')
+  const card = useRef<HTMLDivElement>(null)
   const [photoUrls, setPhotoUrls] = useState<string[]>([])
   const [linkUrls, setLinkUrls] = useState<string[]>([])
   const [activityId, setActivityId] = useState('')
@@ -83,7 +85,8 @@ function Composer({ club, canManage, onPosted }: { club: Club; canManage: boolea
   const ownActivities = club.myRole === 'OWNER' || club.myRole === 'MEMBER'
 
   const events = useAsync(
-    () => (canManage && type === 'EVENT_RECAP' ? eventsApi.byClub(club.id, { size: 50 }).then((p) => p.items) : Promise.resolve([])),
+    // recaps are about events that already happened
+    () => (canManage && type === 'EVENT_RECAP' ? eventsApi.byClub(club.id, { size: 50, upcoming: false }).then((p) => p.items) : Promise.resolve([])),
     [club.id, type, canManage],
   )
   const activities = useAsync(
@@ -98,7 +101,7 @@ function Composer({ club, canManage, onPosted }: { club: Club; canManage: boolea
     setError(undefined)
     try {
       const post = await postsApi.create(club.id, {
-        type: canManage ? type : undefined, title: title.trim(), content: content.trim(), photoUrls: [...photoUrls, ...linkUrls],
+        type: canManage ? type : undefined, title: postTitle, content: content.trim(), photoUrls: [...photoUrls, ...linkUrls],
         eventId: canManage && type === 'EVENT_RECAP' ? eventId : undefined,
         activityId: activityId || undefined,
       })
@@ -112,9 +115,18 @@ function Composer({ club, canManage, onPosted }: { club: Club; canManage: boolea
     }
   }
 
+  // arriving from an event's "Write a recap": suggest a title and bring the form into view
+  const recapEvent = events.data?.find((e) => e.id === recapEventId && e.id === eventId)
+  const suggestedTitle = recapEvent ? `${recapEvent.title} recap` : ''
+  const postTitle = title.trim() || suggestedTitle
+  useEffect(() => {
+    if (recapEvent) card.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [recapEvent])
+
   const general = error instanceof ApiError && Object.keys(error.fieldErrors).length ? undefined : error
   return (
-    <Card title={canManage ? 'Share with your club' : 'Write a post'}>
+    <div ref={card}>
+    <Card title={canManage ? (type === 'EVENT_RECAP' ? 'Publish an event recap' : 'Share with your club') : 'Write a post'}>
       <form className="form" onSubmit={submit}>
         <ErrorMessage error={general} />
         {canManage && (
@@ -138,7 +150,8 @@ function Composer({ club, canManage, onPosted }: { club: Club; canManage: boolea
           </div>
         )}
         <Field label="Title" htmlFor="post-title" error={fieldError(error, 'title')}>
-          <input id="post-title" className="input" maxLength={150} required value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input id="post-title" className="input" maxLength={150} required={!suggestedTitle} value={title} placeholder={suggestedTitle || undefined}
+                 onChange={(e) => setTitle(e.target.value)} />
         </Field>
         <Field label="Message" htmlFor="post-content" error={fieldError(error, 'content')}>
           <textarea id="post-content" className="input" maxLength={5000} required value={content}
@@ -164,14 +177,15 @@ function Composer({ club, canManage, onPosted }: { club: Club; canManage: boolea
           </Field>
         )}
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <Button type="submit" loading={saving} disabled={!title.trim() || !content.trim()}>Post</Button>
+          <Button type="submit" loading={saving} disabled={!postTitle || !content.trim()}>Post</Button>
         </div>
       </form>
     </Card>
+    </div>
   )
 }
 
-export function FeedTab({ club, canManage }: { club: Club; canManage: boolean }) {
+export function FeedTab({ club, canManage, recapEventId }: { club: Club; canManage: boolean; recapEventId?: string }) {
   const toast = useToast()
   const canPost = canManage || club.myRole === 'MEMBER'
   const [posts, setPosts] = useState<Post[]>([])
@@ -212,7 +226,7 @@ export function FeedTab({ club, canManage }: { club: Club; canManage: boolean })
 
   return (
     <div className="stack-lg">
-      {canPost && <Composer club={club} canManage={canManage} onPosted={(post) => { setPosts((p) => [post, ...p]); setTotal((t) => t + 1) }} />}
+      {canPost && <Composer club={club} canManage={canManage} recapEventId={recapEventId} onPosted={(post) => { setPosts((p) => [post, ...p]); setTotal((t) => t + 1) }} />}
       {!canPost && club.subscriptionsEnabled && (
         <p className="small muted">Subscribers can post in the feed. Anyone signed in can like and share posts; followers and subscribers can comment.</p>
       )}

@@ -285,6 +285,7 @@ Profile pictures, club logos and photos, and event images go to an S3-compatible
      ```
   3. Put the provider's secret key in `secrets/media-s3-secret-key`.
   4. Restart user-, club- and event-service. The `seaweedfs` container can then be removed.
+- **Private documents:** proof documents from club applications are stored in the same bucket under `private/`. The web app's nginx refuses `/media/private/`, and club-service serves them only to the applicant and admins. With managed storage whose bucket is publicly readable, those objects are protected only by their random names; to be stricter, deny public reads of the `private/` prefix in the bucket policy (the services read them with their own key).
 - **Limits:** JPEG, PNG and WebP only (checked by content, so SVG and renamed files are refused), up to `MEDIA_MAX_SIZE` (5 MB).
 - **Backups:** the database backups don't include images. With SeaweedFS, copy the `media_data` volume off the host as well, for example `docker run --rm -v the_club_media_data:/data:ro -v "$PWD":/out alpine tar czf /out/media-$(date +%F).tgz -C /data .`. Managed object storage has its own versioning and replication.
 

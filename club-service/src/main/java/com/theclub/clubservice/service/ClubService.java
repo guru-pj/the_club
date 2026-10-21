@@ -26,8 +26,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +50,11 @@ public class ClubService {
     private final ClubReviewRepository reviews;
     private final UserClient userClient;
 
+    private final Clock clock;
+
     public ClubService(ClubRepository clubs, ClubMembershipRepository memberships, ClubFollowRepository follows,
-                       ClubReviewRepository reviews, UserClient userClient) {
+                       ClubReviewRepository reviews, UserClient userClient, Clock clock) {
+        this.clock = clock;
         this.clubs = clubs;
         this.memberships = memberships;
         this.follows = follows;
@@ -65,10 +71,11 @@ public class ClubService {
 
     @Transactional
     public Club create(AuthenticatedUser caller, CreateClubRequest request) {
-        if (!caller.hasRole(Roles.CLUB_OWNER) && !caller.isAdmin()) {
-            throw ApiException.forbidden("Only verified club owners can create clubs");
+        if (!caller.isAdmin()) {
+            throw ApiException.forbidden("Each club is verified on its own: apply for it under Become a club owner, "
+                    + "and it's created when an admin approves").withCode("CLUB_VERIFICATION_REQUIRED");
         }
-        return createFor(caller.id(), request);
+        return createFor(request.ownerId() != null ? request.ownerId() : caller.id(), request);
     }
 
     /**
@@ -87,6 +94,15 @@ public class ClubService {
             club.setSubscriptionsEnabled(request.subscriptionsEnabled());
         }
         club.setSubscriptionBenefits(blankToNull(request.subscriptionBenefits()));
+        club.setContactEmail(blankToNull(request.contactEmail()));
+        club.setContactPhone(blankToNull(request.contactPhone()));
+        club.setWebsite(blankToNull(request.website()));
+        club.setRules(blankToNull(request.rules()));
+        if (request.socialLinks() != null) {
+            club.getSocialLinks().putAll(cleanLinks(request.socialLinks()));
+        }
+        // created from an approved application (or by an admin), so its ownership is verified
+        club.setVerifiedAt(LocalDateTime.now(clock));
         club = clubs.save(club);
         memberships.save(new ClubMembership(club.getId(), ownerId, MembershipRole.OWNER));
         BusinessMetrics.increment("clubs.created");
@@ -143,8 +159,12 @@ public class ClubService {
     public Club update(AuthenticatedUser caller, UUID clubId, UpdateClubRequest request) {
         Club club = get(clubId);
         requireOwnerOrAdmin(club, caller);
-        if (request.name() != null) {
+        if (request.name() != null && !request.name().trim().equals(club.getName())) {
             String name = request.name().trim();
+            if (!caller.isAdmin()) {
+                throw ApiException.forbidden("The club's name is the one verified with your application; "
+                        + "ask the admin team to change it").withCode("VERIFIED_NAME");
+            }
             if (!name.equalsIgnoreCase(club.getName()) && clubs.existsByNameIgnoreCase(name)) {
                 throw ApiException.conflict("A club with this name already exists");
             }
@@ -172,7 +192,33 @@ public class ClubService {
         if (request.subscriptionBenefits() != null) {
             club.setSubscriptionBenefits(request.subscriptionBenefits().isBlank() ? null : request.subscriptionBenefits());
         }
+        if (request.contactEmail() != null) {
+            club.setContactEmail(blankToNull(request.contactEmail()));
+        }
+        if (request.contactPhone() != null) {
+            club.setContactPhone(blankToNull(request.contactPhone()));
+        }
+        if (request.website() != null) {
+            club.setWebsite(blankToNull(request.website()));
+        }
+        if (request.rules() != null) {
+            club.setRules(blankToNull(request.rules()));
+        }
+        if (request.socialLinks() != null) {
+            club.getSocialLinks().clear();
+            club.getSocialLinks().putAll(cleanLinks(request.socialLinks()));
+        }
         return club;
+    }
+
+    private static Map<String, String> cleanLinks(Map<String, String> links) {
+        Map<String, String> clean = new LinkedHashMap<>();
+        links.forEach((name, url) -> {
+            if (url != null && !url.isBlank()) {
+                clean.put(name, url.strip());
+            }
+        });
+        return clean;
     }
 
     private static void applyLocation(Club club, Double latitude, Double longitude, boolean clear) {

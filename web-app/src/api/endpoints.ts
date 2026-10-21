@@ -1,6 +1,6 @@
-import { nativeRefreshToken, request, upload } from './client'
+import { download, nativeRefreshToken, request, upload } from './client'
 import type {
-  Activity, ActivityRequest, AppNotification, ApplyVerificationRequest, CheckInResponse, Club, ClubEvent,
+  Activity, ActivityRequest, AppNotification, ApplyVerificationRequest, ClubEventStats, EventStatsRow, VerificationDocument, CheckInResponse, Club, ClubEvent,
   BlockedUser, ChatMessage, ChatMute, ChatReport, ChatReportStatus, ClubLeaderboard, ClubPhoto, ClubRequest,
   Conversation, CreatePostRequest, EventCard, EventRegistrationRow, EventRequest, LeaderboardMetric,
   LeaderboardPeriod, LocalDateTime, MemberParticipation, Membership, MonthlyLeaderboard, Page, Participation,
@@ -37,8 +37,9 @@ export const accountApi = {
 }
 
 export const usersApi = {
-  register: (name: string, email: string, password: string) =>
-    request<User>('POST', '/api/v1/users/register', { body: { name, email, password }, anonymous: true }),
+  /** clubOwner: "I run a club" (owner access still needs an approved club application) */
+  register: (name: string, email: string, password: string, clubOwner = false) =>
+    request<User>('POST', '/api/v1/users/register', { body: { name, email, password, clubOwner }, anonymous: true }),
   me: () => request<User>('GET', '/api/v1/users/me'),
   get: (id: UUID) => request<User>('GET', `/api/v1/users/${id}`),
   update: (id: UUID, body: UpdateUserRequest) => request<User>('PUT', `/api/v1/users/${id}`, { body }),
@@ -94,6 +95,8 @@ export const clubsApi = {
     upload<ClubPhoto>(`/api/v1/clubs/${id}/photos`, file, caption ? { caption } : {}),
   removePhoto: (id: UUID, photoId: UUID) => request<void>('DELETE', `/api/v1/clubs/${id}/photos/${photoId}`),
   uploadLogo: (id: UUID, file: File | Blob) => upload<Club>(`/api/v1/clubs/${id}/logo`, file),
+  uploadCover: (id: UUID, file: File | Blob) => upload<Club>(`/api/v1/clubs/${id}/cover`, file),
+  removeCover: (id: UUID) => request<Club>('DELETE', `/api/v1/clubs/${id}/cover`),
   leaderboard: (id: UUID, metric: LeaderboardMetric, period: LeaderboardPeriod) =>
     request<ClubLeaderboard>('GET', `/api/v1/clubs/${id}/leaderboard`, { query: { metric, period } }),
 }
@@ -178,13 +181,24 @@ export const verificationApi = {
   history: (id: UUID) => request<VerificationAudit[]>('GET', `${OV}/requests/${id}/history`),
   list: (q: Paging & { status?: VerificationStatus } = {}) =>
     request<Page<VerificationRequest>>('GET', `${OV}/requests`, { query: q }),
-  approve: (id: UUID, createClub: boolean, clubPayload?: ClubRequest) =>
-    request<VerificationRequest>('POST', `${OV}/requests/${id}/approve`, { body: { createClub, clubPayload } }),
+  /** creates the club (clubPayload.name = its official, verified name) and links it to the applicant */
+  approve: (id: UUID, clubPayload?: ClubRequest) =>
+    request<VerificationRequest>('POST', `${OV}/requests/${id}/approve`, { body: { clubPayload } }),
   reject: (id: UUID, reason: string) => request<VerificationRequest>('POST', `${OV}/requests/${id}/reject`, { body: { reason } }),
   requestInfo: (id: UUID, message: string) =>
     request<VerificationRequest>('POST', `${OV}/requests/${id}/request-info`, { body: { message } }),
   uploadProof: (id: UUID, proofFiles: string[], note?: string) =>
     request<VerificationRequest>('POST', `${OV}/requests/${id}/upload-proof`, { body: { proofFiles, note } }),
+  /** the applicant corrects the application (pending, or after changes were requested) */
+  update: (id: UUID, body: ApplyVerificationRequest) => request<VerificationRequest>('PUT', `${OV}/requests/${id}`, { body }),
+  /** back to the review queue after making the requested changes */
+  resubmit: (id: UUID, note?: string) =>
+    request<VerificationRequest>('POST', `${OV}/requests/${id}/resubmit`, { body: { note: note || undefined } }),
+  /** a private proof document: PDF, JPEG, PNG or WebP */
+  addDocument: (id: UUID, file: File | Blob) => upload<VerificationDocument>(`${OV}/requests/${id}/documents`, file),
+  removeDocument: (id: UUID, documentId: UUID) => request<void>('DELETE', `${OV}/requests/${id}/documents/${documentId}`),
+  /** downloads with the session's token (the files are private) */
+  downloadDocument: (id: UUID, documentId: UUID) => download(`${OV}/requests/${id}/documents/${documentId}`),
 }
 
 export const eventsApi = {
@@ -194,6 +208,10 @@ export const eventsApi = {
   setRegistrationWindow: (id: UUID, registrationOpensAt: LocalDateTime, registrationClosesAt?: LocalDateTime | null) =>
     request<ClubEvent>('PATCH', `/api/v1/events/${id}/registration-window`, { body: { registrationOpensAt, registrationClosesAt } }),
   cancel: (id: UUID) => request<ClubEvent>('POST', `/api/v1/events/${id}/cancel`),
+  publish: (id: UUID) => request<ClubEvent>('POST', `/api/v1/events/${id}/publish`),
+  complete: (id: UUID) => request<ClubEvent>('POST', `/api/v1/events/${id}/complete`),
+  stats: (id: UUID) => request<EventStatsRow>('GET', `/api/v1/events/${id}/stats`),
+  clubStats: (clubId: UUID) => request<ClubEventStats>('GET', `/api/v1/events/club/${clubId}/stats`),
   byClub: (clubId: UUID, q: Paging & { upcoming?: boolean } = {}) =>
     request<Page<ClubEvent>>('GET', `/api/v1/events/club/${clubId}`, { query: q }),
   /** followed and subscribed clubs, plus clubs near the point when given */

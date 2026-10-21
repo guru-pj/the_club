@@ -21,7 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.UUID;
 
-/** Uploaded images: the gallery and the logo. Uploads are multipart (field "file"), JPEG, PNG or WebP. */
+/** Uploaded images: the gallery, the logo and the cover. Uploads are multipart (field "file"), JPEG, PNG or WebP. */
 @RestController
 @RequestMapping("/api/v1/clubs/{clubId}")
 public class ClubPhotoController {
@@ -58,5 +58,17 @@ public class ClubPhotoController {
     public ClubResponse uploadLogo(@PathVariable UUID clubId, @RequestParam("file") MultipartFile file,
                                    @AuthenticationPrincipal AuthenticatedUser caller) {
         return clubService.describe(photos.uploadLogo(caller, clubId, file), caller.id());
+    }
+
+    /** The wide banner at the top of the club page. */
+    @PostMapping(value = "/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ClubResponse uploadCover(@PathVariable UUID clubId, @RequestParam("file") MultipartFile file,
+                                    @AuthenticationPrincipal AuthenticatedUser caller) {
+        return clubService.describe(photos.uploadCover(caller, clubId, file), caller.id());
+    }
+
+    @DeleteMapping("/cover")
+    public ClubResponse removeCover(@PathVariable UUID clubId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        return clubService.describe(photos.removeCover(caller, clubId), caller.id());
     }
 }

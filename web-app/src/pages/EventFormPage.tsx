@@ -126,8 +126,9 @@ function EventForm({ club, event }: { club: Club; event?: ClubEvent }) {
     setServerError(undefined)
     try {
       const body = toRequest(form)
-      const saved = event ? await eventsApi.update(event.id, body) : await eventsApi.create({ ...body, clubId: club.id })
-      toast.success(event ? 'Event updated' : 'Event created')
+      // a new event starts as a draft: the owner reviews it on its page and publishes it there
+      const saved = event ? await eventsApi.update(event.id, body) : await eventsApi.create({ ...body, clubId: club.id, publish: false })
+      toast.success(event ? 'Event updated' : 'Draft saved. Review it and publish when you\'re ready.')
       navigate(`/events/${saved.id}`)
     } catch (ex) {
       setServerError(ex)
@@ -224,7 +225,7 @@ function EventForm({ club, event }: { club: Club; event?: ClubEvent }) {
       )}
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <LinkButton variant="ghost" to={cancelTo}>Cancel</LinkButton>
-        <Button type="submit" loading={saving}>{editing ? 'Save changes' : 'Create event'}</Button>
+        <Button type="submit" loading={saving}>{editing ? 'Save changes' : 'Save and review'}</Button>
       </div>
     </form>
   )

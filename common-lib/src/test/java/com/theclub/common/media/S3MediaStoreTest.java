@@ -130,6 +130,26 @@ class S3MediaStoreTest {
     }
 
     @Test
+    void keepsPrivateDocumentsAndReadsThemBack() {
+        byte[] pdf = "%PDF-1.7\n1 0 obj << >> endobj\n%%EOF".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        StoredDocument stored = store.storePrivate("verification/r1", upload("proof.pdf", "application/octet-stream", pdf));
+        assertThat(stored.key()).startsWith("private/verification/r1/").endsWith(".pdf");
+        assertThat(stored.contentType()).isEqualTo("application/pdf");
+        assertThat(store.readPrivate(stored.key())).hasValue(pdf);
+
+        StoredDocument photo = store.storePrivate("verification/r1", upload("id.png", "image/png", ImageTypeTest.PNG));
+        assertThat(photo.contentType()).isEqualTo("image/png");
+        // only keys under private/ are read or deleted through these methods
+        assertThat(store.readPrivate("profiles/x.png")).isEmpty();
+        assertThatThrownBy(() -> store.storePrivate("verification/r1",
+                upload("x.html", "application/pdf", "<html>".getBytes(java.nio.charset.StandardCharsets.US_ASCII))))
+                .isInstanceOf(ApiException.class);
+
+        store.deletePrivate(stored.key());
+        assertThat(store.readPrivate(stored.key())).isEmpty();
+    }
+
+    @Test
     void refusesUnsafeFolders() {
         assertThatThrownBy(() -> store.storeImage("../etc", upload("a.jpg", "image/jpeg", ImageTypeTest.JPEG)))
                 .isInstanceOf(IllegalArgumentException.class);

@@ -57,7 +57,8 @@ function UserMenu() {
           </div>
           <Link to="/profile"><span className="row"><UserIcon size={16} />Profile</span></Link>
           <Link to="/leaderboard"><span className="row"><TrophyIcon size={16} />Leaderboard</span></Link>
-          {!hasRole('CLUB_OWNER') && <Link to="/become-owner"><span className="row"><ShieldIcon size={16} />Become a club owner</span></Link>}
+          {hasRole('CLUB_OWNER') && <Link to="/owner"><span className="row"><ShieldIcon size={16} />Owner dashboard</span></Link>}
+          <Link to="/become-owner"><span className="row"><ShieldIcon size={16} />{hasRole('CLUB_OWNER') ? 'Club applications' : 'Become a club owner'}</span></Link>
           {hasRole('ADMIN') && <Link to="/admin/verification"><span className="row"><ShieldIcon size={16} />Owner applications</span></Link>}
           {hasRole('ADMIN') && <Link to="/admin/chat-reports"><span className="row"><FlagIcon size={16} />Reported messages</span></Link>}
           <button onClick={async () => { await logout(); navigate('/login') }}>
@@ -81,6 +82,7 @@ function MessagesLink() {
 
 export function Layout() {
   const unread = useUnreadCount()
+  const { hasRole } = useAuth()
   return (
     <ChatProvider>
       <header className="app-header">
@@ -93,6 +95,7 @@ export function Layout() {
             {NAV.map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end}><Icon size={18} />{label}</NavLink>
             ))}
+            {hasRole('CLUB_OWNER') && <NavLink to="/owner"><ShieldIcon size={18} />Dashboard</NavLink>}
           </nav>
           <div className="header-actions">
             <MessagesLink />

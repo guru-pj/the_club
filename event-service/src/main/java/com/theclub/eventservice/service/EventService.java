@@ -83,9 +83,44 @@ public class EventService {
         event.setRules(blankToNull(request.rules()));
         event.setSubscribersOnly(Boolean.TRUE.equals(request.subscribersOnly()));
         EventRules.validate(event, now, true);
+        boolean publish = !Boolean.FALSE.equals(request.publish());
+        event.setStatus(publish ? EventStatus.SCHEDULED : EventStatus.DRAFT);
         Event saved = events.save(event);
-        notifier.eventAnnounced(saved, club.name(), caller.id());
+        if (publish) {
+            notifier.eventAnnounced(saved, club.name(), caller.id());
+        }
         return view(saved, caller.id());
+    }
+
+    /** Makes a draft visible and open for registration (within its window), and tells the club's audience. */
+    @Transactional
+    public EventResponse publish(UUID eventId, AuthenticatedUser caller) {
+        Event event = find(eventId);
+        ClubInfo club = clubAccess.requireOwnerOrAdmin(event.getClubId(), caller);
+        if (event.getStatus() != EventStatus.DRAFT) {
+            throw ApiException.conflict("Only a draft can be published; this event is " + event.getStatus())
+                    .withCode("NOT_A_DRAFT");
+        }
+        EventRules.validate(event, LocalDateTime.now(clock), true);
+        event.setStatus(EventStatus.SCHEDULED);
+        notifier.eventAnnounced(event, club.name(), caller.id());
+        return view(event, caller.id());
+    }
+
+    /** After the event: it leaves upcoming listings and stays in the club's past events with its registrations. */
+    @Transactional
+    public EventResponse complete(UUID eventId, AuthenticatedUser caller) {
+        Event event = find(eventId);
+        clubAccess.requireOwnerOrAdmin(event.getClubId(), caller);
+        if (event.getStatus() != EventStatus.SCHEDULED) {
+            throw ApiException.conflict("Only a published event can be completed; this event is " + event.getStatus())
+                    .withCode("NOT_SCHEDULED");
+        }
+        if (LocalDateTime.now(clock).isBefore(event.getStartTime())) {
+            throw ApiException.conflict("The event hasn't started yet").withCode("NOT_STARTED");
+        }
+        event.setStatus(EventStatus.COMPLETED);
+        return view(event, caller.id());
     }
 
     @Transactional
@@ -163,7 +198,17 @@ public class EventService {
 
     @Transactional(readOnly = true)
     public EventResponse get(UUID eventId, AuthenticatedUser caller) {
-        return view(find(eventId), caller.id());
+        return view(findVisible(eventId, caller), caller.id());
+    }
+
+    /** Drafts exist only for the club owner and admins; everyone else gets a 404. */
+    @Transactional(readOnly = true)
+    public Event findVisible(UUID eventId, AuthenticatedUser caller) {
+        Event event = find(eventId);
+        if (event.getStatus() == EventStatus.DRAFT && !clubAccess.isOwnerOrAdmin(event.getClubId(), caller)) {
+            throw ApiException.notFound("Event not found");
+        }
+        return event;
     }
 
     @Transactional(readOnly = true)
@@ -177,9 +222,17 @@ public class EventService {
         int pageSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
         PageRequest pageable = PageRequest.of(Math.max(page, 0), pageSize,
                 upcoming ? Sort.by("startTime").ascending() : Sort.by("startTime").descending());
-        Page<Event> result = upcoming
-                ? events.findByClubIdAndStartTimeGreaterThanEqual(clubId, LocalDateTime.now(clock), pageable)
-                : events.findByClubId(clubId, pageable);
+        boolean withDrafts = clubAccess.isOwnerOrAdmin(clubId, caller);
+        LocalDateTime now = LocalDateTime.now(clock);
+        Page<Event> result;
+        if (withDrafts) {
+            result = upcoming ? events.findByClubIdAndStartTimeGreaterThanEqual(clubId, now, pageable)
+                    : events.findByClubId(clubId, pageable);
+        } else {
+            result = upcoming
+                    ? events.findByClubIdAndStatusNotAndStartTimeGreaterThanEqual(clubId, EventStatus.DRAFT, now, pageable)
+                    : events.findByClubIdAndStatusNot(clubId, EventStatus.DRAFT, pageable);
+        }
         List<EventResponse> items = result.getContent().stream().map(e -> view(e, caller.id())).toList();
         return new PagedResponse<>(items, pageable.getPageNumber(), pageSize, result.getTotalElements());
     }
@@ -204,6 +257,9 @@ public class EventService {
         clubAccess.requireOwnerOrAdmin(event.getClubId(), caller);
         if (event.getStatus() == EventStatus.CANCELLED) {
             throw ApiException.conflict("Event is cancelled");
+        }
+        if (event.getStatus() == EventStatus.COMPLETED) {
+            throw ApiException.conflict("Event is completed").withCode("EVENT_COMPLETED");
         }
         return event;
     }

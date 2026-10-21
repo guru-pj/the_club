@@ -5,12 +5,17 @@ import { useAuth } from '../auth/AuthContext'
 import { startPage } from '../lib/startPage'
 import { EmptyState, Loading } from './ui'
 
-/** Sends signed-out visitors to /login, remembering where they were going. */
+/**
+ * Sends signed-out visitors to /login, remembering where they were going. After a deliberate sign-out it doesn't:
+ * whoever signs in next on this device shouldn't land on the previous person's page.
+ */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
+  const { user, signedOut } = useAuth()
   const location = useLocation()
   if (user === undefined) return <Loading />
-  if (user === null) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
+  if (user === null) {
+    return <Navigate to="/login" replace state={signedOut ? undefined : { from: location.pathname + location.search }} />
+  }
   // A new account sets up its profile first (picture, details, location); finishing or skipping counts as done
   if (user.profileComplete === false && location.pathname !== '/welcome') return <Navigate to="/welcome" replace />
   return <>{children}</>

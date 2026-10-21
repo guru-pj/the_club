@@ -6,7 +6,9 @@ import { useToast } from '../components/Toast'
 import {
   Avatar, Button, Card, EmptyState, ErrorMessage, Field, Loading, Modal, PageHeader, Pagination, StatusBadge, Tabs,
 } from '../components/ui'
+import { formatBytes, saveFile } from '../lib/download'
 import { formatDateTime, humanize, timeAgo } from '../lib/format'
+import { mapLink } from '../lib/location'
 import { useAsync } from '../lib/useAsync'
 import { ClubFields } from './clubs/ClubForm'
 import { clubFormValues, toClubRequest } from './clubs/clubFormValues'
@@ -17,7 +19,7 @@ type Filter = VerificationStatus | 'ALL'
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'PENDING', label: 'Pending' },
   { id: 'UNDER_REVIEW', label: 'Under review' },
-  { id: 'NEEDS_INFO', label: 'Needs info' },
+  { id: 'NEEDS_INFO', label: 'Changes required' },
   { id: 'APPROVED', label: 'Approved' },
   { id: 'REJECTED', label: 'Rejected' },
   { id: 'ALL', label: 'All' },
@@ -29,9 +31,10 @@ type Action = 'approve' | 'reject' | 'info' | null
 
 function ApproveModal({ request, onClose, onDone }: { request: VerificationRequest; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
-  const [createClub, setCreateClub] = useState(true)
   const [values, setValues] = useState(() => clubFormValues({
     name: request.clubName, city: request.city, description: request.description, clubType: request.clubType,
+    address: request.address, latitude: request.latitude, longitude: request.longitude, contactEmail: request.contactEmail,
+    contactPhone: request.contactPhone, website: request.website, socialLinks: request.socialLinks,
   }))
   const [error, setError] = useState<unknown>()
   const [saving, setSaving] = useState(false)
@@ -41,8 +44,8 @@ function ApproveModal({ request, onClose, onDone }: { request: VerificationReque
     setSaving(true)
     setError(undefined)
     try {
-      await verificationApi.approve(request.id, createClub, createClub ? toClubRequest(values) : undefined)
-      toast.success(`${request.clubName} approved`)
+      await verificationApi.approve(request.id, toClubRequest(values))
+      toast.success(`${values.name.trim()} approved and linked to the applicant`)
       onDone()
     } catch (err) {
       setError(err)
@@ -54,16 +57,15 @@ function ApproveModal({ request, onClose, onDone }: { request: VerificationReque
   return (
     <Modal open title="Approve application" onClose={onClose}>
       <form className="form" onSubmit={submit}>
-        <p className="muted small">The applicant becomes a club owner and is notified.</p>
+        <p className="muted small">
+          This creates the club, links it to the applicant and makes them its owner. Use the club's exact official name as
+          on its documents or Instagram; owners can't change it later. Approving covers this club only.
+        </p>
         <ErrorMessage error={error} />
-        <label className="checkbox">
-          <input type="checkbox" checked={createClub} onChange={(e) => setCreateClub(e.target.checked)} />
-          Create the club now
-        </label>
-        {createClub && <ClubFields values={values} onChange={setValues} error={error} />}
+        <ClubFields values={values} onChange={setValues} error={error} />
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={saving} disabled={createClub && !values.name.trim()}>Approve</Button>
+          <Button type="submit" loading={saving} disabled={!values.name.trim()}>Approve and create the club</Button>
         </div>
       </form>
     </Modal>
@@ -150,7 +152,16 @@ function RequestDetail({ request, onChanged, onBack }: { request: VerificationRe
         <dl className="kv">
           <dt>Type</dt><dd>{request.clubType ? humanize(request.clubType) : '—'}</dd>
           <dt>City</dt><dd>{request.city ?? '—'}</dd>
+          <dt>Address</dt>
+          <dd>
+            {request.address ?? '—'}
+            {request.latitude != null && request.longitude != null && (
+              <> · <a href={mapLink(request.latitude, request.longitude)} target="_blank" rel="noreferrer">Map</a></>
+            )}
+          </dd>
+          <dt>Email</dt><dd>{request.contactEmail ? <a href={`mailto:${request.contactEmail}`}>{request.contactEmail}</a> : '—'}</dd>
           <dt>Phone</dt><dd>{request.contactPhone ? <a href={`tel:${request.contactPhone}`}>{request.contactPhone}</a> : '—'}</dd>
+          <dt>Website</dt><dd>{request.website ? <SafeLink url={request.website} /> : '—'}</dd>
           <dt>Social links</dt>
           <dd>
             {socialLinks.length ? (
@@ -178,12 +189,32 @@ function RequestDetail({ request, onChanged, onBack }: { request: VerificationRe
           )}
         </div>
 
+        <div>
+          <div className="field-label" style={{ marginBottom: 6 }}>Uploaded documents ({request.documents.length})</div>
+          {request.documents.length === 0 ? <span className="muted small">None uploaded</span> : (
+            <ul className="url-list">
+              {request.documents.map((d) => (
+                <li key={d.id}>
+                  <span className="truncate">{d.fileName} <span className="muted small">· {formatBytes(d.sizeBytes)} · {timeAgo(d.uploadedAt)}</span></span>
+                  <Button size="sm" variant="ghost" onClick={async () => {
+                    try {
+                      saveFile(await verificationApi.downloadDocument(request.id, d.id), d.fileName)
+                    } catch (e) {
+                      toast.error(e)
+                    }
+                  }}>Download</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         {request.adminNotes && <div className="alert alert-info"><div><div className="bold">Admin notes</div><div className="pre-wrap">{request.adminNotes}</div></div></div>}
 
         {open && (
           <div className="row">
             {reviewable && <Button onClick={() => setAction('approve')}>Approve</Button>}
-            {reviewable && <Button variant="secondary" onClick={() => setAction('info')}>Request info</Button>}
+            {reviewable && <Button variant="secondary" onClick={() => setAction('info')}>Ask for changes</Button>}
             <Button variant="danger" onClick={() => setAction('reject')}>Reject</Button>
           </div>
         )}
@@ -210,9 +241,9 @@ function RequestDetail({ request, onChanged, onBack }: { request: VerificationRe
                          onSubmit={async (reason) => { await verificationApi.reject(request.id, reason); toast.success('Application rejected'); done() }} />
       )}
       {action === 'info' && (
-        <TextActionModal title="Request more information" label="What do you need from the applicant?" submitLabel="Send request"
+        <TextActionModal title="Ask for changes" label="What should the applicant correct or add?" submitLabel="Send to the applicant"
                          onClose={() => setAction(null)}
-                         onSubmit={async (message) => { await verificationApi.requestInfo(request.id, message); toast.success('Request sent'); done() }} />
+                         onSubmit={async (message) => { await verificationApi.requestInfo(request.id, message); toast.success('Sent back to the applicant'); done() }} />
       )}
     </Card>
   )
@@ -230,7 +261,7 @@ export default function AdminVerificationPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Owner applications" subtitle="Review requests from users who want to run a club." />
+      <PageHeader title="Owner applications" subtitle="Check that each applicant really runs (or represents) the club they claim. Each club is verified on its own." />
       <Tabs tabs={FILTERS} active={filter} onChange={(f) => { setFilter(f); setPage(0); setSelectedId(null) }} />
       {list.error ? <ErrorMessage error={list.error} onRetry={list.reload} />
         : list.loading && !list.data ? <Loading />

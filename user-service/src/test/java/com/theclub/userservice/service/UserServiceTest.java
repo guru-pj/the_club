@@ -43,13 +43,15 @@ class UserServiceTest {
         when(passwordEncoder.encode("Str0ng-pass!")).thenReturn("hashed");
         when(users.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        User user = userService.register(new RegisterUserRequest(" Asha ", " Asha@Example.com ", "Str0ng-pass!"));
+        User user = userService.register(new RegisterUserRequest(" Asha ", " Asha@Example.com ", "Str0ng-pass!", true));
 
         assertThat(user.getId()).isNotNull();
         assertThat(user.getEmail()).isEqualTo("asha@example.com");
         assertThat(user.getName()).isEqualTo("Asha");
         assertThat(user.getPasswordHash()).isEqualTo("hashed");
+        // signing up as a club owner grants nothing until a club application is approved
         assertThat(user.getRoles()).containsExactly(Role.USER);
+        assertThat(user.isClubOwnerSignup()).isTrue();
         assertThat(user.isEmailVerified()).isFalse();
         verify(accounts).startEmailVerification(user);
     }
@@ -58,7 +60,7 @@ class UserServiceTest {
     void registerRejectsCommonPasswords() {
         when(users.existsByEmail("asha@example.com")).thenReturn(false);
 
-        assertThatThrownBy(() -> userService.register(new RegisterUserRequest("Asha", "asha@example.com", "password123")))
+        assertThatThrownBy(() -> userService.register(new RegisterUserRequest("Asha", "asha@example.com", "password123", null)))
                 .isInstanceOfSatisfying(ApiException.class,
                         e -> assertThat(e.getFieldErrors()).containsEntry("password", "This password is too common"));
         verify(users, never()).save(any());
@@ -68,7 +70,7 @@ class UserServiceTest {
     void registerRejectsDuplicateEmail() {
         when(users.existsByEmail("asha@example.com")).thenReturn(true);
 
-        assertThatThrownBy(() -> userService.register(new RegisterUserRequest("Asha", "asha@example.com", "Str0ng-pass!")))
+        assertThatThrownBy(() -> userService.register(new RegisterUserRequest("Asha", "asha@example.com", "Str0ng-pass!", null)))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT));
         verify(users, never()).save(any());
     }

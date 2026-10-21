@@ -106,18 +106,18 @@ function OwnerBanner() {
     return (
       <div className="alert alert-success">
         <ShieldIcon size={20} />
-        <div style={{ flex: 1 }}>Your club owner application was approved.</div>
+        <div style={{ flex: 1 }}>{latest.clubName} is verified and linked to your account.</div>
         <Button size="sm" loading={refreshing} onClick={async () => {
           setRefreshing(true)
           try {
             await refreshSession()
             toast.success('You are now a club owner')
-            navigate('/clubs/new')
+            navigate(latest.createdClubId ? `/owner?club=${latest.createdClubId}` : '/owner')
           } catch (err) {
             toast.error(err)
             setRefreshing(false)
           }
-        }}>Start my club</Button>
+        }}>Open the club dashboard</Button>
       </div>
     )
   }
@@ -127,8 +127,8 @@ function OwnerBanner() {
         <ShieldIcon size={20} />
         <div style={{ flex: 1 }}>
           {latest.status === 'NEEDS_INFO'
-            ? 'The admin team needs more information about your club owner application.'
-            : 'Your club owner application is being reviewed.'}
+            ? `Changes are required to your application for ${latest.clubName}.`
+            : `Your application for ${latest.clubName} is waiting for review.`}
         </div>
         <LinkButton to="/become-owner" size="sm" variant="secondary">View application</LinkButton>
       </div>
@@ -166,11 +166,11 @@ export default function HomePage() {
       </div>
       <div className="stack-lg">
         {!hasRole('CLUB_OWNER') && <OwnerBanner />}
-        {hasRole('CLUB_OWNER') && clubs.data && !ownsClub && (
+        {hasRole('CLUB_OWNER') && ownsClub && (
           <div className="alert alert-info">
             <ActivityIcon size={20} />
-            <div style={{ flex: 1 }}>You're a verified club owner. Set up your club to start posting and hosting events.</div>
-            <LinkButton to="/clubs/new" size="sm">Create your club</LinkButton>
+            <div style={{ flex: 1 }}>Manage your clubs' events, registrations and check-ins.</div>
+            <LinkButton to="/owner" size="sm">Owner dashboard</LinkButton>
           </div>
         )}
         <MonthStats />

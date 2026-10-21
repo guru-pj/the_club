@@ -70,7 +70,7 @@ class EventServiceTest {
 
     private CreateEventRequest request(LocalDateTime start, LocalDateTime opens, LocalDateTime closes) {
         return new CreateEventRequest(clubId, "Sunday Long Run", null, "Marina", start, opens, closes, 50,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     @Test
