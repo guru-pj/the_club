@@ -12,7 +12,8 @@ FROM nginxinc/nginx-unprivileged:1.30-alpine
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 # Defaults for docker compose; Kubernetes overrides them (kube-dns + the gateway Service FQDN)
 ENV NGINX_RESOLVER=127.0.0.11 \
-    GATEWAY_UPSTREAM=http://gateway-service:8080
+    GATEWAY_UPSTREAM=http://gateway-service:8080 \
+    MEDIA_UPSTREAM=http://seaweedfs:8333
 COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
 # Optional trusted-proxy config generated at start from REAL_IP_FROM (see 15-real-ip.sh); the snippets
 # directory must be writable by the unprivileged nginx user (uid 101) for that.

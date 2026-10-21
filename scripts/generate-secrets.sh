@@ -87,6 +87,19 @@ write_secret "grafana-admin-password" "$(random_value 20)"
 #     must reconnect Strava)
 write_secret "strava-token-encryption-key" "$(openssl rand -base64 32 | tr -d '\n')"
 
+# --- S3 secret key for uploaded images (profile pictures, club photos, event images). The bundled SeaweedFS reads
+#     its access rules from seaweedfs-s3.json, rebuilt from this key on every run; with an external S3 store
+#     (AWS, R2, ...) put that provider's secret key here instead.
+write_secret "media-s3-secret-key" "$(random_value 40)"
+media_key="$(cat "$SECRETS_DIR/media-s3-secret-key")"
+s3_config="$SECRETS_DIR/seaweedfs-s3.json"
+new_config="$(printf '{"identities":[{"name":"theclub","credentials":[{"accessKey":"theclub-media","secretKey":"%s"}],"actions":["Admin","Read","List","Write"]},{"name":"anonymous","actions":["Read:media"]}]}' "$media_key")"
+if [ ! -f "$s3_config" ] || [ "$(cat "$s3_config")" != "$new_config" ]; then
+    printf '%s' "$new_config" > "$s3_config"
+    chmod 644 "$s3_config"
+    created+=("seaweedfs-s3.json")
+fi
+
 # --- third-party credentials: created empty, fill in for production
 for optional in smtp-password razorpay-key-secret razorpay-webhook-secret strava-client-secret zeptomail-token; do
     if [ ! -f "$SECRETS_DIR/$optional" ]; then

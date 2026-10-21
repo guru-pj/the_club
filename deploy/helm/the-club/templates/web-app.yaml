@@ -81,6 +81,10 @@ spec:
               value: {{ $w.resolver | quote }}
             - name: GATEWAY_UPSTREAM
               value: {{ include "theclub.serviceUrl" (dict "root" $ "component" "gateway") | quote }}
+            # /media/ is proxied here only when config.media.mediaUpstream is set; otherwise images load from
+            # config.media.publicBaseUrl and nothing listens at this placeholder
+            - name: MEDIA_UPSTREAM
+              value: {{ .Values.config.media.mediaUpstream | default "http://127.0.0.1:9" | quote }}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 2

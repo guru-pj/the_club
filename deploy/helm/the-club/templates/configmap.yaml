@@ -43,6 +43,13 @@ data:
   STRAVA_WORKER_ENABLED: {{ $c.strava.workerEnabled | quote }}
   STRAVA_WORKER_BATCH_SIZE: {{ $c.strava.workerBatchSize | quote }}
   CORS_ALLOWED_ORIGINS: {{ $c.corsAllowedOrigins | quote }}
+  MEDIA_S3_ENDPOINT: {{ $c.media.endpoint | quote }}
+  MEDIA_S3_REGION: {{ $c.media.region | quote }}
+  MEDIA_S3_BUCKET: {{ $c.media.bucket | quote }}
+  MEDIA_S3_ACCESS_KEY: {{ $c.media.accessKey | quote }}
+  MEDIA_S3_PATH_STYLE: {{ $c.media.pathStyle | quote }}
+  MEDIA_PUBLIC_BASE_URL: {{ $c.media.publicBaseUrl | default "/media" | quote }}
+  MEDIA_MAX_SIZE: {{ $c.media.maxSize | quote }}
   # The gateway sits behind the web app's nginx, which sets X-Real-IP to the (real) client address
   GATEWAY_TRUST_FORWARDED_FOR: "true"
   RATE_LIMIT_STRICT_PER_MINUTE: {{ $c.gateway.rateLimitStrictPerMinute | quote }}

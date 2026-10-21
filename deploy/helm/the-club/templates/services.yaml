@@ -82,7 +82,8 @@ spec:
                 name: {{ include "theclub.fullname" $root }}-env
           env:
             - name: JAVA_TOOL_OPTIONS
-              value: {{ printf "%s -Djava.io.tmpdir=/tmp" $root.Values.javaToolOptions | quote }}
+              # user.timezone: entity timestamps (createdAt, ...) in the same zone as the app's Clock (config.timeZone)
+              value: {{ printf "%s -Djava.io.tmpdir=/tmp -Duser.timezone=%s" $root.Values.javaToolOptions $root.Values.config.timeZone | quote }}
             {{- with $svc.database }}
             {{- if eq .engine "postgres" }}
             - name: SPRING_DATASOURCE_URL
