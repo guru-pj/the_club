@@ -330,6 +330,8 @@ Run the automated end-to-end check. It signs up users, creates a club and events
 ```
 If the first steps fail with 503, the services are still finding each other. Wait 30 seconds and run it again.
 
+**Testing on a phone or updating an older copy?** [`docs/RUN_AND_TEST.md`](docs/RUN_AND_TEST.md) covers updating, the browser, the Android emulator or phone, the iPhone Simulator or iPhone, a feature checklist and troubleshooting.
+
 **Sample data** (optional): `./scripts/seed-demo.sh` adds three verified clubs with complete profiles, published, paid and draft events, members who follow, subscribe, register, post, review and chat, and one application waiting for review. It prints the demo logins (password `Demo-pass-2026!`) and is safe to re-run.
 
 | Open | URL |
