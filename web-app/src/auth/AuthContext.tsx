@@ -9,9 +9,10 @@ interface AuthState {
   /** roles from the current access token — these are what the backend enforces */
   roles: Role[]
   hasRole: (role: Role) => boolean
-  login: (email: string, password: string) => Promise<void>
+  /** Resolves with the signed-in user (null if the profile couldn't be loaded). */
+  login: (email: string, password: string) => Promise<User | null>
   /** Creates the account, then tries to log in (which fails with EMAIL_NOT_VERIFIED when verification is required). */
-  register: (name: string, email: string, password: string) => Promise<void>
+  register: (name: string, email: string, password: string) => Promise<User | null>
   logout: () => Promise<void>
   /** Revokes every session of this user (all devices), then signs out here. */
   logoutEverywhere: () => Promise<void>
@@ -35,12 +36,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
 
-  const loadUser = useCallback(async () => {
+  const loadUser = useCallback(async (): Promise<User | null> => {
     try {
-      setUser(await usersApi.me())
+      const me = await usersApi.me()
+      setUser(me)
+      return me
     } catch {
       tokenStore.set(null)
       setUser(null)
+      return null
     }
   }, [])
 
@@ -74,12 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await authApi.login(email, password)
     tokenStore.set(res.accessToken, res.expiresIn, res.refreshToken)
-    await loadUser()
+    return loadUser()
   }, [loadUser])
 
   const register = useCallback(async (name: string, email: string, password: string) => {
     await usersApi.register(name, email, password)
-    await login(email, password)
+    return login(email, password)
   }, [login])
 
   const logout = useCallback(async () => {

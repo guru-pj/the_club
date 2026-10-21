@@ -26,6 +26,14 @@ public interface RegistrationRepository extends JpaRepository<Registration, UUID
 
     long countByEventIdAndStatusIn(UUID eventId, Collection<RegistrationStatus> statuses);
 
+    /** Whether the user checked in at any event of the club. */
+    @Query("""
+            select count(r) > 0 from Registration r
+            where r.userId = :userId and r.checkedInAt is not null
+              and r.eventId in (select e.id from Event e where e.clubId = :clubId)
+            """)
+    boolean hasAttendedClub(@Param("clubId") UUID clubId, @Param("userId") UUID userId);
+
     /**
      * Spots taken by other users: confirmed/checked-in registrations plus payments still in their hold window.
      */

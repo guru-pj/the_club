@@ -25,6 +25,7 @@ import org.springframework.http.HttpStatus;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -90,15 +91,18 @@ class PostServiceTest {
     }
 
     @Test
-    void announcementNotifiesOtherMembers() {
+    void announcementNotifiesSubscribersAndFollowersExceptTheAuthor() {
         UUID memberId = UUID.randomUUID();
-        when(clubService.memberIds(club.getId())).thenReturn(List.of(ownerId, memberId));
+        UUID followerId = UUID.randomUUID();
+        // audienceIds is a set: someone who both subscribes and follows appears once
+        when(clubService.audienceIds(club.getId())).thenReturn(new LinkedHashSet<>(List.of(ownerId, memberId, followerId)));
 
         Post post = postService.create(owner, club.getId(), request(null, null, null));
 
         assertThat(post.getType()).isEqualTo(PostType.ANNOUNCEMENT);
         assertThat(post.getPhotoUrls()).containsExactly("https://img/1.jpg");
-        verify(notifications).notifyAfterCommit(eq(List.of(memberId)), eq("CLUB_POST"), eq("Chennai Runners: Sunday recap"));
+        verify(notifications).notifyAfterCommit(eq(List.of(memberId, followerId)), eq("CLUB_POST"),
+                eq("Chennai Runners: Sunday recap"));
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.theclub.userservice.model.User;
 import com.theclub.userservice.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,8 +19,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
@@ -54,6 +57,18 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public UserResponse getByEmail(@PathVariable String email) {
         return UserResponse.full(userService.getByEmail(email));
+    }
+
+    /** Multipart upload (field "file"): JPEG, PNG or WebP up to the configured size. */
+    @PostMapping(value = "/me/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public UserResponse uploadPhoto(@RequestParam("file") MultipartFile file,
+                                    @AuthenticationPrincipal AuthenticatedUser caller) {
+        return UserResponse.full(userService.uploadPhoto(caller.id(), file));
+    }
+
+    @DeleteMapping("/me/photo")
+    public UserResponse removePhoto(@AuthenticationPrincipal AuthenticatedUser caller) {
+        return UserResponse.full(userService.removePhoto(caller.id()));
     }
 
     @PutMapping("/{id}")

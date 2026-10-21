@@ -3,6 +3,8 @@
 <!-- Merged into the app bundle's Info.plist by Tauri -->
 <plist version="1.0">
 <dict>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>The Club uses your approximate location to show clubs and events near you.</string>
   <key>NSCameraUsageDescription</key>
   <string>The Club uses the camera to scan members' QR tickets at event check-in.</string>
 </dict>

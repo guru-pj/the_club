@@ -212,6 +212,7 @@ The most-used values (all of them are commented in [`values.yaml`](../deploy/hel
 | `config.payments.provider`, `config.payments.razorpayKeyId` | `razorpay` in production |
 | `config.mail.*` | `provider` (`zeptomail`/`smtp`/`log`), sender, ZeptoMail region URL, SMTP host |
 | `config.strava.*` | Client ID, redirect and webhook URLs, sync window |
+| `config.media.*` | Uploaded images: S3 `endpoint`, `bucket`, `accessKey` (secret key: `media-s3-secret-key` in the Secret), `publicBaseUrl` (the bucket's public URL or CDN). Empty endpoint = uploads refused with a clear message. The chart doesn't run an object store; use managed S3/R2, or set `mediaUpstream` to proxy `/media/` to one you run |
 | `config.gateway.rateLimit*PerMinute` | Per gateway **pod** (see scaling) |
 | `config.extraEnv` | Any extra environment variable for every service |
 | `secrets.name` / `secrets.create` + `secrets.data` | Existing Secret name, or create one from values (dev only) |

@@ -60,6 +60,17 @@ public class User {
     @Column(name = "profile_pic_url", length = 500)
     private String profilePicUrl;
 
+    /** Approximate (rounded to ~100 m) and only shown to the user themself; used to find nearby clubs and events. */
+    @Column
+    private Double latitude;
+
+    @Column
+    private Double longitude;
+
+    /** Set when the user finishes (or skips) the profile setup screen after their first login. */
+    @Column(name = "profile_completed_at")
+    private LocalDateTime profileCompletedAt;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 

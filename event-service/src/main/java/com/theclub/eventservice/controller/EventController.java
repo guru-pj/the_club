@@ -6,6 +6,7 @@ import com.theclub.eventservice.dto.CheckInRequest;
 import com.theclub.eventservice.dto.CheckInResponse;
 import com.theclub.eventservice.dto.CreateEventRequest;
 import com.theclub.eventservice.dto.EventRegistrationRow;
+import com.theclub.eventservice.dto.EventCard;
 import com.theclub.eventservice.dto.EventResponse;
 import com.theclub.eventservice.dto.PagedResponse;
 import com.theclub.eventservice.dto.RegisterResponse;
@@ -15,6 +16,7 @@ import com.theclub.eventservice.dto.UpdateEventRequest;
 import com.theclub.eventservice.dto.UserEventRegistration;
 import com.theclub.eventservice.service.CheckInService;
 import com.theclub.eventservice.service.EventService;
+import com.theclub.eventservice.service.FeedService;
 import com.theclub.eventservice.service.RegistrationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -42,12 +45,14 @@ public class EventController {
     private final EventService eventService;
     private final RegistrationService registrationService;
     private final CheckInService checkInService;
+    private final FeedService feedService;
 
     public EventController(EventService eventService, RegistrationService registrationService,
-                           CheckInService checkInService) {
+                           CheckInService checkInService, FeedService feedService) {
         this.eventService = eventService;
         this.registrationService = registrationService;
         this.checkInService = checkInService;
+        this.feedService = feedService;
     }
 
     @PostMapping
@@ -66,6 +71,31 @@ public class EventController {
     public EventResponse update(@PathVariable UUID eventId, @Valid @RequestBody UpdateEventRequest request,
                                 @AuthenticationPrincipal AuthenticatedUser caller) {
         return eventService.update(eventId, request, caller);
+    }
+
+    /** Multipart upload (field "file"): JPEG, PNG or WebP. */
+    @PostMapping(value = "/{eventId}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public EventResponse uploadImage(@PathVariable UUID eventId, @RequestParam("file") MultipartFile file,
+                                     @AuthenticationPrincipal AuthenticatedUser caller) {
+        return eventService.uploadImage(eventId, file, caller);
+    }
+
+    @DeleteMapping("/{eventId}/image")
+    public EventResponse removeImage(@PathVariable UUID eventId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        return eventService.removeImage(eventId, caller);
+    }
+
+    /**
+     * Upcoming events from clubs the caller follows or subscribes to, plus (with lat/lng) clubs within
+     * radiusKm (default 25), soonest first.
+     */
+    @GetMapping("/upcoming")
+    public List<EventCard> upcoming(@RequestParam(required = false) Double lat,
+                                    @RequestParam(required = false) Double lng,
+                                    @RequestParam(required = false) Double radiusKm,
+                                    @RequestParam(required = false) Integer limit,
+                                    @AuthenticationPrincipal AuthenticatedUser caller) {
+        return feedService.upcoming(caller, lat, lng, radiusKm, limit);
     }
 
     @PatchMapping("/{eventId}/registration-window")

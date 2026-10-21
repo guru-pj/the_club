@@ -22,20 +22,22 @@ The Club was built in two phases. Both are complete.
 
 | Area | What the user experiences | Rules worth knowing |
 | --- | --- | --- |
-| **Accounts** | Sign up, confirm email, log in, forgot password, change password, "sign out of all devices", edit profile (name, city, bio, photo) | 5 wrong passwords lock the account for 15 minutes. A reset link works for 30 minutes. Login stays active while the site is open and refreshes itself quietly. |
-| **Clubs** | Search clubs, join one or many, see members | Club types: running, cycling, triathlon, swimming, fitness, other |
+| **Accounts** | Sign up, confirm email, log in, forgot password, change password, "sign out of all devices", edit profile (name, city, bio, uploaded photo, location). New accounts get a short profile setup after their first login. | 5 wrong passwords lock the account for 15 minutes. A reset link works for 30 minutes. Login stays active while the site is open and refreshes itself quietly. A location is stored only to about 100 m and never shown to others. |
+| **Discover** | Clubs near you (closest first, with distance), popular clubs, and upcoming events from nearby clubs; search by name and city | "Near" means within 25 km of the location the member shared; without one, clubs in their city |
+| **Clubs** | Club page with logo, photo gallery, address and map link, members, events, posts, and reviews. **Follow** a club for its updates and event announcements, or **subscribe** (free membership) where the club offers it. | Following and subscribing are separate. Subscribers appear on leaderboards, can register for subscriber-only events and can review. Club types: running, cycling, triathlon, swimming, fitness, other |
+| **Reviews & ratings** | 1–5 stars and a comment per person, shown with the average and a breakdown; the owner can reply | Only subscribers and people who checked in at one of the club's events review; never the owner. Owners can't delete reviews; admins remove abusive ones. |
 | **Club feed** | Owners post announcements and event recaps with photo links, optionally attaching one of their own Strava workouts. Members read the feed and get a notification. | Only owners post; members read |
 | **Activities** | Members log workouts by hand (run, ride, walk, hike, swim, workout, yoga, other) with distance and time, or import them from Strava | Private Strava workouts are imported but don't count on club leaderboards unless the member opts in |
 | **Strava link** | "Connect with Strava" once; new, edited and deleted Strava workouts then mirror into The Club automatically within about a minute | First connection imports the last 90 days. Members can disconnect and delete imported data at any time. |
 | **Club leaderboard** | Ranks club members by distance, time or number of sessions, for this week, month, year or all time | Built from the activities above |
-| **Events** | Owners create events with date, place, capacity, price (0 = free), points for attending, and a registration window (opens / closes) | Registration is possible only inside the window and while seats remain |
+| **Events** | Owners create events with date, place, capacity, price (0 = free), points for attending, a registration window (opens / closes), rules and instructions, and a cover image. Members see upcoming events from clubs they follow, subscribe to or are near, each showing whether registration is open. | Registration is possible only inside the window and while seats remain. Anyone signed in may register, unless the owner marks the event subscribers-only. |
 | **Registration & payment** | Members tap Register. Free events confirm instantly; paid events open a payment screen (Razorpay: cards, UPI, net banking) | An unpaid seat is held for 15 minutes, then released |
 | **Confirmation & ticket** | After confirmation: an in-app notification, a confirmation email, and a **QR ticket** in the Tickets page | The QR code is unique per registration |
 | **Check-in** | On the day, the owner opens the scanner on a phone and scans each ticket (or types the code) | Check-in opens 6 hours before the start and closes 12 hours after; a ticket can't be used twice |
 | **Cancellations & refunds** | Members can cancel free registrations, or unpaid ones, before the start. Owners refund individual payments. Cancelling a paid event refunds everyone automatically and emails them. | Members can't self-refund a paid ticket; they contact the owner |
 | **Points & stars** | Every check-in earns the event's points (10 by default). Every 5 events attended earns a star. | Points come only from real check-ins, not registrations |
 | **Monthly leaderboard** | Top members and top clubs of the month, platform-wide | Based on points from check-ins |
-| **Notifications** | Bell icon: new club posts, registration confirmations, refunds, event cancellations, owner-application decisions | Also sent by email for the important ones (see below) |
+| **Notifications** | Bell icon: new club posts and new events (for followers and subscribers), registration confirmations, refunds, event cancellations, owner-application decisions | Also sent by email for the important ones (see below) |
 
 **Emails the system sends:** email confirmation, password reset, "your password was changed", registration confirmed (with QR ticket), payment refunded, event cancelled.
 

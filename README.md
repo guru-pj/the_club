@@ -13,6 +13,7 @@
 - **MySQL + PostgreSQL** (for data persistence)
 - **Trino** (for federated query access)
 - **Docker & Docker Compose**
+- **SeaweedFS** (S3-compatible store for uploaded images; any S3 service in production)
 - **JWT Authentication**
 - **Maven 3.9+**
 - **pgAdmin / MySQL Workbench** (for DB management)
@@ -78,11 +79,16 @@ All endpoints are called through the gateway at `http://localhost:8080` with `Au
 |---|---|
 | Signup / login (JWT) | `POST /api/v1/users/register`, `POST /api/v1/auth/login`, `/refresh`, `/logout`, `GET /api/v1/users/me` |
 | Become a club owner | `POST /api/v1/owner-verification/apply` → admin `POST /requests/{id}/approve` · `/reject` · `/request-info`, then `POST /api/v1/auth/refresh` to pick up `CLUB_OWNER` |
-| Create / join clubs | `POST /api/v1/clubs` (owners), `GET /api/v1/clubs?q=`, `POST /api/v1/clubs/{id}/join`, `GET /api/v1/clubs/me` |
+| Profile setup | `PUT /api/v1/users/{id}` (`latitude`/`longitude` rounded to ~100 m, `profileComplete`), `POST`/`DELETE /api/v1/users/me/photo` (upload) |
+| Discover clubs | `GET /api/v1/clubs/nearby?lat=&lng=&radiusKm=` (closest first, with distance), `GET /api/v1/clubs/popular`, `GET /api/v1/clubs?q=&city=` |
+| Create clubs | `POST /api/v1/clubs` (owners; map position, address, whether subscriptions are offered and their benefits), `POST /api/v1/clubs/{id}/logo`, `POST`/`DELETE /api/v1/clubs/{id}/photos` (gallery) |
+| Follow / subscribe | Follow (updates and event announcements): `POST`/`DELETE /api/v1/clubs/{id}/follow`, `GET /api/v1/clubs/me/following`. Subscribe (free membership): `POST /api/v1/clubs/{id}/join`, `GET /api/v1/clubs/me` |
+| Reviews and ratings | `GET /api/v1/clubs/{id}/reviews`, `PUT`/`DELETE /reviews/me` (subscribers and event attendees, not the owner), owner `PUT /reviews/{rid}/reply`, admin `DELETE /reviews/{rid}` |
+| Upcoming events | `GET /api/v1/events/upcoming?lat=&lng=` (followed, subscribed and nearby clubs, each with `registrationState`) |
 | Log activities | `POST /api/v1/activities`, `GET /api/v1/activities/me`, `PUT`/`DELETE /api/v1/activities/{id}` |
 | Club feed | `POST /api/v1/clubs/{id}/posts` (owner; photos, event recaps, linked Strava activity), `GET /api/v1/clubs/{id}/posts` |
 | Club leaderboard | `GET /api/v1/clubs/{id}/leaderboard?metric=DISTANCE\|TIME\|SESSIONS&period=WEEK\|MONTH\|YEAR\|ALL` |
-| Events + registration window | `POST /api/v1/events` (owner), `PATCH /api/v1/events/{id}/registration-window`, `GET /api/v1/events/club/{clubId}` |
+| Events + registration window | `POST /api/v1/events` (owner; rules, `subscribersOnly`), `PATCH /api/v1/events/{id}/registration-window`, `GET /api/v1/events/club/{clubId}`, `POST`/`DELETE /api/v1/events/{id}/image` |
 | Register in-app | `POST /api/v1/events/{id}/register`, `DELETE /api/v1/events/{id}/registrations/me`, `GET /api/v1/events/me/registrations` |
 | In-app payment | `POST /api/v1/payments/{id}/confirm` (mock or Razorpay) |
 | Confirmation + email + QR ticket | sent on confirmation; `GET /api/v1/events/registrations/{id}/ticket` (JSON + base64 QR) or `/ticket.png` |
@@ -494,8 +500,11 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
 1. **Sign up.** When email verification is on, click the link in the verification email first.
 2. **Avatar menu → Become a club owner.** Submit your club's name, city, social links and proof documents, then wait for an admin to approve.
 3. **Log in again** after approval. **Clubs** → your club now shows the owner tools:
-   - **Feed:** post announcements and event recaps with photo links. You can attach one of your Strava activities.
-   - **Create event:** set the date, when registration opens and closes, capacity, price (0 = free) and points for attending.
+   - **Edit club:** upload a logo, set where the club meets (address, plus **Use my current location** so nearby members find it), and choose whether people can subscribe and what subscribers get.
+   - **Photos:** upload a gallery of runs, rides and race days.
+   - **Feed:** post announcements and event recaps with photo links. You can attach one of your Strava activities. Followers and subscribers are notified.
+   - **Create event:** set the date, when registration opens and closes, capacity, price (0 = free), points for attending, and rules and instructions. Tick **Only the club's subscribers can register** to keep it members-only. Add a cover image after creating it. Followers and subscribers are told about new events.
+   - **Reviews:** reply to reviews (you can't delete them; admins remove abusive ones).
    - **Members**, **Leaderboard** and **Participation** tabs show who is active.
 4. **Event page** (owner panel):
    - See every registration with its payment status.
@@ -504,23 +513,28 @@ Open the web app: http://localhost:3000 locally, or your domain in production.
 5. **On event day:** Event page → **Check-in scanner** → **Start camera** and scan each member's QR ticket, or type the ticket code. Check-in opens 6 hours before the start.
 
 ### Member
-1. **Sign up** and verify your email.
-2. **Clubs** → search for a club → **Join club**.
-3. **Activities** → **Log activity** for runs, rides and more, or **Connect with Strava** to import them automatically. They count toward the club's **Leaderboard** (distance, time, sessions).
-4. Open an event from the club's **Events** tab → **Register**.
+1. **Sign up** and verify your email. On first login, set up your profile: a photo, a few words about you, and **Use my current location** (or your city) so the app can suggest clubs and events near you. **Skip for now** is fine too.
+2. **Clubs** shows clubs **near you** (closest first), **upcoming events** and **popular** clubs, or search by name and city. On a club:
+   - **Follow** to get its updates and event announcements.
+   - **Subscribe** (free, where the club offers it) to become a member: you appear on its leaderboard, can register for subscriber-only events and can review the club.
+   - **Reviews** and **Photos** tabs show what others think and what the club gets up to.
+3. **Events** lists upcoming events from clubs you follow or subscribe to and clubs near you, with the price and whether registration is open.
+4. **Activities** → **Log activity** for runs, rides and more, or **Connect with Strava** to import them automatically. They count toward the club's **Leaderboard** (distance, time, sessions).
+5. Open an event → **Register**. Anyone signed in can register unless it's subscribers only.
    - For a paid event, complete the payment.
    - You get an in-app notification and a confirmation email with your QR ticket.
-5. **Tickets** → open your ticket and show the QR code at the event.
-6. Each check-in earns points, and every 5 events attended earns a ⭐. **Leaderboard** shows the month's top members and top clubs.
+6. **Tickets** → open your ticket and show the QR code at the event.
+7. After attending (or as a subscriber), leave a **review** on the club's **Reviews** tab.
+8. Each check-in earns points, and every 5 events attended earns a ⭐. **Leaderboard** shows the month's top members and top clubs.
 
 ### Your account
 - **Forgot password?** is on the login page. The reset link is valid for 30 minutes.
 - **Profile** has:
-  - your name, city, bio and photo
+  - your name, city, bio, photo (upload) and location
   - **Change password**
   - **Sign out of all devices**
   - **Resend verification email** if your email isn't verified
-- 🔔 **Notifications** lists club posts, registration confirmations, refunds and owner-application updates.
+- 🔔 **Notifications** lists club posts and new events from clubs you follow or subscribe to, registration confirmations, refunds and owner-application updates.
 - After 5 wrong passwords, login is locked for 15 minutes.
 
 > **Local trial:** payments run in test mode (no real money). Emails are caught by Mailpit at http://localhost:8025, and email verification is off.

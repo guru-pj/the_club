@@ -209,12 +209,14 @@ public class VerificationService {
     }
 
     private static CreateClubRequest clubRequestFor(VerificationRequest request, UpdateClubRequest payload) {
-        UpdateClubRequest p = payload == null ? new UpdateClubRequest(null, null, null, null, null) : payload;
+        UpdateClubRequest p = payload == null
+                ? new UpdateClubRequest(null, null, null, null, null, null, null, null, null, null, null) : payload;
         return new CreateClubRequest(
                 p.name() != null ? p.name() : request.getClubName(),
                 p.description() != null ? p.description() : request.getDescription(),
                 p.city() != null ? p.city() : request.getCity(),
                 p.clubType() != null ? p.clubType() : request.getClubType(),
-                p.logoUrl());
+                p.logoUrl(), p.latitude(), p.longitude(), p.address(), p.subscriptionsEnabled(),
+                p.subscriptionBenefits());
     }
 }

@@ -20,7 +20,8 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "clubs", indexes = @Index(name = "idx_clubs_owner_id", columnList = "owner_id"))
+@Table(name = "clubs", indexes = {@Index(name = "idx_clubs_owner_id", columnList = "owner_id"),
+        @Index(name = "idx_clubs_location", columnList = "latitude, longitude")})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -46,6 +47,24 @@ public class Club {
 
     @Column(name = "logo_url", length = 500)
     private String logoUrl;
+
+    /** Map position for "nearby" discovery; both set or both null. */
+    @Column
+    private Double latitude;
+
+    @Column
+    private Double longitude;
+
+    @Column(length = 255)
+    private String address;
+
+    /** Whether members can subscribe (join) at all; following is always possible. */
+    @Column(name = "subscriptions_enabled", nullable = false)
+    private boolean subscriptionsEnabled = true;
+
+    /** What subscribing gives, shown before someone subscribes (e.g. "Members-only long runs"). */
+    @Column(name = "subscription_benefits", length = 1000)
+    private String subscriptionBenefits;
 
     @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "owner_id", length = 36, nullable = false)

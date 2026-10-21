@@ -1,5 +1,6 @@
 package com.theclub.eventservice.service;
 
+import com.theclub.common.media.MediaStore;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.client.ClubClient.ClubInfo;
@@ -51,6 +52,8 @@ class EventServiceTest {
     PaymentService paymentService;
     @Mock
     ConfirmationNotifier notifier;
+    @Mock
+    MediaStore media;
 
     EventService service;
     final UUID clubId = UUID.randomUUID();
@@ -59,7 +62,7 @@ class EventServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new EventService(events, registrations, clubAccess, notifier, paymentService, CLOCK);
+        service = new EventService(events, registrations, clubAccess, notifier, paymentService, media, CLOCK);
         when(paymentService.pendingHold()).thenReturn(java.time.Duration.ofMinutes(15));
         when(events.save(any(Event.class))).thenAnswer(inv -> inv.getArgument(0));
         when(clubAccess.requireOwnerOrAdmin(eq(clubId), any())).thenReturn(new ClubInfo(clubId, "Chennai Runners", ownerId, 3));
@@ -67,7 +70,7 @@ class EventServiceTest {
 
     private CreateEventRequest request(LocalDateTime start, LocalDateTime opens, LocalDateTime closes) {
         return new CreateEventRequest(clubId, "Sunday Long Run", null, "Marina", start, opens, closes, 50,
-                null, null, null);
+                null, null, null, null, null);
     }
 
     @Test
@@ -107,7 +110,7 @@ class EventServiceTest {
         when(events.findById(event.getId())).thenReturn(Optional.of(event));
         when(registrations.countSpotsTaken(eq(event.getId()), any(), any())).thenReturn(5L);
 
-        UpdateEventRequest update = new UpdateEventRequest(null, null, null, null, null, null, 4, null, null, null);
+        UpdateEventRequest update = new UpdateEventRequest(null, null, null, null, null, null, 4, null, null, null, null, null);
         assertThatThrownBy(() -> service.update(event.getId(), update, owner))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.getStatus()).isEqualTo(HttpStatus.CONFLICT));
     }

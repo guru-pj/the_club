@@ -4,7 +4,8 @@ import { CLUB_TYPES, type Club, type ClubRequest, type ClubType } from '../../ap
 import { Button, ErrorMessage, Field } from '../../components/ui'
 import { fieldError } from '../../lib/fieldError'
 import { humanize } from '../../lib/format'
-import { clubFormValues, toClubRequest, type ClubFormValues } from './clubFormValues'
+import { currentPosition } from '../../lib/location'
+import { clubFormValues, locationProblem, toClubRequest, type ClubFormValues } from './clubFormValues'
 import { isHttpUrl } from './urls'
 
 /** Club fields as controlled inputs; reused by create, edit and admin approval. */
@@ -19,6 +20,21 @@ export function ClubFields({ values, onChange, error, nameRequired = true }: {
     ? 'A club with this name already exists'
     : fieldError(error, 'name')
   const logoInvalid = values.logoUrl.trim() !== '' && !isHttpUrl(values.logoUrl)
+  const locationError = locationProblem(values) ?? undefined
+  const [locating, setLocating] = useState(false)
+  const [locateProblem, setLocateProblem] = useState<string>()
+  const locate = async () => {
+    setLocating(true)
+    setLocateProblem(undefined)
+    try {
+      const { latitude, longitude } = await currentPosition()
+      onChange({ ...values, latitude: latitude.toFixed(5), longitude: longitude.toFixed(5) })
+    } catch (e) {
+      setLocateProblem(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLocating(false)
+    }
+  }
   return (
     <>
       <Field label="Club name" htmlFor="club-name" error={nameError}>
@@ -42,11 +58,47 @@ export function ClubFields({ values, onChange, error, nameRequired = true }: {
           </select>
         </Field>
       </div>
-      <Field label="Logo URL" htmlFor="club-logo" hint="Optional link to an image"
+      <Field label="Logo URL" htmlFor="club-logo" hint="Optional link to an image; after creating the club you can upload one instead"
              error={logoInvalid ? 'Enter a full http(s) URL' : fieldError(error, 'logoUrl')}>
         <input id="club-logo" className="input" type="url" maxLength={500} placeholder="https://…" value={values.logoUrl}
                onChange={(e) => set('logoUrl', e.target.value)} />
       </Field>
+      <fieldset className="fieldset">
+        <legend className="bold small">Where the club meets</legend>
+        <Field label="Address or meeting point" htmlFor="club-address" error={fieldError(error, 'address')}>
+          <input id="club-address" className="input" maxLength={255} placeholder="e.g. Lighthouse, Marina Beach" value={values.address}
+                 onChange={(e) => set('address', e.target.value)} />
+        </Field>
+        <div className="form-row">
+          <Field label="Latitude" htmlFor="club-lat" error={locationError ?? fieldError(error, 'latitude')}>
+            <input id="club-lat" className="input" inputMode="decimal" value={values.latitude}
+                   onChange={(e) => set('latitude', e.target.value)} />
+          </Field>
+          <Field label="Longitude" htmlFor="club-lng" error={fieldError(error, 'longitude')}>
+            <input id="club-lng" className="input" inputMode="decimal" value={values.longitude}
+                   onChange={(e) => set('longitude', e.target.value)} />
+          </Field>
+        </div>
+        <div className="row">
+          <Button size="sm" variant="secondary" loading={locating} onClick={() => void locate()}>Use my current location</Button>
+          <span className="small muted">Shows the club to people nearby</span>
+        </div>
+        {locateProblem && <p className="small" role="alert">{locateProblem}</p>}
+      </fieldset>
+      <fieldset className="fieldset">
+        <legend className="bold small">Subscriptions</legend>
+        <label className="row" style={{ gap: 8 }}>
+          <input type="checkbox" checked={values.subscriptionsEnabled} onChange={(e) => set('subscriptionsEnabled', e.target.checked)} />
+          <span>People can subscribe (become members). Anyone can always follow.</span>
+        </label>
+        {values.subscriptionsEnabled && (
+          <Field label="What subscribers get" htmlFor="club-benefits" hint="Shown before someone subscribes (optional)"
+                 error={fieldError(error, 'subscriptionBenefits')}>
+            <textarea id="club-benefits" className="input" maxLength={1000} placeholder="e.g. Members-only long runs, club kit discount"
+                      value={values.subscriptionBenefits} onChange={(e) => set('subscriptionBenefits', e.target.value)} />
+          </Field>
+        )}
+      </fieldset>
     </>
   )
 }
@@ -63,7 +115,7 @@ export function ClubForm({ initial, submitLabel, onSubmit, onCancel }: {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (values.logoUrl.trim() && !isHttpUrl(values.logoUrl)) return
+    if ((values.logoUrl.trim() && !isHttpUrl(values.logoUrl)) || locationProblem(values)) return
     setSaving(true)
     setError(undefined)
     try {

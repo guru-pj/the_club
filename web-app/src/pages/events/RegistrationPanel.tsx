@@ -63,7 +63,7 @@ export function RegistrationPanel({ event, club, registrationId, onChanged }: Pr
 
   const join = () => run(async () => {
     await clubsApi.join(club.id)
-    toast.success(`Welcome to ${club.name}!`)
+    toast.success(`You're subscribed to ${club.name}`)
     onChanged()
   })
 
@@ -131,11 +131,13 @@ export function RegistrationPanel({ event, club, registrationId, onChanged }: Pr
         <Button variant="ghost" onClick={() => setConfirmCancel(true)} disabled={busy}>Cancel registration</Button>
       </div>
     )
-  } else if (!club.myRole) {
+  } else if (event.subscribersOnly && !club.myRole) {
     body = (
       <div className="stack">
-        <p>Join <strong>{club.name}</strong> to register for its events.</p>
-        <Button onClick={join} loading={busy} block>Join the club</Button>
+        <p>This event is for <strong>{club.name}</strong>'s subscribers.</p>
+        {club.subscriptionsEnabled
+          ? <Button onClick={join} loading={busy} block>Subscribe to register (free)</Button>
+          : <p className="muted small">The club isn't taking subscribers at the moment.</p>}
       </div>
     )
   } else if (notYetOpen) {

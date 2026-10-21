@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -85,6 +86,25 @@ public class ClubController {
         ClubService.JoinResult result = clubService.join(caller.id(), clubId);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
                 .body(MembershipResponse.of(result.membership(), caller.name()));
+    }
+
+    /** Following is separate from subscribing: followers get posts and event announcements, nothing more. */
+    @PostMapping("/{clubId}/follow")
+    public ResponseEntity<Map<String, Boolean>> follow(@PathVariable UUID clubId,
+                                                       @AuthenticationPrincipal AuthenticatedUser caller) {
+        ClubService.FollowResult result = clubService.follow(caller.id(), clubId);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(Map.of("following", true));
+    }
+
+    @DeleteMapping("/{clubId}/follow")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unfollow(@PathVariable UUID clubId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        clubService.unfollow(caller.id(), clubId);
+    }
+
+    @GetMapping("/me/following")
+    public List<ClubResponse> following(@AuthenticationPrincipal AuthenticatedUser caller) {
+        return clubService.followedBy(caller.id());
     }
 
     @DeleteMapping("/{clubId}/members/me")

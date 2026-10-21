@@ -16,6 +16,8 @@
 # ============================================================
 
 x-spring-env: &spring-env
+  # (JAVA_TOOL_OPTIONS below) user.timezone: timestamps that entities set themselves (createdAt, ...) use the same
+  # zone as the app's Clock, APP_TIME_ZONE; the container itself runs in UTC
   SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
   SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
   LOGGING_LEVEL_ROOT: ${LOGGING_LEVEL_ROOT}
@@ -23,7 +25,17 @@ x-spring-env: &spring-env
   EUREKA_SERVER_URL: ${EUREKA_SERVER_URL}
   JWT_EXPIRATION: ${JWT_EXPIRATION}
   JWT_KEY_ID: ${JWT_KEY_ID}
-  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=${APP_TIME_ZONE}"
+
+# Uploaded images (user-, club- and event-service): the bundled SeaweedFS S3 store, or any S3-compatible service
+# when MEDIA_S3_ENDPOINT points elsewhere (see docs/PRODUCTION.md)
+x-media-env: &media-env
+  MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-http://seaweedfs:8333}
+  MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-media}
+  MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY:-theclub-media}
+  MEDIA_S3_REGION: ${MEDIA_S3_REGION:-us-east-1}
+  MEDIA_S3_PATH_STYLE: ${MEDIA_S3_PATH_STYLE:-true}
+  MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-/media}
 
 x-spring-service: &spring-service
   restart: unless-stopped
@@ -162,7 +174,7 @@ services:
     container_name: discovery-service
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=${APP_TIME_ZONE}"
     deploy:
       resources:
         limits:
@@ -175,7 +187,7 @@ services:
     environment:
       CONFIG_PROFILE: ${CONFIG_PROFILE}
       CONFIG_GIT_URI: ${CONFIG_GIT_URI}
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=${APP_TIME_ZONE}"
     deploy:
       resources:
         limits:
@@ -195,7 +207,7 @@ services:
       GATEWAY_TRUST_FORWARDED_FOR: "true"
       RATE_LIMIT_STRICT_PER_MINUTE: ${RATE_LIMIT_STRICT_PER_MINUTE}
       RATE_LIMIT_GENERAL_PER_MINUTE: ${RATE_LIMIT_GENERAL_PER_MINUTE}
-      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=${APP_TIME_ZONE}"
     depends_on:
       discovery-service:
         condition: service_healthy
@@ -210,7 +222,7 @@ services:
     build: ./user-service
     container_name: user-service
     environment:
-      <<: *spring-env
+      <<: [*spring-env, *media-env]
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/userdb
       SPRING_DATASOURCE_USERNAME: theclub_user
       ADMIN_EMAIL: ${ADMIN_EMAIL}
@@ -222,6 +234,8 @@ services:
         target: INTERNAL_API_KEY
       - source: db-user-password
         target: SPRING_DATASOURCE_PASSWORD
+      - source: media-s3-secret-key
+        target: MEDIA_S3_SECRET_KEY
       - source: admin-password
         target: ADMIN_PASSWORD
     depends_on: *depends-mysql
@@ -283,7 +297,7 @@ services:
     build: ./club-service
     container_name: club-service
     environment:
-      <<: *spring-env
+      <<: [*spring-env, *media-env]
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/clubdb
       SPRING_DATASOURCE_USERNAME: theclub_club
     secrets:
@@ -293,6 +307,8 @@ services:
         target: INTERNAL_API_KEY
       - source: db-club-password
         target: SPRING_DATASOURCE_PASSWORD
+      - source: media-s3-secret-key
+        target: MEDIA_S3_SECRET_KEY
     depends_on: *depends-mysql
 
   event-service:
@@ -300,7 +316,7 @@ services:
     build: ./event-service
     container_name: event-service
     environment:
-      <<: *spring-env
+      <<: [*spring-env, *media-env]
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/eventdb
       SPRING_DATASOURCE_USERNAME: theclub_event
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
@@ -312,6 +328,8 @@ services:
         target: INTERNAL_API_KEY
       - source: db-event-password
         target: SPRING_DATASOURCE_PASSWORD
+      - source: media-s3-secret-key
+        target: MEDIA_S3_SECRET_KEY
       - source: razorpay-key-secret
         target: RAZORPAY_KEY_SECRET
       - source: razorpay-webhook-secret
@@ -352,6 +370,28 @@ services:
     depends_on: *depends-mysql
 
   # ===================== WEB APP =====================
+  # S3-compatible store for uploaded images; nginx in web-app serves the "media" bucket read-only at /media/.
+  # Only the services hold the key (secrets/media-s3-secret-key); anonymous access can read objects, never write.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.47
+    container_name: seaweedfs
+    restart: unless-stopped
+    command: ["server", "-s3", "-s3.config=/run/secrets/seaweedfs-s3.json", "-dir=/data", "-volume.max=10"]
+    volumes:
+      - media_data:/data
+    secrets:
+      - seaweedfs-s3.json
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *logging
+
   web-app:
     build: ./web-app
     container_name: web-app
@@ -371,6 +411,10 @@ services:
     logging: *logging
 
 secrets:
+  media-s3-secret-key:
+    file: ./secrets/media-s3-secret-key
+  seaweedfs-s3.json:
+    file: ./secrets/seaweedfs-s3.json
   jwt_public_key:
     file: ./secrets/theclub.jwt.public-key
   jwt_private_key:
@@ -411,6 +455,7 @@ secrets:
     file: ./secrets/strava-token-encryption-key
 
 volumes:
+  media_data:
   mysql_data:
   postgres_data:
   backups:

@@ -58,6 +58,19 @@ config:
     # webhook worker (replica-safe: rows are leased with a conditional UPDATE)
     workerEnabled: true
     workerBatchSize: 25
+  # Uploaded images (profile pictures, club photos, event images): an S3-compatible bucket. Empty endpoint = uploads
+  # are refused with a clear message. The secret key is the media-s3-secret-key entry of the Secret. Browsers load
+  # images from publicBaseUrl: the bucket's public URL (or a CDN in front of it), or "/media" when mediaUpstream is
+  # set and the web app's nginx proxies the bucket.
+  media:
+    endpoint: ""                     # e.g. https://s3.eu-central-1.amazonaws.com or https://<account>.r2.cloudflarestorage.com
+    region: us-east-1
+    bucket: ""
+    accessKey: ""
+    pathStyle: false                 # true for MinIO/SeaweedFS-style endpoints
+    publicBaseUrl: ""                # e.g. https://media.example.com
+    mediaUpstream: ""                # optional: http://<s3-host>:<port> for nginx to proxy /media/ to (path-style bucket "media")
+    maxSize: 5MB
   gateway:
     # Per gateway POD and per client IP: the in-memory limiter is not shared between replicas, so the effective
     # limit is (value x gateway replicas). Divide your intended limit by the replica count.
@@ -172,10 +185,13 @@ services:
     port: 8081
     database: {engine: mysql, name: userdb, user: theclub_user, passwordKey: db-user-password}
     calls: [auth, notification]
+    internetEgress: true              # S3 image storage (config.media)
     secretFiles:
       JWT_PUBLIC_KEY: theclub.jwt.public-key
       INTERNAL_API_KEY: theclub.security.internal-api-key
       ADMIN_PASSWORD: admin-password
+    optionalSecretFiles:
+      MEDIA_S3_SECRET_KEY: media-s3-secret-key
   auth:
     enabled: true
     image: auth-service
@@ -206,22 +222,26 @@ services:
     port: 8084
     database: {engine: mysql, name: clubdb, user: theclub_club, passwordKey: db-club-password}
     calls: [user, activity, event, notification]
+    internetEgress: true              # S3 image storage (config.media)
     secretFiles:
       JWT_PUBLIC_KEY: theclub.jwt.public-key
       INTERNAL_API_KEY: theclub.security.internal-api-key
+    optionalSecretFiles:
+      MEDIA_S3_SECRET_KEY: media-s3-secret-key
   event:
     enabled: true
     image: event-service
     port: 8086
     database: {engine: mysql, name: eventdb, user: theclub_event, passwordKey: db-event-password}
     calls: [club, user, notification]
-    internetEgress: true              # Razorpay API
+    internetEgress: true              # Razorpay API, S3 image storage
     secretFiles:
       JWT_PUBLIC_KEY: theclub.jwt.public-key
       INTERNAL_API_KEY: theclub.security.internal-api-key
     optionalSecretFiles:
       RAZORPAY_KEY_SECRET: razorpay-key-secret
       RAZORPAY_WEBHOOK_SECRET: razorpay-webhook-secret
+      MEDIA_S3_SECRET_KEY: media-s3-secret-key
   notification:
     enabled: true
     image: notification-service

@@ -1,5 +1,6 @@
 package com.theclub.eventservice.service;
 
+import com.theclub.eventservice.client.ClubClient;
 import com.theclub.eventservice.client.NotificationClient;
 import com.theclub.eventservice.client.NotificationClient.EmailAttachment;
 import com.theclub.eventservice.client.NotificationClient.EmailMessage;
@@ -33,6 +34,7 @@ public class ConfirmationNotifier {
     public static final String TYPE_REGISTRATION_CONFIRMED = "EVENT_REGISTRATION_CONFIRMED";
     public static final String TYPE_EVENT_CANCELLED = "EVENT_CANCELLED";
     public static final String TYPE_PAYMENT_REFUNDED = "PAYMENT_REFUNDED";
+    public static final String TYPE_EVENT_ANNOUNCED = "EVENT_ANNOUNCED";
     static final String QR_CONTENT_ID = "ticket-qr";
 
     private static final Logger log = LoggerFactory.getLogger(ConfirmationNotifier.class);
@@ -41,12 +43,32 @@ public class ConfirmationNotifier {
     private final NotificationClient notificationClient;
     private final QrCodeService qrCodeService;
     private final MemberEmails memberEmails;
+    private final ClubClient clubClient;
 
     public ConfirmationNotifier(NotificationClient notificationClient, QrCodeService qrCodeService,
-                                MemberEmails memberEmails) {
+                                MemberEmails memberEmails, ClubClient clubClient) {
         this.notificationClient = notificationClient;
         this.qrCodeService = qrCodeService;
         this.memberEmails = memberEmails;
+        this.clubClient = clubClient;
+    }
+
+    /**
+     * In-app announcement of a new event to the club's subscribers and followers (not the author); best effort,
+     * after commit, so a slow or failing club-service never blocks creating the event.
+     */
+    public void eventAnnounced(Event event, String clubName, UUID authorId) {
+        String message = clubName + ": " + event.getTitle() + " on " + DATE_FORMAT.format(event.getStartTime());
+        UUID clubId = event.getClubId();
+        afterCommit(() -> clubClient.audience(clubId).stream()
+                .filter(userId -> !userId.equals(authorId))
+                .forEach(userId -> {
+                    try {
+                        notificationClient.create(new NotificationRequest(userId, TYPE_EVENT_ANNOUNCED, message, null));
+                    } catch (RuntimeException e) {
+                        log.warn("Could not announce event {} to user {}: {}", event.getId(), userId, e.getMessage());
+                    }
+                }));
     }
 
     public void registrationConfirmed(UUID userId, String email, Event event, String ticketCode) {

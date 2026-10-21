@@ -1,7 +1,9 @@
 package com.theclub.eventservice.service;
 
+import com.theclub.common.media.MediaStore;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
+import com.theclub.eventservice.client.ClubClient.ClubInfo;
 import com.theclub.eventservice.dto.CreateEventRequest;
 import com.theclub.eventservice.dto.EventResponse;
 import com.theclub.eventservice.dto.PagedResponse;
@@ -19,6 +21,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -42,21 +45,23 @@ public class EventService {
     private final ClubAccess clubAccess;
     private final ConfirmationNotifier notifier;
     private final PaymentService paymentService;
+    private final MediaStore media;
     private final Clock clock;
 
     public EventService(EventRepository events, RegistrationRepository registrations, ClubAccess clubAccess,
-                        ConfirmationNotifier notifier, PaymentService paymentService, Clock clock) {
+                        ConfirmationNotifier notifier, PaymentService paymentService, MediaStore media, Clock clock) {
         this.events = events;
         this.registrations = registrations;
         this.clubAccess = clubAccess;
         this.notifier = notifier;
         this.paymentService = paymentService;
+        this.media = media;
         this.clock = clock;
     }
 
     @Transactional
     public EventResponse create(CreateEventRequest request, AuthenticatedUser caller) {
-        clubAccess.requireOwnerOrAdmin(request.clubId(), caller);
+        ClubInfo club = clubAccess.requireOwnerOrAdmin(request.clubId(), caller);
         LocalDateTime now = LocalDateTime.now(clock);
         Event event = new Event(request.clubId(), caller.id());
         event.setTitle(request.title().trim());
@@ -75,8 +80,12 @@ public class EventService {
         if (request.points() != null) {
             event.setPoints(request.points());
         }
+        event.setRules(blankToNull(request.rules()));
+        event.setSubscribersOnly(Boolean.TRUE.equals(request.subscribersOnly()));
         EventRules.validate(event, now, true);
-        return view(events.save(event), caller.id());
+        Event saved = events.save(event);
+        notifier.eventAnnounced(saved, club.name(), caller.id());
+        return view(saved, caller.id());
     }
 
     @Transactional
@@ -117,6 +126,12 @@ public class EventService {
         }
         if (request.points() != null) {
             event.setPoints(request.points());
+        }
+        if (request.rules() != null) {
+            event.setRules(blankToNull(request.rules()));
+        }
+        if (request.subscribersOnly() != null) {
+            event.setSubscribersOnly(request.subscribersOnly());
         }
         EventRules.validate(event, now, startChanged);
         return view(event, caller.id());
@@ -197,11 +212,33 @@ public class EventService {
         return registrations.countSpotsTaken(eventId, NOBODY, now.minus(paymentService.pendingHold()));
     }
 
-    private EventResponse view(Event event, UUID callerId) {
+    /** Stores an uploaded event image and replaces the previous one. */
+    @Transactional
+    public EventResponse uploadImage(UUID eventId, MultipartFile file, AuthenticatedUser caller) {
+        Event event = requireManageable(eventId, caller);
+        String previous = event.getImageUrl();
+        event.setImageUrl(media.storeImage("events/" + eventId, file).url());
+        media.deleteByUrl(previous);
+        return view(event, caller.id());
+    }
+
+    @Transactional
+    public EventResponse removeImage(UUID eventId, AuthenticatedUser caller) {
+        Event event = requireManageable(eventId, caller);
+        media.deleteByUrl(event.getImageUrl());
+        event.setImageUrl(null);
+        return view(event, caller.id());
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    EventResponse view(Event event, UUID callerId) {
         LocalDateTime now = LocalDateTime.now(clock);
         long registered = registrations.countByEventIdAndStatusIn(event.getId(), ATTENDING);
         RegistrationStatus mine = registrations.findByEventIdAndUserId(event.getId(), callerId)
                 .map(Registration::getStatus).orElse(null);
-        return EventResponse.of(event, registered, spotsTaken(event.getId(), now), event.isRegistrationOpen(now), mine);
+        return EventResponse.of(event, registered, spotsTaken(event.getId(), now), now, mine);
     }
 }

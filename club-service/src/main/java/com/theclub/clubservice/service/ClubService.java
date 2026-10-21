@@ -3,14 +3,18 @@ package com.theclub.clubservice.service;
 import com.theclub.common.observability.BusinessMetrics;
 import com.theclub.clubservice.client.UserClient;
 import com.theclub.clubservice.dto.ClubResponse;
+import com.theclub.clubservice.dto.ReviewSummary;
 import com.theclub.clubservice.dto.CreateClubRequest;
 import com.theclub.clubservice.dto.MembershipResponse;
 import com.theclub.clubservice.dto.PageResponse;
 import com.theclub.clubservice.dto.UpdateClubRequest;
 import com.theclub.clubservice.model.Club;
+import com.theclub.clubservice.model.ClubFollow;
 import com.theclub.clubservice.model.ClubMembership;
 import com.theclub.clubservice.model.MembershipRole;
+import com.theclub.clubservice.repository.ClubFollowRepository;
 import com.theclub.clubservice.repository.ClubMembershipRepository;
+import com.theclub.clubservice.repository.ClubReviewRepository;
 import com.theclub.clubservice.repository.ClubRepository;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.security.Roles;
@@ -23,8 +27,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,12 +43,21 @@ public class ClubService {
 
     private final ClubRepository clubs;
     private final ClubMembershipRepository memberships;
+    private final ClubFollowRepository follows;
+    private final ClubReviewRepository reviews;
     private final UserClient userClient;
 
-    public ClubService(ClubRepository clubs, ClubMembershipRepository memberships, UserClient userClient) {
+    public ClubService(ClubRepository clubs, ClubMembershipRepository memberships, ClubFollowRepository follows,
+                       ClubReviewRepository reviews, UserClient userClient) {
         this.clubs = clubs;
         this.memberships = memberships;
+        this.follows = follows;
+        this.reviews = reviews;
         this.userClient = userClient;
+    }
+
+    /** Result of a follow: whether it was new. */
+    public record FollowResult(boolean created) {
     }
 
     public record JoinResult(ClubMembership membership, boolean created) {
@@ -64,8 +80,14 @@ public class ClubService {
         if (clubs.existsByNameIgnoreCase(name)) {
             throw ApiException.conflict("A club with this name already exists");
         }
-        Club club = clubs.save(new Club(name, request.description(), request.city(), request.clubType(),
-                request.logoUrl(), ownerId));
+        Club club = new Club(name, request.description(), request.city(), request.clubType(), request.logoUrl(), ownerId);
+        applyLocation(club, request.latitude(), request.longitude(), false);
+        club.setAddress(blankToNull(request.address()));
+        if (request.subscriptionsEnabled() != null) {
+            club.setSubscriptionsEnabled(request.subscriptionsEnabled());
+        }
+        club.setSubscriptionBenefits(blankToNull(request.subscriptionBenefits()));
+        club = clubs.save(club);
         memberships.save(new ClubMembership(club.getId(), ownerId, MembershipRole.OWNER));
         BusinessMetrics.increment("clubs.created");
         return club;
@@ -83,9 +105,17 @@ public class ClubService {
 
     @Transactional(readOnly = true)
     public ClubResponse describe(Club club, UUID callerId) {
+        return describe(club, callerId, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ClubResponse describe(Club club, UUID callerId, Double distanceKm) {
         MembershipRole myRole = callerId == null ? null
                 : memberships.findByClubIdAndUserId(club.getId(), callerId).map(ClubMembership::getRole).orElse(null);
-        return ClubResponse.of(club, memberships.countByClubId(club.getId()), myRole);
+        boolean following = callerId != null && follows.existsByClubIdAndUserId(club.getId(), callerId);
+        ReviewSummary rating = ReviewSummary.of(reviews.countByRating(club.getId()));
+        return ClubResponse.of(club, new ClubResponse.Stats(memberships.countByClubId(club.getId()), myRole,
+                follows.countByClubId(club.getId()), following, rating.average(), rating.count()), distanceKm);
     }
 
     @Transactional(readOnly = true)
@@ -132,15 +162,43 @@ public class ClubService {
         if (request.logoUrl() != null) {
             club.setLogoUrl(request.logoUrl());
         }
+        applyLocation(club, request.latitude(), request.longitude(), Boolean.TRUE.equals(request.clearLocation()));
+        if (request.address() != null) {
+            club.setAddress(request.address().isBlank() ? null : request.address());
+        }
+        if (request.subscriptionsEnabled() != null) {
+            club.setSubscriptionsEnabled(request.subscriptionsEnabled());
+        }
+        if (request.subscriptionBenefits() != null) {
+            club.setSubscriptionBenefits(request.subscriptionBenefits().isBlank() ? null : request.subscriptionBenefits());
+        }
         return club;
     }
 
+    private static void applyLocation(Club club, Double latitude, Double longitude, boolean clear) {
+        if (clear) {
+            club.setLatitude(null);
+            club.setLongitude(null);
+        } else if (latitude != null || longitude != null) {
+            if (latitude == null || longitude == null) {
+                throw ApiException.badRequest("Send both latitude and longitude").withCode("INCOMPLETE_LOCATION");
+            }
+            club.setLatitude(latitude);
+            club.setLongitude(longitude);
+        }
+    }
+
+    /** Subscribing (membership); only where the club offers subscriptions. */
     @Transactional
     public JoinResult join(UUID userId, UUID clubId) {
-        get(clubId);
+        Club club = get(clubId);
         return memberships.findByClubIdAndUserId(clubId, userId)
                 .map(existing -> new JoinResult(existing, false))
                 .orElseGet(() -> {
+                    if (!club.isSubscriptionsEnabled()) {
+                        throw ApiException.forbidden("This club doesn't offer subscriptions; you can follow it instead")
+                                .withCode("SUBSCRIPTIONS_DISABLED");
+                    }
                     BusinessMetrics.increment("clubs.joins");
                     return new JoinResult(memberships.save(new ClubMembership(clubId, userId, MembershipRole.MEMBER)), true);
                 });
@@ -180,6 +238,48 @@ public class ClubService {
     @Transactional(readOnly = true)
     public List<UUID> memberIds(UUID clubId) {
         return memberships.findUserIdsByClubId(clubId);
+    }
+
+    @Transactional
+    public FollowResult follow(UUID userId, UUID clubId) {
+        get(clubId);
+        if (follows.existsByClubIdAndUserId(clubId, userId)) {
+            return new FollowResult(false);
+        }
+        follows.save(new ClubFollow(clubId, userId));
+        BusinessMetrics.increment("clubs.follows");
+        return new FollowResult(true);
+    }
+
+    @Transactional
+    public void unfollow(UUID userId, UUID clubId) {
+        get(clubId);
+        follows.findByClubIdAndUserId(clubId, userId).ifPresent(follows::delete);
+    }
+
+    /** Who hears about the club's posts and events: subscribers and followers, each once. */
+    @Transactional(readOnly = true)
+    public Set<UUID> audienceIds(UUID clubId) {
+        Set<UUID> audience = new LinkedHashSet<>(memberships.findUserIdsByClubId(clubId));
+        audience.addAll(follows.findUserIdsByClubId(clubId));
+        return audience;
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> followedClubIds(UUID userId) {
+        return follows.findClubIdsByUserId(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> subscribedClubIds(UUID userId) {
+        return clubs.findJoinedBy(userId).stream().map(Club::getId).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ClubResponse> followedBy(UUID userId) {
+        return clubs.findAllById(followedClubIds(userId)).stream()
+                .sorted(Comparator.comparing(Club::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(c -> describe(c, userId)).toList();
     }
 
     @Transactional(readOnly = true)

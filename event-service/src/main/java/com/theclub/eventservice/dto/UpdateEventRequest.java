@@ -24,5 +24,7 @@ public record UpdateEventRequest(
         @Min(1) Integer capacity,
         @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal price,
         @Pattern(regexp = "^[A-Z]{3}$", message = "must be a 3-letter ISO currency code") String currency,
-        @Min(0) @Max(1000) Integer points) {
+        @Min(0) @Max(1000) Integer points,
+        @Size(max = 10_000) String rules,
+        Boolean subscribersOnly) {
 }

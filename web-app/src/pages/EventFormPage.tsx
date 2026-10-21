@@ -11,6 +11,8 @@ import { useAsync } from '../lib/useAsync'
 import { canManage } from './events/shared'
 import { toMs } from './events/time'
 import './events.css'
+import { mediaUrl } from '../api/client'
+import { ImagePicker } from '../components/ImagePicker'
 
 interface FormState {
   title: string
@@ -23,6 +25,8 @@ interface FormState {
   price: string
   currency: string
   points: string
+  rules: string
+  subscribersOnly: boolean
 }
 
 type Errors = Partial<Record<keyof FormState, string>>
@@ -32,7 +36,7 @@ function initialState(event?: ClubEvent): FormState {
     return {
       title: '', description: '', location: '', startTime: '',
       registrationOpensAt: toInputDateTime(nowLocal()), registrationClosesAt: '',
-      capacity: '', price: '0', currency: 'INR', points: '10',
+      capacity: '', price: '0', currency: 'INR', points: '10', rules: '', subscribersOnly: false,
     }
   }
   return {
@@ -47,6 +51,8 @@ function initialState(event?: ClubEvent): FormState {
     price: String(event.price ?? 0),
     currency: event.currency || 'INR',
     points: String(event.points),
+    rules: event.rules ?? '',
+    subscribersOnly: event.subscribersOnly,
   }
 }
 
@@ -91,6 +97,9 @@ function toRequest(f: FormState): EventRequest {
     price: Number(f.price || 0),
     currency: f.currency,
     points: Number(f.points),
+    // '' clears the rules on an existing event
+    rules: f.rules.trim(),
+    subscribersOnly: f.subscribersOnly,
   }
 }
 
@@ -102,6 +111,7 @@ function EventForm({ club, event }: { club: Club; event?: ClubEvent }) {
   const [errors, setErrors] = useState<Errors>({})
   const [serverError, setServerError] = useState<unknown>()
   const [saving, setSaving] = useState(false)
+  const [imageUrl, setImageUrl] = useState(event?.imageUrl ?? null)
 
   const set = (key: keyof FormState) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: key === 'currency' ? e.target.value.toUpperCase() : e.target.value }))
@@ -140,6 +150,11 @@ function EventForm({ club, event }: { club: Club; event?: ClubEvent }) {
             <textarea id="description" className="input" value={form.description} onChange={set('description')}
                       placeholder="Route, pace groups, what to bring…" />
           </Field>
+          <Field label="Rules and instructions (optional)" htmlFor="rules" error={err('rules')}
+                 hint="What to bring, pace groups, cut-off times, safety rules">
+            <textarea id="rules" className="input" value={form.rules} maxLength={10_000}
+                      onChange={(e) => setForm({ ...form, rules: e.target.value })} />
+          </Field>
           <Field label="Location" htmlFor="location" error={err('location')}>
             <input id="location" className="input" value={form.location} onChange={set('location')} maxLength={255}
                    placeholder="Marina Beach lighthouse" />
@@ -151,8 +166,21 @@ function EventForm({ club, event }: { club: Club; event?: ClubEvent }) {
         </div>
       </Card>
 
+      <Card title="Event image">
+        {event
+          ? <ImagePicker label="Cover image" shape="wide" currentUrl={mediaUrl(imageUrl)}
+                         onUpload={async (file) => { setImageUrl((await eventsApi.uploadImage(event.id, file)).imageUrl); toast.success('Image updated') }}
+                         onRemove={async () => { setImageUrl((await eventsApi.removeImage(event.id)).imageUrl); toast.success('Image removed') }} />
+          : <p className="small muted">You can add a cover image once the event is created.</p>}
+      </Card>
+
       <Card title="Registration">
         <div className="form">
+          <label className="row" style={{ gap: 8 }}>
+            <input type="checkbox" checked={form.subscribersOnly}
+                   onChange={(e) => setForm({ ...form, subscribersOnly: e.target.checked })} />
+            <span>Only the club's subscribers can register (otherwise anyone signed in, e.g. followers and people nearby)</span>
+          </label>
           {editing && (
             <div className="alert alert-info">
               Changing only the registration window is fine even after registration has opened.

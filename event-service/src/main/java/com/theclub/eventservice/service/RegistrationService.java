@@ -50,8 +50,10 @@ public class RegistrationService {
     @Transactional
     public RegisterResponse register(UUID eventId, AuthenticatedUser caller) {
         Event unlocked = events.findById(eventId).orElseThrow(() -> ApiException.notFound("Event not found"));
-        if (!clubAccess.isMember(unlocked.getClubId(), caller.id())) {
-            throw ApiException.forbidden("Join the club to register");
+        // Anyone signed in may register, unless the event is for the club's subscribers only
+        if (unlocked.isSubscribersOnly() && !clubAccess.isMember(unlocked.getClubId(), caller.id())) {
+            throw ApiException.forbidden("This event is for the club's subscribers; subscribe to the club to register")
+                    .withCode("SUBSCRIBERS_ONLY");
         }
         Event event = events.findByIdForUpdate(eventId).orElseThrow(() -> ApiException.notFound("Event not found"));
         LocalDateTime now = LocalDateTime.now(clock);

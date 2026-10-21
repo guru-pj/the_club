@@ -42,6 +42,8 @@
         <shedlock.version>7.10.1</shedlock.version>
         <!-- Newer than Spring Boot 4.0.8 manages, for fixed CRITICAL/HIGH CVEs flagged by the CI image and dependency
              scans. Drop each override once Spring Boot's own version is at least this. -->
+        <!-- S3 client for uploaded images (MinIO when self-hosted, any S3-compatible store in production) -->
+        <aws-sdk.version>2.57.1</aws-sdk.version>
         <tomcat.version>11.0.27</tomcat.version>
         <freemarker.version>2.3.35</freemarker.version>
     </properties>
@@ -52,6 +54,13 @@
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws-sdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

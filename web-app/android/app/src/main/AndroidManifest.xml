@@ -42,4 +42,10 @@
     <!-- Club owners scan members' QR tickets at check-in; the app still works without a camera -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Location for nearby clubs and events; asked only when the member taps "Use my current location". Capacitor's
+         web view requests coarse and fine together (Android drops a request for an undeclared permission), and on
+         Android 12+ the member can still choose "Approximate". The app only asks for low accuracy. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
 </manifest>

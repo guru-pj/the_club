@@ -262,10 +262,6 @@ class EventFlowIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("Registration opens at " + opens.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)));
 
-        UUID outsider = UUID.randomUUID();
-        when(clubClient.membership(clubId, outsider)).thenReturn(new Membership(false, null));
-        mvc.perform(as(post("/api/v1/events/{id}/register", eventId), outsider, "USER"))
-                .andExpect(status().isForbidden());
 
         mvc.perform(as(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                                 .patch("/api/v1/events/{id}/registration-window", eventId), ownerId, "USER", "CLUB_OWNER")
@@ -273,6 +269,29 @@ class EventFlowIntegrationTest {
                         .content("{\"registrationOpensAt\":\"%s\"}".formatted(LocalDateTime.now(clock).minusMinutes(1))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.registrationOpen").value(true));
+        mvc.perform(as(post("/api/v1/events/{id}/register", eventId), memberId, "USER"))
+                .andExpect(status().isCreated());
+
+        // An open event isn't limited to the club's subscribers: followers and nearby users register too
+        UUID outsider = UUID.randomUUID();
+        when(clubClient.membership(clubId, outsider)).thenReturn(new Membership(false, null));
+        mvc.perform(as(post("/api/v1/events/{id}/register", eventId), outsider, "USER"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void subscriberOnlyEventsAreClosedToNonSubscribers() throws Exception {
+        String eventId = createEvent(",\"subscribersOnly\":true,\"rules\":\"Bring a headlamp\"");
+        UUID outsider = UUID.randomUUID();
+        when(clubClient.membership(clubId, outsider)).thenReturn(new Membership(false, null));
+
+        mvc.perform(as(get("/api/v1/events/{id}", eventId), outsider, "USER"))
+                .andExpect(jsonPath("$.subscribersOnly").value(true))
+                .andExpect(jsonPath("$.rules").value("Bring a headlamp"))
+                .andExpect(jsonPath("$.registrationState").value("OPEN"));
+        mvc.perform(as(post("/api/v1/events/{id}/register", eventId), outsider, "USER"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("SUBSCRIBERS_ONLY"));
         mvc.perform(as(post("/api/v1/events/{id}/register", eventId), memberId, "USER"))
                 .andExpect(status().isCreated());
     }
