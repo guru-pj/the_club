@@ -1,5 +1,5 @@
 import { apiUrl } from '../api/client'
-import { isNativeApp, webAppUrl } from './platform'
+import { isMobileApp, isNativeApp, webAppUrl } from './platform'
 
 /**
  * The public web address for an in-app path. The native apps load the UI from the device, so their own origin
@@ -21,6 +21,17 @@ export function postPath(clubId: string, postId: string): string {
  * Resolves to what happened, so the caller can say "Link copied".
  */
 export async function shareLink(title: string, url: string, text?: string): Promise<'shared' | 'copied' | 'cancelled'> {
+  // the Android and iOS apps use the system share sheet (Android's web view has no navigator.share)
+  if (isMobileApp()) {
+    const { Share } = await import('@capacitor/share')
+    try {
+      await Share.share({ title, text, url, dialogTitle: title })
+      return 'shared'
+    } catch (e) {
+      if (/cancel/i.test(e instanceof Error ? e.message : String(e))) return 'cancelled'
+      // no share target available: fall back to copying
+    }
+  }
   if (typeof navigator.share === 'function') {
     try {
       await navigator.share({ title, text, url })

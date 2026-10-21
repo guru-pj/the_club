@@ -135,18 +135,19 @@ export function PostCard({ post, club, canManage, onDelete, onChange, commentsOp
       </div>
       <div className="post-actions">
         <button className={`post-action${post.likedByMe ? ' active' : ''}`} onClick={() => void toggleLike()} disabled={liking}
-                aria-pressed={post.likedByMe} aria-label={post.likedByMe ? 'Unlike' : 'Like'}>
+                aria-pressed={post.likedByMe} aria-label={post.likedByMe ? `Unlike (${post.likeCount})` : post.likeCount ? `Like (${post.likeCount})` : 'Like'}>
           <HeartIcon size={18} filled={post.likedByMe} />{post.likeCount > 0 && post.likeCount}
           <span className="post-action-label">{post.likedByMe ? 'Liked' : 'Like'}</span>
         </button>
-        <button className="post-action" onClick={() => setShowComments((s) => !s)} aria-expanded={showComments}>
+        <button className="post-action" onClick={() => setShowComments((s) => !s)} aria-expanded={showComments}
+                aria-label={post.commentCount ? `Comments (${post.commentCount})` : 'Comment'}>
           <ChatIcon size={18} />{post.commentCount > 0 && post.commentCount}<span className="post-action-label">Comment</span>
         </button>
-        <button className="post-action" onClick={() => void share()}>
+        <button className="post-action" onClick={() => void share()} aria-label="Share">
           <ShareIcon size={18} /><span className="post-action-label">Share</span>
         </button>
         {hasRole('CLUB_OWNER') && !(post.shared?.kind === 'POST' && !post.shared.available) && (
-          <button className="post-action" onClick={() => setReshareOpen(true)}>
+          <button className="post-action" onClick={() => setReshareOpen(true)} aria-label="Reshare">
             <RepeatIcon size={18} /><span className="post-action-label">Reshare</span>
           </button>
         )}

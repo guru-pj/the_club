@@ -61,7 +61,7 @@ function Documents({ request, onChanged }: { request: VerificationRequest; onCha
   }
   const open = async (d: VerificationDocument) => {
     try {
-      saveFile(await verificationApi.downloadDocument(request.id, d.id), d.fileName)
+      await saveFile(await verificationApi.downloadDocument(request.id, d.id), d.fileName)
     } catch (e) {
       toast.error(e)
     }
