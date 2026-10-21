@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { Button, ErrorMessage, Field } from '../components/ui'
 import { isEmailNotVerified, lockoutMinutes } from '../lib/authErrors'
+import { startPage } from '../lib/startPage'
 import { AuthCard } from './account/AuthCard'
 import { ResendVerification } from './account/ResendVerification'
 import './account.css'
@@ -21,9 +22,9 @@ export default function LoginPage() {
     setSubmitting(true)
     setError(undefined)
     try {
-      await login(email.trim(), password)
+      const me = await login(email.trim(), password)
       const from = (location.state as { from?: string } | null)?.from
-      navigate(from && from !== '/login' ? from : '/', { replace: true })
+      navigate(startPage(me, from), { replace: true })
     } catch (err) {
       setError(err)
       setSubmitting(false)

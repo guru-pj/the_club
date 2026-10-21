@@ -2,6 +2,7 @@ import { useEffect, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
 import { humanize, initials } from '../lib/format'
 import { ChevronLeftIcon, CloseIcon } from './icons'
+import { mediaUrl } from '../api/client'
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent'
 type Size = 'sm' | 'md' | 'lg'
@@ -174,7 +175,7 @@ export function Modal({ open, title, onClose, children, footer }:
 export function Avatar({ name, url, size = 36 }: { name?: string | null; url?: string | null; size?: number }) {
   return (
     <span className="avatar" style={{ width: size, height: size, fontSize: size * 0.38 }}>
-      {url ? <img src={url} alt="" /> : initials(name)}
+      {url ? <img src={mediaUrl(url)} alt="" /> : initials(name)}
     </span>
   )
 }

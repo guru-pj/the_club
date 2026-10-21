@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ApiError } from '../api/client'
+import { ApiError, mediaUrl } from '../api/client'
 import { usersApi } from '../api/endpoints'
 import { useAuth } from '../auth/AuthContext'
+import { ImagePicker } from '../components/ImagePicker'
+import { LocationControl } from '../components/LocationControl'
 import { useToast } from '../components/Toast'
 import { Avatar, Badge, Button, Card, ErrorMessage, Field, Loading, PageHeader } from '../components/ui'
 import { fieldError } from '../lib/fieldError'
@@ -18,7 +20,6 @@ export default function ProfilePage() {
   const [name, setName] = useState(user?.name ?? '')
   const [city, setCity] = useState(user?.city ?? '')
   const [bio, setBio] = useState(user?.bio ?? '')
-  const [profilePicUrl, setProfilePicUrl] = useState(user?.profilePicUrl ?? '')
   const [error, setError] = useState<unknown>()
   const [saving, setSaving] = useState(false)
 
@@ -33,8 +34,6 @@ export default function ProfilePage() {
         name: name.trim(),
         city: city.trim(),
         bio: bio.trim(),
-        // the API rejects an empty string as a non-URL; omit it to keep the current picture
-        profilePicUrl: profilePicUrl.trim() || undefined,
       })
       setUser(updated)
       toast.success('Profile saved')
@@ -79,13 +78,17 @@ export default function ProfilePage() {
           <Field label="Bio" htmlFor="p-bio" error={fieldError(error, 'bio')}>
             <textarea id="p-bio" className="input" maxLength={255} value={bio} onChange={(e) => setBio(e.target.value)} />
           </Field>
-          <Field label="Profile picture URL" htmlFor="p-pic" error={fieldError(error, 'profilePicUrl')} hint="A link to an image (https://…)">
-            <input id="p-pic" className="input" type="url" maxLength={500} value={profilePicUrl}
-                   onChange={(e) => setProfilePicUrl(e.target.value)} />
-          </Field>
           {!hasFieldErrors && <ErrorMessage error={error} />}
           <div><Button type="submit" loading={saving}>Save changes</Button></div>
         </form>
+      </Card>
+      <Card title="Profile picture">
+        <ImagePicker label="Your photo" shape="circle" currentUrl={mediaUrl(user.profilePicUrl)}
+                     onUpload={async (file) => { setUser(await usersApi.uploadPhoto(file)); toast.success('Photo updated') }}
+                     onRemove={async () => { setUser(await usersApi.removePhoto()); toast.success('Photo removed') }} />
+      </Card>
+      <Card title="Location">
+        <LocationControl />
       </Card>
       <SecurityCard />
       <Card title="Connected apps">

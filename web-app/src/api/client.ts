@@ -189,6 +189,8 @@ async function toError(res: Response): Promise<ApiError> {
 
 export interface RequestOptions {
   body?: unknown
+  /** multipart upload instead of a JSON body (images); the browser sets the boundary header */
+  form?: FormData
   query?: Record<string, string | number | boolean | null | undefined>
   /** skip the Authorization header and the 401 → refresh retry (login, register, …) */
   anonymous?: boolean
@@ -202,13 +204,13 @@ export async function request<T>(method: string, path: string, options: RequestO
 
   const send = () => {
     const headers: Record<string, string> = { Accept: 'application/json' }
-    if (options.body !== undefined) headers['Content-Type'] = 'application/json'
+    if (options.body !== undefined && !options.form) headers['Content-Type'] = 'application/json'
     if (!options.anonymous && accessToken) headers.Authorization = `Bearer ${accessToken}`
     return fetch(url, {
       method,
       headers,
       credentials: 'same-origin',
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.form ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
     })
   }
 
@@ -225,6 +227,23 @@ export async function request<T>(method: string, path: string, options: RequestO
   if (res.status === 202 || res.status === 204) return undefined as T
   const text = await res.text()
   return (text ? JSON.parse(text) : undefined) as T
+}
+
+/** Uploads one image (multipart field "file", plus optional text fields). */
+export function upload<T>(path: string, file: File | Blob, fields: Record<string, string> = {}): Promise<T> {
+  const form = new FormData()
+  form.append('file', file)
+  for (const [key, value] of Object.entries(fields)) form.append(key, value)
+  return request<T>('POST', path, { form })
+}
+
+/**
+ * Where to load an uploaded image from. Stored images have site-relative URLs ("/media/…"); the native apps load
+ * the UI from the device, so those need the server's address in front. Other URLs are returned unchanged.
+ */
+export function mediaUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined
+  return url.startsWith('/') && !url.startsWith('//') ? `${BASE}${url}` : url
 }
 
 /** Decodes the JWT payload (no verification — the server is the authority). */

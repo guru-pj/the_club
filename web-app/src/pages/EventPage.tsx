@@ -2,8 +2,10 @@ import { Link, useParams } from 'react-router-dom'
 import { clubsApi, eventsApi } from '../api/endpoints'
 import { useAuth } from '../auth/AuthContext'
 import { CalendarIcon, ClockIcon, PinIcon, StarIcon, UsersIcon } from '../components/icons'
-import { Card, ErrorMessage, Loading, PageHeader, StatusBadge } from '../components/ui'
+import { mediaUrl } from '../api/client'
+import { Badge, Card, ErrorMessage, Loading, PageHeader, StatusBadge } from '../components/ui'
 import { formatDateTime, formatMoney } from '../lib/format'
+import { registrationBadge } from '../lib/registration'
 import { useAsync } from '../lib/useAsync'
 import { OwnerPanel } from './events/OwnerPanel'
 import { RegistrationPanel } from './events/RegistrationPanel'
@@ -38,9 +40,11 @@ export default function EventPage() {
       <PageHeader back={{ to: `/clubs/${club.id}`, label: club.name }} title={event.title}
                   subtitle={<span>by <Link to={`/clubs/${club.id}`}>{club.name}</Link></span>}
                   actions={<div className="status-pills">
-                    <StatusBadge status={event.status} />
-                    {event.myRegistration && <StatusBadge status={event.myRegistration} />}
+                    {event.status !== 'SCHEDULED' && <StatusBadge status={event.status} />}
+                    <Badge tone={registrationBadge(event).tone}>{registrationBadge(event).label}</Badge>
+                    {event.subscribersOnly && <Badge tone="accent">Subscribers only</Badge>}
                   </div>} />
+      {event.imageUrl && <img className="event-cover" src={mediaUrl(event.imageUrl)} alt="" />}
       <div className="layout-sidebar">
         <div className="stack-lg">
           <Card>
@@ -70,6 +74,11 @@ export default function EventPage() {
               </>
             )}
           </Card>
+          {event.rules && (
+            <Card title="Rules and instructions">
+              <p className="pre-wrap">{event.rules}</p>
+            </Card>
+          )}
           {manage && <OwnerPanel event={event} onChanged={state.reload} />}
         </div>
         <RegistrationPanel event={event} club={club} registrationId={registrationId} onChanged={state.reload} />

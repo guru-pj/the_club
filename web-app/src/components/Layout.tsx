@@ -3,15 +3,17 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { notificationsApi } from '../api/endpoints'
 import { useAuth } from '../auth/AuthContext'
 import { onNotificationsChanged } from '../lib/notificationsBus'
-import { ActivityIcon, BellIcon, HomeIcon, LogoutIcon, ShieldIcon, TicketIcon, TrophyIcon, UserIcon, UsersIcon } from './icons'
+import { ActivityIcon, BellIcon, CalendarIcon, HomeIcon, LogoutIcon, ShieldIcon, TicketIcon, TrophyIcon, UserIcon, UsersIcon } from './icons'
 import { Avatar } from './ui'
 
 const NAV = [
   { to: '/', label: 'Home', icon: HomeIcon, end: true },
   { to: '/clubs', label: 'Clubs', icon: UsersIcon },
-  { to: '/activities', label: 'Activities', icon: ActivityIcon },
+  { to: '/events', label: 'Events', icon: CalendarIcon, end: true },
   { to: '/tickets', label: 'Tickets', icon: TicketIcon },
-  { to: '/leaderboard', label: 'Leaderboard', icon: TrophyIcon },
+  { to: '/activities', label: 'Activities', icon: ActivityIcon },
+  // the phone's bottom bar has room for five; the leaderboard is also in the account menu
+  { to: '/leaderboard', label: 'Leaderboard', icon: TrophyIcon, desktopOnly: true },
 ]
 
 function useUnreadCount() {
@@ -53,6 +55,7 @@ function UserMenu() {
             <div className="muted small truncate">{user?.email}</div>
           </div>
           <Link to="/profile"><span className="row"><UserIcon size={16} />Profile</span></Link>
+          <Link to="/leaderboard"><span className="row"><TrophyIcon size={16} />Leaderboard</span></Link>
           {!hasRole('CLUB_OWNER') && <Link to="/become-owner"><span className="row"><ShieldIcon size={16} />Become a club owner</span></Link>}
           {hasRole('ADMIN') && <Link to="/admin/verification"><span className="row"><ShieldIcon size={16} />Owner applications</span></Link>}
           <button onClick={async () => { await logout(); navigate('/login') }}>
@@ -92,7 +95,7 @@ export function Layout() {
         <Outlet />
       </main>
       <nav className="bottom-nav" aria-label="Main">
-        {NAV.map(({ to, label, icon: Icon, end }) => (
+        {NAV.filter((item) => !item.desktopOnly).map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end}><Icon size={22} />{label}</NavLink>
         ))}
       </nav>

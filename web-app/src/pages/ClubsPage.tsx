@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { clubsApi } from '../api/endpoints'
+import { clubsApi, eventsApi } from '../api/endpoints'
 import type { Club } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { PinIcon, PlusIcon, UsersIcon } from '../components/icons'
-import { Badge, Card, EmptyState, ErrorMessage, LinkButton, Loading, PageHeader, Pagination, StatusBadge } from '../components/ui'
+import { CalendarIcon, PinIcon, PlusIcon, UsersIcon } from '../components/icons'
+import { LocationControl } from '../components/LocationControl'
+import { Stars } from '../components/Stars'
+import { Badge, Card, EmptyState, ErrorMessage, LinkButton, Loading, PageHeader, Pagination } from '../components/ui'
 import { humanize } from '../lib/format'
+import { formatAway, savedLocation } from '../lib/location'
 import { useAsync } from '../lib/useAsync'
 import { ClubLogo } from './clubs/ClubLogo'
+import { MembershipBadge } from './clubs/MembershipBadge'
+import { EventCardView } from './events/EventCardView'
 import './clubs.css'
 
 const PAGE_SIZE = 12
@@ -31,14 +36,22 @@ function ClubCard({ club }: { club: Club }) {
             <h3 className="club-card-name">{club.name}</h3>
             <div className="row small muted" style={{ gap: 6 }}>
               {club.clubType && <Badge tone="primary">{humanize(club.clubType)}</Badge>}
-              <StatusBadge status={club.myRole} />
+              <MembershipBadge role={club.myRole} />
             </div>
           </div>
         </div>
         {club.description && <p className="small muted" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{club.description}</p>}
+        {club.ratingCount > 0 && (
+          <div className="row small" style={{ gap: 6 }}>
+            <Stars value={club.ratingAverage} size={14} />
+            <span className="muted">{club.ratingAverage?.toFixed(1)} ({club.ratingCount})</span>
+          </div>
+        )}
         <div className="row small muted" style={{ marginTop: 'auto' }}>
-          {club.city && <span className="row" style={{ gap: 4 }}><PinIcon size={14} />{club.city}</span>}
-          <span className="row" style={{ gap: 4 }}><UsersIcon size={14} />{club.memberCount} {club.memberCount === 1 ? 'member' : 'members'}</span>
+          {club.city && <span className="row" style={{ gap: 4 }}><PinIcon size={14} />{club.city}{club.distanceKm != null && ` · ${formatAway(club.distanceKm)}`}</span>}
+          <span className="row" style={{ gap: 4 }}><UsersIcon size={14} />{club.memberCount} {club.memberCount === 1 ? 'subscriber' : 'subscribers'}</span>
+          {club.followerCount > 0 && <span>{club.followerCount} {club.followerCount === 1 ? 'follower' : 'followers'}</span>}
+          {club.following && <Badge tone="info">Following</Badge>}
         </div>
       </Card>
     </Link>
@@ -64,6 +77,72 @@ function YourClubs() {
   )
 }
 
+function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="row-between" style={{ marginBottom: 8 }}>
+      <h2 className="small muted bold" style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}>{children}</h2>
+      {action}
+    </div>
+  )
+}
+
+/** Nearby clubs, popular clubs and upcoming events (user journey step 3); hidden while someone searches. */
+function Discover() {
+  const { user } = useAuth()
+  const location = savedLocation(user)
+  const city = user?.city?.trim()
+  const nearby = useAsync(
+    () => location ? clubsApi.nearby(location.latitude, location.longitude, 25, 8)
+      : city ? clubsApi.search({ city, size: 8 }).then((p) => p.items) : Promise.resolve([]),
+    [location?.latitude, location?.longitude, city],
+  )
+  const popular = useAsync(() => clubsApi.popular(8), [])
+  const events = useAsync(
+    () => eventsApi.upcoming({ lat: location?.latitude, lng: location?.longitude, limit: 4 }),
+    [location?.latitude, location?.longitude],
+  )
+
+  return (
+    <div className="stack-lg" style={{ marginBottom: 24 }}>
+      <section>
+        <SectionTitle>{location ? 'Near you' : city ? `In ${city}` : 'Near you'}</SectionTitle>
+        {!location && !city ? (
+          <Card><LocationControl /></Card>
+        ) : nearby.error ? <ErrorMessage error={nearby.error} onRetry={nearby.reload} />
+          : nearby.loading && !nearby.data ? <Loading />
+          : !nearby.data?.length ? (
+            <Card>
+              <p className="muted small">{location ? 'No clubs within 25 km yet.' : `No clubs in ${city} yet.`}</p>
+              {!location && <div style={{ marginTop: 8 }}><LocationControl /></div>}
+            </Card>
+          ) : (
+            <div className="grid grid-auto">{nearby.data.map((club) => <ClubCard key={club.id} club={club} />)}</div>
+          )}
+      </section>
+      <section>
+        <SectionTitle action={<LinkButton to="/events" size="sm" variant="ghost">All events</LinkButton>}>Upcoming events</SectionTitle>
+        {events.error ? <ErrorMessage error={events.error} onRetry={events.reload} />
+          : events.loading && !events.data ? <Loading />
+          : !events.data?.length ? (
+            <Card>
+              <EmptyState icon={<CalendarIcon size={28} />} title="No upcoming events yet">
+                Follow or subscribe to clubs{location ? '' : ', or share your location,'} to see their events here.
+              </EmptyState>
+            </Card>
+          ) : (
+            <div className="grid grid-auto">{events.data.map((card) => <EventCardView key={card.event.id} card={card} />)}</div>
+          )}
+      </section>
+      {!!popular.data?.length && (
+        <section>
+          <SectionTitle>Popular</SectionTitle>
+          <div className="grid grid-auto">{popular.data.map((club) => <ClubCard key={club.id} club={club} />)}</div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 export default function ClubsPage() {
   const { hasRole } = useAuth()
   const [q, setQ] = useState('')
@@ -80,11 +159,13 @@ export default function ClubsPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Clubs" subtitle="Find a club to run, ride and train with."
+      <PageHeader title="Discover clubs" subtitle="Find a club to run, ride and train with."
                   actions={hasRole('CLUB_OWNER')
                     ? <LinkButton to="/clubs/new"><PlusIcon size={18} />Create club</LinkButton>
                     : <LinkButton to="/become-owner" variant="secondary">Become a club owner</LinkButton>} />
       <YourClubs />
+      {!dq && !dcity && <Discover />}
+      {!dq && !dcity && <h2 className="small muted bold" style={{ marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>All clubs</h2>}
       <div className="search-bar">
         <label className="visually-hidden" htmlFor="club-search">Search clubs</label>
         <input id="club-search" className="input" type="search" placeholder="Search clubs by name…" value={q}

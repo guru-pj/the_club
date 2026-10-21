@@ -12,6 +12,8 @@ const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'))
 const HomePage = lazy(() => import('./pages/HomePage'))
+const ProfileSetupPage = lazy(() => import('./pages/ProfileSetupPage'))
+const EventsPage = lazy(() => import('./pages/EventsPage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const ActivitiesPage = lazy(() => import('./pages/ActivitiesPage'))
@@ -44,6 +46,7 @@ export default function App() {
               <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route element={<RequireAuth><Layout /></RequireAuth>}>
                 <Route index element={<HomePage />} />
+                <Route path="welcome" element={<ProfileSetupPage />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="notifications" element={<NotificationsPage />} />
                 <Route path="activities" element={<ActivitiesPage />} />
@@ -54,6 +57,7 @@ export default function App() {
                 <Route path="clubs/:clubId/events/new" element={<EventFormPage />} />
                 <Route path="become-owner" element={<BecomeOwnerPage />} />
                 <Route path="admin/verification" element={<RequireRole role="ADMIN"><AdminVerificationPage /></RequireRole>} />
+                <Route path="events" element={<EventsPage />} />
                 <Route path="events/:eventId" element={<EventPage />} />
                 <Route path="events/:eventId/edit" element={<EventFormPage />} />
                 <Route path="events/:eventId/check-in" element={<CheckInPage />} />

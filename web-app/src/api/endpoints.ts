@@ -1,9 +1,9 @@
-import { nativeRefreshToken, request } from './client'
+import { nativeRefreshToken, request, upload } from './client'
 import type {
   Activity, ActivityRequest, AppNotification, ApplyVerificationRequest, CheckInResponse, Club, ClubEvent,
-  ClubLeaderboard, ClubRequest, CreatePostRequest, EventRegistrationRow, EventRequest, LeaderboardMetric,
+  ClubLeaderboard, ClubPhoto, ClubRequest, CreatePostRequest, EventCard, EventRegistrationRow, EventRequest, LeaderboardMetric,
   LeaderboardPeriod, LocalDateTime, MemberParticipation, Membership, MonthlyLeaderboard, Page, Participation,
-  Payment, Post, RegisterResponse, StravaConnection, Ticket, TokenResponse, UpdateUserRequest, User,
+  Payment, Post, RegisterResponse, Review, ReviewPage, StravaConnection, Ticket, TokenResponse, UpdateUserRequest, User,
   UserEventRegistration, UUID, VerificationAudit, VerificationRequest, VerificationStatus,
 } from './types'
 
@@ -41,6 +41,8 @@ export const usersApi = {
   me: () => request<User>('GET', '/api/v1/users/me'),
   get: (id: UUID) => request<User>('GET', `/api/v1/users/${id}`),
   update: (id: UUID, body: UpdateUserRequest) => request<User>('PUT', `/api/v1/users/${id}`, { body }),
+  uploadPhoto: (file: File | Blob) => upload<User>('/api/v1/users/me/photo', file),
+  removePhoto: () => request<User>('DELETE', '/api/v1/users/me/photo'),
 }
 
 export const activitiesApi = {
@@ -80,6 +82,17 @@ export const clubsApi = {
   leave: (id: UUID) => request<void>('DELETE', `/api/v1/clubs/${id}/members/me`),
   members: (id: UUID, q: Paging = {}) => request<Page<Membership>>('GET', `/api/v1/clubs/${id}/members`, { query: q }),
   removeMember: (id: UUID, userId: UUID) => request<void>('DELETE', `/api/v1/clubs/${id}/members/${userId}`),
+  nearby: (lat: number, lng: number, radiusKm?: number, limit?: number) =>
+    request<Club[]>('GET', '/api/v1/clubs/nearby', { query: { lat, lng, radiusKm, limit } }),
+  popular: (limit?: number) => request<Club[]>('GET', '/api/v1/clubs/popular', { query: { limit } }),
+  following: () => request<Club[]>('GET', '/api/v1/clubs/me/following'),
+  follow: (id: UUID) => request<{ following: boolean }>('POST', `/api/v1/clubs/${id}/follow`),
+  unfollow: (id: UUID) => request<void>('DELETE', `/api/v1/clubs/${id}/follow`),
+  photos: (id: UUID) => request<ClubPhoto[]>('GET', `/api/v1/clubs/${id}/photos`),
+  addPhoto: (id: UUID, file: File | Blob, caption?: string) =>
+    upload<ClubPhoto>(`/api/v1/clubs/${id}/photos`, file, caption ? { caption } : {}),
+  removePhoto: (id: UUID, photoId: UUID) => request<void>('DELETE', `/api/v1/clubs/${id}/photos/${photoId}`),
+  uploadLogo: (id: UUID, file: File | Blob) => upload<Club>(`/api/v1/clubs/${id}/logo`, file),
   leaderboard: (id: UUID, metric: LeaderboardMetric, period: LeaderboardPeriod) =>
     request<ClubLeaderboard>('GET', `/api/v1/clubs/${id}/leaderboard`, { query: { metric, period } }),
 }
@@ -90,6 +103,18 @@ export const postsApi = {
   update: (clubId: UUID, postId: UUID, body: Partial<Pick<CreatePostRequest, 'title' | 'content' | 'photoUrls'>>) =>
     request<Post>('PUT', `/api/v1/clubs/${clubId}/posts/${postId}`, { body }),
   remove: (clubId: UUID, postId: UUID) => request<void>('DELETE', `/api/v1/clubs/${clubId}/posts/${postId}`),
+}
+
+export const reviewsApi = {
+  list: (clubId: UUID, q: Paging = {}) => request<ReviewPage>('GET', `/api/v1/clubs/${clubId}/reviews`, { query: q }),
+  save: (clubId: UUID, rating: number, comment?: string) =>
+    request<Review>('PUT', `/api/v1/clubs/${clubId}/reviews/me`, { body: { rating, comment: comment || undefined } }),
+  removeMine: (clubId: UUID) => request<void>('DELETE', `/api/v1/clubs/${clubId}/reviews/me`),
+  reply: (clubId: UUID, reviewId: UUID, reply: string) =>
+    request<Review>('PUT', `/api/v1/clubs/${clubId}/reviews/${reviewId}/reply`, { body: { reply } }),
+  removeReply: (clubId: UUID, reviewId: UUID) => request<Review>('DELETE', `/api/v1/clubs/${clubId}/reviews/${reviewId}/reply`),
+  /** admins only */
+  remove: (clubId: UUID, reviewId: UUID) => request<void>('DELETE', `/api/v1/clubs/${clubId}/reviews/${reviewId}`),
 }
 
 const OV = '/api/v1/owner-verification'
@@ -119,6 +144,11 @@ export const eventsApi = {
   cancel: (id: UUID) => request<ClubEvent>('POST', `/api/v1/events/${id}/cancel`),
   byClub: (clubId: UUID, q: Paging & { upcoming?: boolean } = {}) =>
     request<Page<ClubEvent>>('GET', `/api/v1/events/club/${clubId}`, { query: q }),
+  /** followed and subscribed clubs, plus clubs near the point when given */
+  upcoming: (q: { lat?: number; lng?: number; radiusKm?: number; limit?: number } = {}) =>
+    request<EventCard[]>('GET', '/api/v1/events/upcoming', { query: q }),
+  uploadImage: (id: UUID, file: File | Blob) => upload<ClubEvent>(`/api/v1/events/${id}/image`, file),
+  removeImage: (id: UUID) => request<ClubEvent>('DELETE', `/api/v1/events/${id}/image`),
   myRegistrations: () => request<UserEventRegistration[]>('GET', '/api/v1/events/me/registrations'),
   register: (id: UUID) => request<RegisterResponse>('POST', `/api/v1/events/${id}/register`),
   cancelMyRegistration: (id: UUID) => request<void>('DELETE', `/api/v1/events/${id}/registrations/me`),

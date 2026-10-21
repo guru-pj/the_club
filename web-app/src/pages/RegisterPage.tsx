@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext'
 import { Button, ErrorMessage, Field } from '../components/ui'
 import { isEmailNotVerified, PASSWORD_HINT } from '../lib/authErrors'
 import { fieldError } from '../lib/fieldError'
+import { startPage } from '../lib/startPage'
 import { AuthCard } from './account/AuthCard'
 import { ResendVerification } from './account/ResendVerification'
 import './account.css'
@@ -31,8 +32,8 @@ export default function RegisterPage() {
     setSubmitting(true)
     setError(undefined)
     try {
-      await register(name.trim(), email.trim(), password)
-      navigate('/', { replace: true })
+      const me = await register(name.trim(), email.trim(), password)
+      navigate(startPage(me), { replace: true })
     } catch (err) {
       // The account exists now; logging in just has to wait for the emailed link.
       if (isEmailNotVerified(err)) setAwaitingVerification(true)

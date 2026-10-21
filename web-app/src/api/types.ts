@@ -26,6 +26,11 @@ export interface User {
   /** only present on your own profile (or for admins) */
   emailVerified?: boolean
   createdAt: LocalDateTime
+  /** approximate (~100 m); only on your own profile */
+  latitude?: number | null
+  longitude?: number | null
+  /** false until the profile setup after the first login is finished or skipped; only on your own profile */
+  profileComplete?: boolean
 }
 
 export interface TokenResponse {
@@ -40,6 +45,11 @@ export interface UpdateUserRequest {
   bio?: string
   city?: string
   profilePicUrl?: string
+  /** send both, or neither */
+  latitude?: number
+  longitude?: number
+  clearLocation?: boolean
+  profileComplete?: boolean
 }
 
 // ---------- activities / strava
@@ -92,9 +102,23 @@ export interface Club {
   clubType?: ClubType | null
   logoUrl?: string | null
   ownerId: UUID
+  /** subscribers (members, including the owner) */
   memberCount: number
+  /** your subscription: null when you don't subscribe */
   myRole: MembershipRole | null
   createdAt: LocalDateTime
+  latitude: number | null
+  longitude: number | null
+  address: string | null
+  subscriptionsEnabled: boolean
+  subscriptionBenefits: string | null
+  followerCount: number
+  following: boolean
+  /** 1–5, one decimal; null without reviews */
+  ratingAverage: number | null
+  ratingCount: number
+  /** only in nearby results */
+  distanceKm: number | null
 }
 
 export interface ClubRequest {
@@ -103,6 +127,47 @@ export interface ClubRequest {
   city?: string
   clubType?: ClubType
   logoUrl?: string
+  /** send both, or neither */
+  latitude?: number
+  longitude?: number
+  clearLocation?: boolean
+  address?: string
+  subscriptionsEnabled?: boolean
+  subscriptionBenefits?: string
+}
+
+export interface ClubPhoto {
+  id: UUID
+  url: string
+  caption: string | null
+  createdAt: LocalDateTime
+}
+
+export interface Review {
+  id: UUID
+  userId: UUID
+  userName: string | null
+  rating: number
+  comment: string | null
+  createdAt: LocalDateTime
+  updatedAt: LocalDateTime
+  ownerReply: string | null
+  ownerReplyAt: LocalDateTime | null
+}
+
+export interface ReviewSummary {
+  average: number | null
+  count: number
+  /** star rating ("1"–"5") → number of reviews */
+  byRating: Record<string, number>
+}
+
+export interface ReviewPage {
+  summary: ReviewSummary
+  reviews: Page<Review>
+  /** subscribers and event attendees may review; never the owner */
+  canReview: boolean
+  mine: Review | null
 }
 
 export interface Membership {
@@ -232,6 +297,26 @@ export interface ClubEvent {
   registrationOpen: boolean
   myRegistration: RegistrationStatus | null
   createdAt: LocalDateTime
+  imageUrl: string | null
+  rules: string | null
+  /** only the club's subscribers may register */
+  subscribersOnly: boolean
+  /** whether registration is possible now, or why not */
+  registrationState: RegistrationState
+}
+
+export type RegistrationState = 'OPEN' | 'NOT_YET_OPEN' | 'CLOSED' | 'FULL' | 'PAST' | 'CANCELLED'
+
+export type FeedSource = 'FOLLOWING' | 'SUBSCRIBED' | 'NEARBY'
+
+/** An event in the upcoming-events feed. */
+export interface EventCard {
+  event: ClubEvent
+  clubName: string | null
+  clubLogoUrl: string | null
+  sources: FeedSource[]
+  /** to the organising club, when the feed was asked for a location */
+  distanceKm: number | null
 }
 
 export interface EventRequest {
@@ -246,6 +331,8 @@ export interface EventRequest {
   price?: number
   currency?: string
   points?: number
+  rules?: string
+  subscribersOnly?: boolean
 }
 
 export interface CheckoutInfo {
