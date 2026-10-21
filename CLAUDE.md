@@ -86,4 +86,4 @@ Production compose uses `docker compose -f docker-compose.yml` only, without the
 
 ## Docs
 
-`docs/` contains the authoritative reference: `SERVICE_CONTRACTS.md`, `DATABASE_MIGRATIONS.md`, `PRODUCTION.md`, `KUBERNETES.md`, `OBSERVABILITY.md`, `NATIVE_APPS.md`, `EMAIL_SETUP.md`, `STRAVA_SETUP.md` and `ARCHITECTURE_OVERVIEW.md`. The `*.txt` / `*.md.txt` files in the repo root are early design notes from the initial upload and may not match the current code; prefer `docs/` and the source.
+`docs/` contains the authoritative reference: `RUN_AND_TEST.md` (updating a copy, testing in the browser and the apps), `SERVICE_CONTRACTS.md`, `DATABASE_MIGRATIONS.md`, `PRODUCTION.md`, `KUBERNETES.md`, `OBSERVABILITY.md`, `NATIVE_APPS.md`, `EMAIL_SETUP.md`, `STRAVA_SETUP.md` and `ARCHITECTURE_OVERVIEW.md`. The `*.txt` / `*.md.txt` files in the repo root are early design notes from the initial upload and may not match the current code; prefer `docs/` and the source.

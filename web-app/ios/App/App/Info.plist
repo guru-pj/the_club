@@ -32,6 +32,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>The Club connects to a server on your local network when you test it with a backend on your computer.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>The Club uses your approximate location to show clubs and events near you.</string>
 	<key>NSCameraUsageDescription</key>

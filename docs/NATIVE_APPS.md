@@ -235,7 +235,7 @@ This puts the app straight onto an iPhone plugged into your Mac. It needs no App
    git clone https://github.com/guru-pj/the_club.git && cd the_club/web-app
    echo 'VITE_API_BASE_URL=https://club.example.com' > .env.native.local   # your server's public address
    ```
-   For a backend running on that same Mac, use `http://<your-mac-name>.local:8080` instead. Find the name under **System Settings** → **General** → **Sharing** → *Local hostname*. iOS allows plain HTTP only to local addresses like this, and the gateway port must accept connections from the network (by default `docker-compose.override.yml` publishes it on `127.0.0.1` only).
+   For a backend running on that same Mac, use `http://<your-mac-name>.local:3000` instead: the web app's port, which serves both `/api` and the uploaded images at `/media`, and accepts connections from the network. Find the name under **System Settings** → **General** → **Sharing** → *Local hostname*. iOS allows plain HTTP only to local addresses like this.
 2. **Build the app and open it in Xcode:**
    ```bash
    npm ci
@@ -262,7 +262,7 @@ This puts the app straight onto an iPhone plugged into your Mac. It needs no App
 - **From the code:** follow Option B, steps 1–2, then choose an iPhone simulator (for example *iPhone 16*) in Xcode's toolbar and press **Run ▶**. No Apple ID or signing is needed.
 - **From a CI build:** download the `the-club-ios-simulator` artifact, as described in [Test builds](#test-builds-before-releasing).
 
-The Simulator reaches a backend on the same Mac at `http://localhost:8080`. A simulator build doesn't install on a real iPhone.
+The Simulator reaches a backend on the same Mac at `http://localhost:3000`. A simulator build doesn't install on a real iPhone.
 
 ### Installing on macOS
 
@@ -321,7 +321,8 @@ To see which version you have:
 | Xcode: *Developer Mode disabled* or the iPhone isn't listed as a destination | Unlock the iPhone, tap **Trust This Computer**, and turn on **Developer Mode** (Option B, step 6). |
 | iPhone: *Untrusted Developer* | **Settings** → **General** → **VPN & Device Management** → your Apple ID → **Trust** (Option B, step 8). |
 | iPhone: an app installed from Xcode stopped opening after a week | Free Apple ID installs last 7 days. Connect the iPhone and press **Run ▶** in Xcode again. |
-| iPhone: **Cannot reach the server** with a backend on your Mac | Use `http://<your-mac-name>.local:8080`, not `localhost`, and make sure the gateway port is reachable from the network (Option B, step 1). |
+| iPhone: **Cannot reach the server** with a backend on your Mac | Use `http://<your-mac-name>.local:3000`, not `localhost` or port 8080, and check the iPhone is on the same Wi-Fi and the Mac's firewall allows incoming connections for Docker (Option B, step 1). |
+| Pictures don't show in the app with a backend on your computer | The app points at port 8080 (the gateway), which doesn't serve `/media`. Use the web app's port 3000 and rebuild the app. |
 | Maintainers: the iOS step fails with *No profiles for 'com.theclub.app'* or *Cloud signing permission error* | The API key needs the **Admin** role, and the bundle ID and App Store Connect app must exist (Part 1, step 5). |
 | Maintainers: upload fails with *bundle version must be higher* | Every upload needs a new build number. Re-run the workflow; each run uses a higher number. |
 
@@ -364,7 +365,7 @@ npm run ios:open           # opens ios/App/App.xcodeproj in Xcode
 ```
 In Xcode, choose an iPhone simulator in the toolbar and press **Run ▶**. Swift packages are downloaded on the first build.
 
-The simulator reaches a backend on your Mac at `http://localhost:8080`. Plain HTTP to local addresses is allowed for this; anything else must be HTTPS. To run it on your own iPhone, follow [Installing on iPhone and iPad → Option B](#option-b--install-from-a-mac-with-xcode-your-own-iphone).
+The simulator reaches a backend on your Mac at `http://localhost:3000` (the web app's port, which also serves uploaded images). Plain HTTP to local addresses is allowed for this; anything else must be HTTPS. To run it on your own iPhone, follow [Installing on iPhone and iPad → Option B](#option-b--install-from-a-mac-with-xcode-your-own-iphone).
 
 Run `npm run ios:sync` again after every UI change.
 
@@ -377,7 +378,7 @@ npm run macos:dev          # app window with live reload against the Vite dev se
 npm run macos:build        # src-tauri/target/release/bundle/{macos,dmg}/
 ```
 
-With a local backend, use `VITE_API_BASE_URL=http://localhost:8080`.
+With a local backend, use `VITE_API_BASE_URL=http://localhost:3000`.
 
 ### Icons
 
