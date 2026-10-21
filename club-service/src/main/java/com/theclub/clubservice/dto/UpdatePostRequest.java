@@ -12,5 +12,5 @@ import java.util.List;
 public record UpdatePostRequest(
         @Size(min = 1, max = 150) String title,
         @Size(min = 1, max = 5000) String content,
-        @Size(max = 10) List<@NotBlank @Size(max = 500) @Pattern(regexp = "^https?://.*", message = "must be an http(s) URL") String> photoUrls) {
+        @Size(max = 10) List<@NotBlank @Size(max = 500) @Pattern(regexp = PostPhotos.URL_PATTERN, message = PostPhotos.URL_MESSAGE) String> photoUrls) {
 }

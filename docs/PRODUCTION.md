@@ -211,6 +211,11 @@ If the TLS proxy adds `X-Forwarded-For` (Caddy, nginx, Traefik and cloud load ba
 
 Then recreate the web app with `docker compose -f docker-compose.yml up -d web-app`. Without this, every client appears to come from the proxy's IP, and **all users share one rate-limit bucket**: 10 login attempts per minute for the whole site.
 
+**Live chat** uses a long-lived response (`/api/v1/chat/stream`, Server-Sent Events). The proxy in front must not
+buffer it and must allow at least a minute of quiet; club-service sends a keep-alive every 20 seconds and ends each stream
+after 15 minutes. Caddy, Traefik and nginx handle this with their defaults (nginx honours the `X-Accel-Buffering: no`
+header club-service sends). On AWS ALB and similar, keep the idle timeout at 60 seconds or more.
+
 Once the site is HTTPS-only, enable HSTS by uncommenting the `Strict-Transport-Security` line in `web-app/security-headers.conf`.
 
 ## 5. Deploy
@@ -282,6 +287,18 @@ Profile pictures, club logos and photos, and event images go to an S3-compatible
   4. Restart user-, club- and event-service. The `seaweedfs` container can then be removed.
 - **Limits:** JPEG, PNG and WebP only (checked by content, so SVG and renamed files are refused), up to `MEDIA_MAX_SIZE` (5 MB).
 - **Backups:** the database backups don't include images. With SeaweedFS, copy the `media_data` volume off the host as well, for example `docker run --rm -v the_club_media_data:/data:ro -v "$PWD":/out alpine tar czf /out/media-$(date +%F).tgz -C /data .`. Managed object storage has its own versioning and replication.
+
+## 6b. Club chat
+
+- **Storage:** chat messages, direct messages, blocks, reports and mutes live in `clubdb` and are part of the normal
+  database backups. They are not end-to-end encrypted: anyone with database access can read them, so say so in your
+  privacy policy. Deleted messages are hidden from everyone but kept, so admins can review reports about them.
+- **Moderation:** admins review reported messages under avatar menu → **Reported messages**
+  (`GET /api/v1/chat/reports`). Club owners can delete messages and mute people in their club's chat.
+- **Retention:** messages are kept until deleted. To keep less, schedule a cleanup, for example
+  `DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL 365 DAY AND id NOT IN (SELECT message_id FROM chat_reports)`.
+- **Several club-service replicas:** each one checks the database for new messages every 2 seconds, so a message reaches
+  people connected to another replica within about 2 seconds. No message broker is needed.
 
 ## 7. Backups and restore
 
@@ -373,6 +390,7 @@ Recommended repository settings:
 - [ ] Deployed with `docker compose -f docker-compose.yml` (no dev override)
 - [ ] Off-site backup copy scheduled, and a restore tested
 - [ ] Uploaded images: `media_data` copied off-site too, or managed S3 storage configured (§6a)
+- [ ] The TLS proxy doesn't buffer `/api/v1/chat/stream` and allows 60 s idle (§4), and the privacy policy covers chat (§6b)
 - [ ] Admin password changed after first login, `ADMIN_EMAIL` set to a real mailbox
 - [ ] Branch protection and required CI checks on `main`
 

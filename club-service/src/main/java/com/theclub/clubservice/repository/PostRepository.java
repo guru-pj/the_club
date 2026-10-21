@@ -13,4 +13,8 @@ public interface PostRepository extends JpaRepository<Post, UUID> {
     Page<Post> findByClubIdOrderByCreatedAtDesc(UUID clubId, Pageable pageable);
 
     Optional<Post> findByIdAndClubId(UUID id, UUID clubId);
+
+    boolean existsByClubIdAndSharedPostId(UUID clubId, UUID sharedPostId);
+
+    boolean existsByClubIdAndSharedEventId(UUID clubId, UUID sharedEventId);
 }

@@ -23,6 +23,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.core.Ordered;
 import org.springframework.core.task.TaskDecorator;
+import jakarta.servlet.DispatcherType;
 import org.slf4j.MDC;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -101,6 +102,9 @@ public class TheClubCommonAutoConfiguration {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(e -> e.authenticationEntryPoint(problems).accessDeniedHandler(problems))
                 .authorizeHttpRequests(auth -> {
+                    // A long-running response (club-service's live chat stream) is finished by an ASYNC dispatch
+                    // that carries no token; the request itself was authorized when it started.
+                    auth.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll();
                     auth.requestMatchers("/internal/**").hasRole(Roles.INTERNAL);
                     // /actuator/prometheus is for the in-network Prometheus scraper; nginx and the gateway never expose /actuator
                     auth.requestMatchers("/actuator/health/**", "/actuator/info", "/actuator/prometheus", "/error").permitAll();

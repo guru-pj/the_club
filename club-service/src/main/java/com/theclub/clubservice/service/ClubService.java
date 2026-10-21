@@ -257,6 +257,17 @@ public class ClubService {
         follows.findByClubIdAndUserId(clubId, userId).ifPresent(follows::delete);
     }
 
+    /** Clubs the user owns or subscribes to. */
+    @Transactional(readOnly = true)
+    public List<Club> clubsOf(UUID userId) {
+        return clubs.findJoinedBy(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isFollowing(UUID clubId, UUID userId) {
+        return follows.existsByClubIdAndUserId(clubId, userId);
+    }
+
     /** Who hears about the club's posts and events: subscribers and followers, each once. */
     @Transactional(readOnly = true)
     public Set<UUID> audienceIds(UUID clubId) {
@@ -310,6 +321,22 @@ public class ClubService {
                     .collect(Collectors.toMap(UserClient.UserSummary::id, UserClient.UserSummary::name, (a, b) -> a));
         } catch (RuntimeException e) {
             log.warn("Could not load user names: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * Looks up names and profile pictures; returns an empty map when user-service is unavailable.
+     */
+    public Map<UUID, UserClient.UserSummary> profilesOf(Collection<UUID> userIds) {
+        if (userIds.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            return userClient.summaries(new UserClient.IdsRequest(List.copyOf(userIds))).stream()
+                    .collect(Collectors.toMap(UserClient.UserSummary::id, s -> s, (a, b) -> a));
+        } catch (RuntimeException e) {
+            log.warn("Could not load user profiles: {}", e.getMessage());
             return Map.of();
         }
     }

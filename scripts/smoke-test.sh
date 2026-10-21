@@ -7,6 +7,7 @@
 #   GATEWAY_URL=http://localhost:8080 ADMIN_EMAIL=... ADMIN_PASSWORD=... ./scripts/smoke-test.sh
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 G=${GATEWAY_URL:-http://localhost:8080}/api/v1
+WEB=${WEB_URL:-http://localhost:${WEB_APP_PORT:-3000}}
 ADMIN_EMAIL=${ADMIN_EMAIL:-$(grep -sE '^ADMIN_EMAIL=' "$ROOT_DIR/.env" | tail -1 | cut -d= -f2-)}
 ADMIN_EMAIL=${ADMIN_EMAIL:-admin@theclub.local}
 if [ -z "${ADMIN_PASSWORD:-}" ] && [ -f "$ROOT_DIR/secrets/admin-password" ]; then
@@ -66,7 +67,9 @@ echo "$BODY" | jq -c '.entries[] | {rank,name,totalDistanceKm,sessions}'
 [ "$(echo "$BODY" | jq -r '.entries[0].userId')" = "$MIA_ID" ] || fail "leaderboard order"
 
 # --- club feed
-req POST /clubs/$CLUB/posts "$MT" '{"title":"hi","content":"x"}'; expect 403 "member cannot post"
+req POST /clubs/$CLUB/posts "$MT" '{"type":"ANNOUNCEMENT","title":"hi","content":"x"}'; expect 403 "only the owner announces"
+req POST /clubs/$CLUB/posts "$MT" '{"title":"First run with you all","content":"Thanks for the pacing"}'; expect 201 "subscriber posts"
+[ "$(echo "$BODY" | jq -r .type)" = POST ] || fail "subscriber post type"
 req POST /clubs/$CLUB/posts "$OT" "{\"title\":\"Linked\",\"content\":\"x\",\"activityId\":\"$OWNER_ACT\"}"; expect 400 "manual activity cannot be linked (Strava only)"
 req POST /clubs/$CLUB/posts "$OT" '{"title":"Welcome!","content":"First run Sunday","photoUrls":["https://example.com/a.jpg"]}'; expect 201 "owner posts"
 req GET /clubs/$CLUB/posts "$MT"; expect 200 "read feed"
@@ -130,9 +133,49 @@ req PUT /clubs/$CLUB/reviews/me "$FT" '{"rating":1}'; expect 403 "follower canno
 req PUT /clubs/$CLUB/reviews/me "$MT" '{"rating":5,"comment":"Great pacers"}'; expect 200 "subscriber reviews"
 req GET /clubs/$CLUB/reviews "$FT"; expect 200 "read reviews"
 [ "$(echo "$BODY" | jq '.summary.count == 1 and .summary.average == 5')" = true ] || fail "review summary"
+# --- club social: likes, comments, shared-link preview, reshare
+req GET "/clubs/$CLUB/posts?size=1" "$FT"; POST_ID=$(echo "$BODY" | jq -r '.items[0].id')
+req PUT /clubs/$CLUB/posts/$POST_ID/like "$FT"; expect 200 "like a post"
+req PUT /clubs/$CLUB/posts/$POST_ID/like "$FT"; [ "$(echo "$BODY" | jq .likeCount)" = 1 ] || fail "like not idempotent"
+req POST /clubs/$CLUB/posts/$POST_ID/comments "$FT" '{"content":"See you Sunday!"}'; expect 201 "follower comments"
+req GET /clubs/$CLUB/posts/$POST_ID "$MT"; [ "$(echo "$BODY" | jq '.likeCount == 1 and .commentCount == 1')" = true ] || fail "post counts"
+req GET /clubs/$CLUB/posts/$POST_ID/preview ""; expect 200 "shared link preview without signing in"
+req GET /clubs/$CLUB/posts/$POST_ID/comments ""; expect 401 "comments need an account"
+req POST /clubs "$OT" '{"name":"Chennai Cyclists '"$RUN"'","city":"Chennai","clubType":"CYCLING"}'; expect 201 "owner's second club"
+CLUB2=$(echo "$BODY" | jq -r .id)
+req POST /clubs/$CLUB2/posts/reshare "$OT" "{\"postId\":\"$POST_ID\",\"comment\":\"From our running friends\"}"; expect 201 "reshare to another club"
+[ "$(echo "$BODY" | jq -r '.shared.kind + " " + .shared.clubId')" = "POST $CLUB" ] || fail "reshare content"
+req POST /clubs/$CLUB2/posts/reshare "$OT" "{\"eventId\":\"$EV2\"}"; expect 201 "reshare an event"
+req POST /clubs/$CLUB2/posts/reshare "$MT" "{\"eventId\":\"$EV2\"}"; expect 403 "only owners reshare"
+# --- chat: club group chat for subscribers, live delivery through nginx and the gateway, direct messages
+req GET /chat/clubs/$CLUB "$FT"; expect 403 "followers can't read the club chat"
+req GET /chat/clubs/$CLUB "$MT"; expect 200 "subscriber opens the club chat"
+CHAT=$(echo "$BODY" | jq -r .id)
+STREAM=$(mktemp)
+curl -s -N --max-time 8 "$WEB/api/v1/chat/stream" -H "Authorization: Bearer $MT" > "$STREAM" &
+STREAM_PID=$!
+sleep 2
+req POST /chat/conversations/$CHAT/messages "$OT" '{"body":"Rain check: 7 am tomorrow"}'; expect 201 "owner writes in the club chat"
+MSG=$(echo "$BODY" | jq -r .id)
+sleep 2
+grep -q "Rain check: 7 am tomorrow" "$STREAM" || { kill $STREAM_PID 2>/dev/null; fail "message not delivered live through $WEB ($(head -c 300 "$STREAM"))"; }
+kill $STREAM_PID 2>/dev/null; wait $STREAM_PID 2>/dev/null; rm -f "$STREAM"
+echo "ok  message delivered live"
+req GET /chat/inbox "$MT"; [ "$(echo "$BODY" | jq --arg c "$CHAT" 'map(select(.id == $c)) | .[0].unread')" = 1 ] || fail "unread count"
+req POST /chat/conversations/$CHAT/read "$MT"; expect 204 "mark read"
+req POST /chat/messages/$MSG/report "$MT" '{"reason":"smoke test"}'; expect 204 "report a message"
+req POST /chat/direct "$MT" "{\"userId\":\"$OWNER_ID\"}"; expect 200 "start a direct message"
+DM=$(echo "$BODY" | jq -r .id)
+req POST /chat/conversations/$DM/messages "$MT" '{"body":"Can I bring a friend?"}'; expect 201 "send a direct message"
+req POST /chat/direct "$FT" "{\"userId\":\"$OWNER_ID\"}"; expect 403 "no direct messages without a shared club"
+req PUT /chat/blocks/$MIA_ID "$OT"; expect 204 "block"
+req POST /chat/conversations/$DM/messages "$MT" '{"body":"hello?"}'; expect 403 "blocked"
+req DELETE /chat/blocks/$MIA_ID "$OT"; expect 204 "unblock"
+req GET "/chat/reports?status=OPEN" "$AT"; expect 200 "admin lists reported messages"
+REPORT=$(echo "$BODY" | jq -r --arg m "$MSG" '.items[] | select(.message.id == $m) | .id')
+req POST /chat/reports/$REPORT/resolve "$AT" '{"removeMessage":false}'; expect 204 "admin keeps the message"
 req DELETE /clubs/$CLUB/follow "$FT"; expect 204 "unfollow"
 # A real PNG through the gateway, then read back through the web app's /media (SeaweedFS by default)
-WEB=${WEB_URL:-http://localhost:${WEB_APP_PORT:-3000}}
 PNG=$(mktemp); printf 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAMAQEBnSg7CgAAAABJRU5ErkJggg==' | base64 -d > "$PNG"
 out=$(curl -s -w '\n%{http_code}' -X POST "$G/users/me/photo" -H "Authorization: Bearer $MT" -F "file=@$PNG;type=image/png"); CODE=${out##*$'\n'}; BODY=${out%$'\n'*}
 rm -f "$PNG"
