@@ -198,7 +198,7 @@ function RequestDetail({ request, onChanged, onBack }: { request: VerificationRe
                   <span className="truncate">{d.fileName} <span className="muted small">· {formatBytes(d.sizeBytes)} · {timeAgo(d.uploadedAt)}</span></span>
                   <Button size="sm" variant="ghost" onClick={async () => {
                     try {
-                      saveFile(await verificationApi.downloadDocument(request.id, d.id), d.fileName)
+                      await saveFile(await verificationApi.downloadDocument(request.id, d.id), d.fileName)
                     } catch (e) {
                       toast.error(e)
                     }

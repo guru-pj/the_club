@@ -35,7 +35,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>The Club uses your approximate location to show clubs and events near you.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>The Club uses the camera to scan members' QR tickets at event check-in.</string>
+	<string>The Club uses the camera to scan members' QR tickets at event check-in and to take photos for club posts and chat.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>The Club saves a photo or document you chose to save to your library.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

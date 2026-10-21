@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core'
+
 /**
  * True in the Android and iOS (Capacitor) and macOS (Tauri) builds, made with `vite build --mode native`.
  * Those apps load the UI from the device and call the API on another origin, so the HttpOnly refresh cookie
@@ -7,3 +9,11 @@ export const isNativeApp = import.meta.env.VITE_NATIVE === 'true'
 
 /** Public URL of the web app, for flows that must finish in a browser (Strava's OAuth callback). */
 export const webAppUrl = ((import.meta.env.VITE_WEB_APP_URL as string | undefined) ?? '').replace(/\/$/, '')
+
+/**
+ * The Android and iOS apps (Capacitor), which have native plugins (share sheet, files). The macOS app (Tauri) and
+ * browsers use the web APIs instead.
+ */
+export function isMobileApp(): boolean {
+  return isNativeApp && Capacitor.isNativePlatform()
+}
