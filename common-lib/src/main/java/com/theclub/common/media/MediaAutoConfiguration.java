@@ -49,14 +49,14 @@ public class MediaAutoConfiguration {
         MediaStore store = switch (properties.provider()) {
             case MediaProperties.GCS -> Gcs.store(properties);
             case MediaProperties.AZURE -> Azure.store(properties);
-            default -> s3(properties);
+            default -> new S3MediaStore(s3Client(properties), properties);
         };
         log.info("Uploads go to {} bucket {} (private documents: {}), served from {}", properties.provider(),
                 properties.bucket(), properties.privateBucketOrDefault(), properties.publicBaseUrl());
         return store;
     }
 
-    private static MediaStore s3(MediaProperties properties) {
+    static S3Client s3Client(MediaProperties properties) {
         // Static keys for self-hosted stores; otherwise the cloud's own credentials (EKS IRSA or Pod Identity, an
         // instance role, AWS_* environment variables)
         AwsCredentialsProvider credentials = properties.usesStaticS3Keys()
@@ -65,7 +65,10 @@ public class MediaAutoConfiguration {
         S3ClientBuilder builder = S3Client.builder()
                 .region(Region.of(properties.region()))
                 .credentialsProvider(credentials)
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(properties.pathStyle()).build())
+                // No aws-chunked uploads: over plain HTTP the SDK would send them, and SeaweedFS (unlike S3) then stores
+                // and serves "Content-Encoding: aws-chunked" with the object
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(properties.pathStyle())
+                        .chunkedEncodingEnabled(false).build())
                 .httpClient(UrlConnectionHttpClient.create())
                 // Only the checksums S3 requires: the SDK's default extra checksums are rejected by some S3-compatible
                 // stores (SeaweedFS answers "The Content-Md5 you specified is not valid")
@@ -74,7 +77,7 @@ public class MediaAutoConfiguration {
         if (!MediaProperties.isBlank(properties.endpoint())) {
             builder.endpointOverride(URI.create(properties.endpoint()));
         }
-        return new S3MediaStore(builder.build(), properties);
+        return builder.build();
     }
 
     /** Separate classes, so the Google and Azure SDK types are only loaded when that provider is used. */

@@ -62,7 +62,7 @@ Internal APIs, security model and conventions: [`docs/SERVICE_CONTRACTS.md`](doc
 ```bash
 cd web-app
 npm install
-npm run dev          # http://localhost:5173, proxies /api to http://localhost:8080 (override with GATEWAY_URL)
+npm run dev          # http://localhost:5173, proxies /api to http://localhost:8080 (GATEWAY_URL) and /media to http://localhost:3000 (MEDIA_URL)
 npm test             # unit tests (vitest)
 npm run e2e          # browser end-to-end flow (needs Chrome; set CHROME_PATH, ADMIN_EMAIL, ADMIN_PASSWORD)
 ```
@@ -354,6 +354,7 @@ Then follow the [User Guide](#-user-guide) below.
 | Connect real Strava accounts | [`docs/STRAVA_SETUP.md`](docs/STRAVA_SETUP.md) |
 | Dashboards, traces, logs and alerts | the monitoring command under [Day-to-day commands](#day-to-day-commands), then [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) |
 | Run on Kubernetes, locally with kind or in the cloud | [`docs/KUBERNETES.md`](docs/KUBERNETES.md) |
+| Deploy on AWS, Google Cloud or Azure (managed databases, storage, Redis, secrets, TLS, workload identity) | [`docs/CLOUD_DEPLOYMENT.md`](docs/CLOUD_DEPLOYMENT.md) |
 | Deploy to a production server | [`docs/DEPLOY_LINUX.md`](docs/DEPLOY_LINUX.md) (step by step), [`docs/PRODUCTION.md`](docs/PRODUCTION.md) (reference) |
 | Serve the app from a Mac | [`docs/DEPLOY_MACOS.md`](docs/DEPLOY_MACOS.md) |
 

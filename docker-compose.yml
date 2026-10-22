@@ -29,12 +29,15 @@ x-spring-env: &spring-env
 
 # Uploaded images (user-, club- and event-service): the bundled SeaweedFS S3 store, or any S3-compatible service
 # when MEDIA_S3_ENDPOINT points elsewhere (see docs/PRODUCTION.md)
+# An empty MEDIA_S3_ENDPOINT / MEDIA_S3_ACCESS_KEY in .env stays empty (AWS itself, GCS or Azure; the VM's own cloud
+# identity), so these two use "-" rather than ":-"
 x-media-env: &media-env
   MEDIA_PROVIDER: ${MEDIA_PROVIDER:-s3}
-  MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-http://seaweedfs:8333}
+  MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT-http://seaweedfs:8333}
   MEDIA_PRIVATE_BUCKET: ${MEDIA_PRIVATE_BUCKET:-}
   MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-media}
-  MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY:-theclub-media}
+  MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY-theclub-media}
+  MEDIA_GCS_PROJECT_ID: ${MEDIA_GCS_PROJECT_ID:-}
   MEDIA_S3_REGION: ${MEDIA_S3_REGION:-us-east-1}
   MEDIA_S3_PATH_STYLE: ${MEDIA_S3_PATH_STYLE:-true}
   MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-/media}

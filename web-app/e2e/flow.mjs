@@ -24,8 +24,8 @@ const CLUB = `Marina Runners ${RUN % 100000}`
 // Owner and member "devices" report the same spot, so the club is ~0 km from the member. Each run picks its own
 // spot, so clubs left by earlier runs aren't "near" this one.
 const HERE = { latitude: randomInt(-600_000, 600_000) / 1e4, longitude: randomInt(-1_700_000, 1_700_000) / 1e4 }
-// A real 2×2 PNG, so the server's content check accepts it
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGNk+M/AwMDAxMDAwMDAAAAMAQEBnSg7CgAAAABJRU5ErkJggg==', 'base64')
+// A real, decodable 2×2 PNG: the server checks the content, and the browser must be able to render it
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGOQz08BIgYIBQAZcgPJP3zZ5wAAAABJRU5ErkJggg==', 'base64')
 const image = (name) => ({ name, mimeType: 'image/png', buffer: PNG })
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\n%%EOF\n')
 const problems = []

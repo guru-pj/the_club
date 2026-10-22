@@ -10,14 +10,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.Transferable;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
-import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
@@ -58,21 +51,12 @@ class S3MediaStoreTest {
     @BeforeAll
     static void setUp() {
         String endpoint = "http://" + SEAWEED.getHost() + ":" + SEAWEED.getMappedPort(8333);
-        s3 = S3Client.builder()
-                .endpointOverride(URI.create(endpoint))
-                .region(Region.US_EAST_1)
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
-                .httpClient(UrlConnectionHttpClient.create())
-                // Only the checksums S3 requires: the SDK's default extra checksums are rejected by some S3-compatible
-                // stores (SeaweedFS answers "The Content-Md5 you specified is not valid")
-                .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
-                .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
-                .build();
+        MediaProperties properties = new MediaProperties("s3", endpoint, null, "media", null, ACCESS_KEY, SECRET_KEY,
+                null, null, "/media", true, DataSize.ofKilobytes(64));
+        // the client the application builds, so its settings are what's tested
+        s3 = MediaAutoConfiguration.s3Client(properties);
         // No bucket yet: the first upload creates it
-        store = new S3MediaStore(s3, new MediaProperties("s3", endpoint, null, "media", null, ACCESS_KEY, SECRET_KEY,
-                null, null, "/media", true, DataSize.ofKilobytes(64)));
+        store = new S3MediaStore(s3, properties);
     }
 
     @Test
@@ -85,6 +69,8 @@ class S3MediaStoreTest {
         // The declared type is ignored: the stored type comes from the bytes
         assertThat(head.contentType()).isEqualTo("image/png");
         assertThat(head.cacheControl()).contains("immutable");
+        // served as-is to browsers, so no transfer encoding may be stored with it
+        assertThat(head.contentEncoding()).isNull();
     }
 
     @Test

@@ -5,6 +5,10 @@ the seven Spring services, the web app, optional in-cluster databases, backups, 
 NetworkPolicies, autoscaling and Prometheus scraping. Docker Compose (`docker-compose.yml`) keeps working
 unchanged for single-server deployments and local development.
 
+**On AWS, Google Cloud or Azure,** layer `values-aws.yaml`, `values-gcp.yaml` or `values-azure.yaml` on top of
+`values-prod.yaml`, and follow [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md). It walks through managed databases, object
+storage, Redis, the secret manager, TLS and workload identity, step by step.
+
 - [How it maps from Docker Compose](#how-it-maps-from-docker-compose)
 - [Quick start on your laptop (kind)](#quick-start-on-your-laptop-kind)
 - [Production install](#production-install)
@@ -163,18 +167,19 @@ Simplest approach (fill in the third-party files in `secrets/` first):
 kubectl create namespace the-club
 kubectl -n the-club create secret generic the-club-secrets --from-file=secrets/
 ```
-With a secret manager, use the **External Secrets Operator** so nothing is stored in git or Helm history:
+With a secret manager (AWS Secrets Manager, Google Secret Manager, Azure Key Vault, Vault, …), let the chart create
+an **External Secrets Operator** `ExternalSecret`, so nothing is stored in git or Helm history:
 ```yaml
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata: {name: the-club-secrets, namespace: the-club}
-spec:
-  refreshInterval: 1h
-  secretStoreRef: {name: aws-secrets-manager, kind: ClusterSecretStore}
-  target: {name: the-club-secrets}
-  dataFrom:
-    - extract: {key: prod/the-club}      # a JSON object whose keys are the names in the table above
+secrets:
+  name: the-club-secrets
+  external:
+    enabled: true
+    secretStoreRef: {name: aws-secrets-manager, kind: ClusterSecretStore}
+    extraKeys: [razorpay-key-secret, razorpay-webhook-secret, zeptomail-token]   # the optional keys you use
 ```
+Each key is read from a secret named `the-club-<key with dots replaced by dashes>`, for example
+`the-club-theclub-jwt-private-key`. Upload commands for each cloud are in
+[CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md#steps-common-to-every-cloud).
 Sealed Secrets (`kubeseal`) also works: seal the output of the `kubectl create secret … --dry-run=client -o yaml`
 command above. After rotating a secret, restart the affected Deployments
 (`kubectl -n the-club rollout restart deploy`).
@@ -212,17 +217,22 @@ The most-used values (all of them are commented in [`values.yaml`](../deploy/hel
 | `config.payments.provider`, `config.payments.razorpayKeyId` | `razorpay` in production |
 | `config.mail.*` | `provider` (`zeptomail`/`smtp`/`log`), sender, ZeptoMail region URL, SMTP host |
 | `config.strava.*` | Client ID, redirect and webhook URLs, sync window |
-| `config.media.*` | Uploaded images: S3 `endpoint`, `bucket`, `accessKey` (secret key: `media-s3-secret-key` in the Secret), `publicBaseUrl` (the bucket's public URL or CDN). Empty endpoint = uploads refused with a clear message. The chart doesn't run an object store; use managed S3/R2, or set `mediaUpstream` to proxy `/media/` to one you run |
+| `config.media.*` | Uploaded files: `provider` (`s3`/`gcs`/`azure`), `bucket` (public images), `privateBucket` (documents), `endpoint`, `accessKey` (secret key: `media-s3-secret-key`; empty = workload identity), `publicBaseUrl` (the bucket's public URL or CDN). No bucket = uploads refused with a clear message. The chart doesn't run an object store; use a managed one, or set `mediaUpstream` to proxy `/media/` to one you run. See [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md#reference-uploaded-files) |
+| `config.events.defaultCurrency` | Currency of new events (ISO 4217) |
+| `redis.*` | Shared rate limits and instant cross-replica chat: `enabled`, `embedded.enabled` (in-cluster) or `host`/`port`/`ssl` (managed; password `redis-password`) |
+| `serviceAccount.annotations`, `podLabels` | Workload identity (IRSA, GKE Workload Identity, AKS workload identity) |
+| `secrets.external.*` | External Secrets Operator sync from a cloud secret manager |
+| `extraObjects` | Any additional manifests (templated), e.g. a GKE BackendConfig |
 | `config.gateway.rateLimit*PerMinute` | Per gateway **pod** (see scaling) |
 | `config.extraEnv` | Any extra environment variable for every service |
 | `secrets.name` / `secrets.create` + `secrets.data` | Existing Secret name, or create one from values (dev only) |
 | `databases.mysql.*`, `databases.postgres.*` | Managed database host, port, JDBC params (TLS) |
 | `databases.embedded.enabled` | In-cluster MySQL + PostgreSQL (development/evaluation) |
-| `backups.*` | Nightly dumps of the embedded databases (`schedule: "02:30"`, `retentionDays`, per-engine `storage`). On demand: `kubectl -n the-club exec deploy/the-club-backup-mysql -- bash /opt/theclub/scripts/backup.sh run` |
+| `backups.*` | Nightly dumps of the embedded databases (`schedule: "02:30"`, `retentionDays`, per-engine `storage`), copied off-site with `backups.offsite`. On demand: `kubectl -n the-club exec deploy/the-club-backup-mysql -- bash /opt/theclub/scripts/backup.sh run` |
 | `serviceDefaults.*` / `services.<name>.*` | Replicas, resources, autoscaling, probes, scheduling per service |
 | `webApp.*` | Web app replicas, resources, `realIpFrom` (trusted proxy ranges), DNS resolver |
 | `ingress.*` / `httpRoute.*` | How the web app is exposed |
-| `networkPolicy.*` | Controller namespace, Prometheus namespace, database/OTLP/internet CIDRs and ports |
+| `networkPolicy.*` | Controller namespace, Prometheus namespace, database/OTLP/internet CIDRs and ports, `metadataServer` (GKE Workload Identity) |
 | `observability.*` | JSON logs, OTLP tracing, ServiceMonitors / scrape annotations |
 | `services.discovery.enabled` | Run Eureka instead of Kubernetes Service discovery (not recommended) |
 
@@ -249,8 +259,8 @@ helm -n the-club rollback the-club <revision> --wait
   - The email outbox (notification-service) claims rows with `SELECT … FOR UPDATE SKIP LOCKED`.
   - The Strava webhook worker (activity-service) leases rows with a conditional `UPDATE`.
   - Creating the bootstrap admin tolerates two user-service pods racing.
-- **Rate limits count per gateway pod.** The limiter is in memory, so the effective limit per client IP is the configured value × the number of gateway pods. Size `config.gateway.rateLimitStrictPerMinute` accordingly; a shared Redis-backed limiter is on the roadmap.
-- **Live chat:** `/api/v1/chat/stream` is a Server-Sent Events response that stays open up to 15 minutes, with a keep-alive every 20 seconds. Make sure the ingress controller or load balancer doesn't buffer responses and allows at least 60 seconds idle (Traefik's defaults are fine; for an AWS ALB, keep the idle timeout at 60 s or more). With several club-service replicas, messages reach people connected to another replica within about 2 seconds (each replica checks the database), so no broker or sticky sessions are needed.
+- **Rate limits:** with `redis.enabled`, every gateway pod shares one count per client IP. Without Redis, the limiter is in memory, so the effective limit is the configured value × the number of gateway pods. If Redis becomes unreachable, the limiter lets requests through and counts the errors (`theclub_gateway_rate_limit_errors_total`).
+- **Live chat:** `/api/v1/chat/stream` is a Server-Sent Events response that stays open up to 15 minutes, with a keep-alive every 20 seconds. Make sure the ingress controller or load balancer doesn't buffer responses and allows at least 60 seconds idle (Traefik's defaults are fine; for an AWS ALB, keep the idle timeout at 60 s or more). With several club-service replicas and `redis.enabled`, messages reach people connected to another replica instantly through Redis pub/sub. Without Redis, they arrive within about 2 seconds (each replica checks the database). Sticky sessions are never needed.
 - **Real client IPs:** nginx in the web app trusts `X-Forwarded-For` from `webApp.realIpFrom` (private ranges by default), so rate limits see real client IPs behind the ingress controller. Narrow it to your controller or load-balancer range.
 
 ---

@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/api': { target: env.GATEWAY_URL || 'http://localhost:8080', changeOrigin: true },
+        // uploaded images, served by the web-app container's nginx from the bucket
+        '/media': { target: env.MEDIA_URL || 'http://localhost:3000', changeOrigin: true },
       },
     },
     test: {

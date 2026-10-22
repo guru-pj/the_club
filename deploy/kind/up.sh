@@ -66,7 +66,7 @@ else
 fi
 "$KUBECTL" config use-context "kind-$CLUSTER" >/dev/null
 
-TRAEFIK_ARGS=(--set service.type=NodePort --set ports.web.nodePort=30080
+TRAEFIK_ARGS=(--set service.spec.type=NodePort --set ports.web.nodePort=30080
               --set ingressClass.isDefaultClass=true --set deployment.replicas=1)
 "$HELM" repo add traefik https://traefik.github.io/charts >/dev/null 2>&1 || true
 "$HELM" repo update traefik >/dev/null

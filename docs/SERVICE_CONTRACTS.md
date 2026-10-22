@@ -169,6 +169,12 @@ Proof documents are stored in the media bucket under `private/verification/{requ
 `verifiedAt`. Owners update them with `PUT /api/v1/clubs/{id}` (an empty string clears a field); only admins can change
 the verified `name` (403 `VERIFIED_NAME`). `POST`/`DELETE /api/v1/clubs/{id}/cover` uploads or removes the cover photo.
 
+### Event defaults
+
+`GET /api/v1/events/defaults` (any signed-in user) returns `{currency}`: the currency of new events
+(`EVENTS_DEFAULT_CURRENCY`, ISO 4217, default `INR`). An event created without `currency` gets it; the web app's event
+form starts from it.
+
 ### Event lifecycle
 
 | Status | Meaning |
