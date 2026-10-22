@@ -88,6 +88,57 @@
             <artifactId>url-connection-client</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- AWS credentials from the cluster (EKS IRSA / Pod Identity) instead of static keys -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sts</artifactId>
+            <optional>true</optional>
+            <exclusions>
+                <exclusion>
+                    <groupId>software.amazon.awssdk</groupId>
+                    <artifactId>netty-nio-client</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>software.amazon.awssdk</groupId>
+                    <artifactId>apache-client</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- Google Cloud Storage (MEDIA_PROVIDER=gcs), with Workload Identity / application default credentials -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-storage</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <!-- Azure Blob Storage (MEDIA_PROVIDER=azure), with workload / managed identity; the JDK HTTP client instead
+             of Netty -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <optional>true</optional>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.azure</groupId>
+                    <artifactId>azure-core-http-netty</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <optional>true</optional>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.azure</groupId>
+                    <artifactId>azure-core-http-netty</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core-http-jdk-httpclient</artifactId>
+            <optional>true</optional>
+        </dependency>
         <!-- Only needed by services that use Feign clients; the interceptor config is conditional on it. -->
         <dependency>
             <groupId>io.github.openfeign</groupId>

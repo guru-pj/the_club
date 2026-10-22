@@ -1,0 +1,71 @@
+{{- if and .Values.redis.enabled .Values.redis.embedded.enabled }}
+{{- $secretName := include "theclub.secretName" . -}}
+# A small in-cluster Redis for shared rate limits and chat between replicas. It only holds short-lived counters and
+# passes messages on, so it keeps nothing on disk; a restart loses nothing that matters. Use a managed Redis
+# (redis.embedded.enabled=false, redis.host) for high availability.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "redis") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "redis") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "theclub.selectorLabels" (dict "root" $ "component" "redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "theclub.labels" (dict "root" $ "component" "redis") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: redis
+          image: {{ .Values.redis.embedded.image }}
+          command: ["sh", "-c"]
+          args:
+            - exec redis-server --save "" --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru --requirepass "$REDIS_PASSWORD"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ $secretName }}, key: redis-password}
+          ports:
+            - {name: redis, containerPort: 6379}
+          readinessProbe:
+            tcpSocket: {port: redis}
+          livenessProbe:
+            tcpSocket: {port: redis}
+            initialDelaySeconds: 10
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "theclub.serviceName" (dict "root" $ "component" "redis") }}
+  labels:
+    {{- include "theclub.labels" (dict "root" $ "component" "redis") | nindent 4 }}
+spec:
+  selector:
+    {{- include "theclub.selectorLabels" (dict "root" $ "component" "redis") | nindent 4 }}
+  ports:
+    - {name: redis, port: 6379, targetPort: redis}
+{{- end }}

@@ -1,6 +1,6 @@
 # The Club — Production Deployment Guide
 
-This guide covers running The Club on a single Docker host: a VM or bare-metal server with Docker Engine and Compose v2. The [roadmap](#10-roadmap-beyond-a-single-host) lists what changes for multi-host or Kubernetes deployments.
+This guide covers running The Club on a single Docker host: a VM or bare-metal server with Docker Engine and Compose v2. The [roadmap](#11-roadmap-beyond-a-single-host) lists what changes for multi-host or Kubernetes deployments.
 
 For a guided walkthrough from a machine with nothing installed, see [DEPLOY_LINUX.md](DEPLOY_LINUX.md) or [DEPLOY_MACOS.md](DEPLOY_MACOS.md). This guide is the reference behind them.
 
@@ -269,7 +269,7 @@ Rate-limited responses are `429` with a `Retry-After` header. Token refresh is d
 
 ## 6a. Uploaded images
 
-Profile pictures, club logos and photos, and event images go to an S3-compatible bucket.
+Profile pictures, club logos and photos, and event images go to object storage: any S3-compatible store (`MEDIA_PROVIDER=s3`, the default), Google Cloud Storage (`gcs`) or Azure Blob Storage (`azure`). Settings for each are in [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md#reference-uploaded-files).
 
 - **Default (single host):** the bundled `seaweedfs` container, with data in the `media_data` volume. `scripts/generate-secrets.sh` creates its key (`secrets/media-s3-secret-key`) and access rules (`secrets/seaweedfs-s3.json`): only the services can write, and anyone can read. The web app's nginx serves the bucket read-only at `/media/`, so nothing else is exposed.
 - **Managed storage (AWS S3, Cloudflare R2, …):**
@@ -285,7 +285,8 @@ Profile pictures, club logos and photos, and event images go to an S3-compatible
      ```
   3. Put the provider's secret key in `secrets/media-s3-secret-key`.
   4. Restart user-, club- and event-service. The `seaweedfs` container can then be removed.
-- **Private documents:** proof documents from club applications are stored in the same bucket under `private/`. The web app's nginx refuses `/media/private/`, and club-service serves them only to the applicant and admins. With managed storage whose bucket is publicly readable, those objects are protected only by their random names; to be stricter, deny public reads of the `private/` prefix in the bucket policy (the services read them with their own key).
+- **The VM's own cloud identity instead of keys:** leave `MEDIA_S3_ENDPOINT` and `MEDIA_S3_ACCESS_KEY` empty for AWS S3 with an instance role, or use `MEDIA_PROVIDER=gcs` (the VM's service account) or `MEDIA_PROVIDER=azure` (its managed identity). See [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md#other-clouds-and-your-own-servers).
+- **Private documents:** proof documents from club applications are stored under `private/` in the images bucket, or in a separate bucket when `MEDIA_PRIVATE_BUCKET` is set. The web app's nginx refuses `/media/private/`, and club-service serves them only to the applicant and admins. With managed storage, set `MEDIA_PRIVATE_BUCKET` to a bucket with no public access; otherwise those objects are protected only by their random names.
 - **Limits:** JPEG, PNG and WebP only (checked by content, so SVG and renamed files are refused), up to `MEDIA_MAX_SIZE` (5 MB).
 - **Backups:** the database backups don't include images. With SeaweedFS, copy the `media_data` volume off the host as well, for example `docker run --rm -v the_club_media_data:/data:ro -v "$PWD":/out alpine tar czf /out/media-$(date +%F).tgz -C /data .`. Managed object storage has its own versioning and replication.
 
@@ -299,7 +300,9 @@ Profile pictures, club logos and photos, and event images go to an S3-compatible
 - **Retention:** messages are kept until deleted. To keep less, schedule a cleanup, for example
   `DELETE FROM chat_messages WHERE created_at < NOW() - INTERVAL 365 DAY AND id NOT IN (SELECT message_id FROM chat_reports)`.
 - **Several club-service replicas:** each one checks the database for new messages every 2 seconds, so a message reaches
-  people connected to another replica within about 2 seconds. No message broker is needed.
+  people connected to another replica within about 2 seconds. With Redis (`CHAT_FANOUT=redis`, which the Helm chart
+  sets when `redis.enabled`), delivery across replicas is instant; see
+  [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md#reference-redis).
 
 ## 7. Backups and restore
 
@@ -315,11 +318,15 @@ docker compose -f docker-compose.yml exec db-backup-mysql ls -lh /backups/mysql 
 
 Stop the owning service before restoring, for example `docker compose -f docker-compose.yml stop user-service`, and start it again afterwards.
 
-**Off-site copies are required for real disaster recovery.** The volume lives on the same disk as the databases. Copy `/backups` to object storage on a schedule, for example a cron job on the host:
+**Off-site copies are required for real disaster recovery.** The volume lives on the same disk as the databases. The `backup-offsite` container copies new dumps every hour to any object store (S3, Google Cloud Storage, Azure Blob, R2, …) with rclone:
 ```bash
-docker run --rm -v the_club_backups:/backups:ro -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
-  amazon/aws-cli s3 sync /backups s3://<bucket>/the-club/ --storage-class STANDARD_IA
+# in .env, for example:
+#   BACKUP_OFFSITE_TARGET=:s3,provider=AWS,region=eu-west-1:my-backups/the-club
+#   RCLONE_S3_ACCESS_KEY_ID=...   RCLONE_S3_SECRET_ACCESS_KEY=...
+docker compose -f docker-compose.yml --profile offsite up -d backup-offsite
+docker compose -f docker-compose.yml logs backup-offsite     # "dumps copied off-site" after each run
 ```
+More targets and the permissions to give it: [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md#reference-off-site-backups).
 Test restores regularly; a backup you have never restored is not a backup. Managed databases (RDS, Cloud SQL) with point-in-time recovery are the next step up.
 
 ## 8. Rotating the JWT signing key
@@ -397,8 +404,8 @@ Recommended repository settings:
 
 ## 11. Roadmap beyond a single host
 
-- **Kubernetes:** a Helm chart with Deployments of at least 2 replicas, readiness and liveness probes on `/actuator/health/{readiness,liveness}`, HorizontalPodAutoscalers, and Secrets mounted at `/run/secrets`. Kubernetes Services can replace Eureka.
-- **Rate limiting across replicas:** the gateway's limiter is in-memory and per instance. With several gateways, switch to Spring Cloud Gateway's Redis `RequestRateLimiter`.
+- **Kubernetes:** the Helm chart in `deploy/helm/the-club` ([KUBERNETES.md](KUBERNETES.md)), with ready-made settings for AWS, Google Cloud and Azure ([CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md)).
+- **Rate limiting and chat across replicas:** on Kubernetes, `redis.enabled` makes every gateway share one rate-limit count and delivers chat messages instantly across club-service replicas. A single Compose host runs one of each, so it needs neither.
 - **Service discovery:** Eureka runs as a single node here. Run a peer-replicated pair, or use platform discovery.
 - **Observability:** OpenTelemetry tracing across services, Prometheus metrics (`/actuator/prometheus`) with Grafana dashboards and alerts, and centralised logs (Loki or ELK).
 - **Messaging:** move notifications and emails to a broker (Kafka or RabbitMQ) with an outbox, so a crash never loses them.

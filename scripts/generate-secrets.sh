@@ -87,6 +87,10 @@ write_secret "grafana-admin-password" "$(random_value 20)"
 #     must reconnect Strava)
 write_secret "strava-token-encryption-key" "$(openssl rand -base64 32 | tr -d '\n')"
 
+# --- Password of the Redis that shares rate limits and chat between replicas (Kubernetes: redis.enabled). Unused by
+#     Docker Compose, which runs one replica of each service.
+write_secret "redis-password" "$(random_value 32)"
+
 # --- S3 secret key for uploaded images (profile pictures, club photos, event images). The bundled SeaweedFS reads
 #     its access rules from seaweedfs-s3.json, rebuilt from this key on every run; with an external S3 store
 #     (AWS, R2, ...) put that provider's secret key here instead.

@@ -44,6 +44,9 @@
              scans. Drop each override once Spring Boot's own version is at least this. -->
         <!-- S3 client for uploaded images (MinIO when self-hosted, any S3-compatible store in production) -->
         <aws-sdk.version>2.57.1</aws-sdk.version>
+        <!-- Google Cloud Storage and Azure Blob Storage for uploaded images on those clouds (MEDIA_PROVIDER=gcs|azure) -->
+        <google-cloud-bom.version>26.89.0</google-cloud-bom.version>
+        <azure-sdk-bom.version>1.3.8</azure-sdk-bom.version>
         <tomcat.version>11.0.27</tomcat.version>
         <freemarker.version>2.3.35</freemarker.version>
     </properties>
@@ -61,6 +64,20 @@
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>bom</artifactId>
                 <version>${aws-sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.cloud</groupId>
+                <artifactId>libraries-bom</artifactId>
+                <version>${google-cloud-bom.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.azure</groupId>
+                <artifactId>azure-sdk-bom</artifactId>
+                <version>${azure-sdk-bom.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

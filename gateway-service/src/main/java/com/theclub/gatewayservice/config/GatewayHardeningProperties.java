@@ -21,7 +21,7 @@ public record GatewayHardeningProperties(boolean trustForwardedFor, Long maxBody
             maxBodyBytes = 1024L * 1024L;
         }
         if (rateLimit == null) {
-            rateLimit = new RateLimit(null, null, null, null, null, null);
+            rateLimit = new RateLimit(null, null, null, null, null, null, null);
         }
     }
 
@@ -33,9 +33,15 @@ public record GatewayHardeningProperties(boolean trustForwardedFor, Long maxBody
      * @param strictPaths      path patterns covered by the strict bucket.
      * @param maxTrackedClients upper bound on remembered client IPs (memory guard).
      * @param idleEviction     buckets unused for this long are dropped.
+     * @param store            memory: each gateway replica counts on its own (the limit multiplies with the replica
+     *                         count); redis: one count shared by every replica (needs spring.data.redis.*).
      */
     public record RateLimit(Boolean enabled, Bucket strict, Bucket general, List<String> strictPaths,
-                            Integer maxTrackedClients, Duration idleEviction) {
+                            Integer maxTrackedClients, Duration idleEviction, String store) {
+
+        public static final String MEMORY = "memory";
+        public static final String REDIS = "redis";
+
 
         public RateLimit {
             if (enabled == null) {
@@ -58,6 +64,10 @@ public record GatewayHardeningProperties(boolean trustForwardedFor, Long maxBody
             }
             if (idleEviction == null) {
                 idleEviction = Duration.ofMinutes(10);
+            }
+            store = store == null || store.isBlank() ? MEMORY : store.trim().toLowerCase(java.util.Locale.ROOT);
+            if (!store.equals(MEMORY) && !store.equals(REDIS)) {
+                throw new IllegalArgumentException("theclub.gateway.rate-limit.store must be memory or redis, got " + store);
             }
         }
     }

@@ -10,8 +10,8 @@ import java.util.function.LongSupplier;
 /**
  * In-memory per-key token buckets with bounded memory.
  * <p>
- * State is local to this gateway instance: with several gateway replicas each enforces its own limit, so switch to
- * Spring Cloud Gateway's Redis RequestRateLimiter when scaling out.
+ * State is local to this gateway instance: with several gateway replicas each enforces its own limit. Set
+ * {@code theclub.gateway.rate-limit.store=redis} to share one count ({@link RedisClientLimiter}).
  */
 public class RateLimiter {
 

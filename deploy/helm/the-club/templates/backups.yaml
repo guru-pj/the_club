@@ -55,9 +55,16 @@ spec:
     metadata:
       labels:
         {{- include "theclub.labels" (dict "root" $ "component" "backup") | nindent 8 }}
+        {{- with $.Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         theclub.io/backup-engine: {{ $engine }}
     spec:
       automountServiceAccountToken: false
+      {{- if $b.offsite.enabled }}
+      # the cloud identity (IRSA / Workload Identity / AKS workload identity) the off-site copy authenticates with
+      serviceAccountName: {{ include "theclub.serviceAccountName" $ }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -103,7 +110,54 @@ spec:
             - name: secrets
               mountPath: /run/secrets
               readOnly: true
+        {{- if $b.offsite.enabled }}
+        # Copies finished dumps to object storage (S3, GCS, Azure Blob, …) with rclone. Only new files are uploaded;
+        # the bucket's own lifecycle rules decide how long they're kept there.
+        - name: offsite
+          image: {{ $b.offsite.image }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              while true; do
+                # the volume already holds <engine>/<database>-<timestamp>.sql.gz
+                rclone copy /backups "$BACKUP_OFFSITE_TARGET" --min-age 2m --include "*.sql.gz" \
+                  && echo "[offsite $(date -u +%FT%TZ)] {{ $engine }} dumps copied off-site" \
+                  || echo "[offsite $(date -u +%FT%TZ)] ERROR: copying {{ $engine }} dumps failed"
+                sleep {{ $b.offsite.intervalSeconds }}
+              done
+          env:
+            - name: BACKUP_OFFSITE_TARGET
+              value: {{ required "backups.offsite.target is required when backups.offsite.enabled" $b.offsite.target | quote }}
+            - name: HOME
+              value: /tmp
+            {{- range $name, $key := $b.offsite.secretEnv }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef: {name: {{ $secretName }}, key: {{ $key }}}
+            {{- end }}
+            {{- range $name, $value := $b.offsite.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+        {{- end }}
       volumes:
+        {{- if $b.offsite.enabled }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
         - name: backups
           persistentVolumeClaim:
             claimName: {{ include "theclub.fullname" $ }}-backups-{{ $engine }}

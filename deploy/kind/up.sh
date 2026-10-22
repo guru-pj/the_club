@@ -9,6 +9,7 @@
 #   ./deploy/kind/up.sh                 # app at http://localhost:8088
 #   KIND_HTTP_PORT=9090 ./deploy/kind/up.sh
 #   SKIP_BUILD=1 ./deploy/kind/up.sh    # reuse images built earlier
+#   KIND_EXTRA_VALUES=my-values.yaml ./deploy/kind/up.sh   # more chart values on top of values-dev.yaml
 # Tear down: ./deploy/kind/down.sh
 # ============================================================
 set -euo pipefail
@@ -23,6 +24,9 @@ TAG="dev"
 SECRETS_DIR="${SECRETS_DIR:-$ROOT/secrets}"
 KIND="${KIND:-kind}"; KUBECTL="${KUBECTL:-kubectl}"; HELM="${HELM:-helm}"
 SERVICES=(gateway-service user-service auth-service activity-service club-service event-service notification-service)
+
+VALUES=(-f "$ROOT/deploy/helm/the-club/values-dev.yaml")
+[ -n "${KIND_EXTRA_VALUES:-}" ] && VALUES+=(-f "$KIND_EXTRA_VALUES")
 
 step() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
 
@@ -62,7 +66,7 @@ else
 fi
 "$KUBECTL" config use-context "kind-$CLUSTER" >/dev/null
 
-TRAEFIK_ARGS=(--set service.type=NodePort --set ports.web.nodePort=30080
+TRAEFIK_ARGS=(--set service.spec.type=NodePort --set ports.web.nodePort=30080
               --set ingressClass.isDefaultClass=true --set deployment.replicas=1)
 "$HELM" repo add traefik https://traefik.github.io/charts >/dev/null 2>&1 || true
 "$HELM" repo update traefik >/dev/null
@@ -71,7 +75,7 @@ TRAEFIK_ARGS=(--set service.type=NodePort --set ports.web.nodePort=30080
 # cannot reach registries itself (corporate proxies, air-gapped machines).
 step "Preloading third-party images"
 images=$( { "$HELM" template traefik traefik/traefik "${TRAEFIK_ARGS[@]}";
-            "$HELM" template "$RELEASE" "$ROOT/deploy/helm/the-club" -f "$ROOT/deploy/helm/the-club/values-dev.yaml"; } \
+            "$HELM" template "$RELEASE" "$ROOT/deploy/helm/the-club" "${VALUES[@]}"; } \
           | sed -n 's/^ *image: *"\{0,1\}\([^" ]*\)"\{0,1\}.*/\1/p' | grep -v "^$REGISTRY/" | sort -u)
 for image in $images; do
     docker image inspect "$image" >/dev/null 2>&1 || docker pull -q --platform "linux/$ARCH" "$image" >/dev/null
@@ -99,7 +103,7 @@ echo "secret $RELEASE-secrets from $SECRETS_DIR"
 
 step "Installing the chart (first start runs database migrations; a few minutes)"
 "$HELM" upgrade --install "$RELEASE" "$ROOT/deploy/helm/the-club" -n "$NAMESPACE" \
-    -f "$ROOT/deploy/helm/the-club/values-dev.yaml" \
+    "${VALUES[@]}" \
     --set config.appBaseUrl="http://localhost:$PORT" \
     --set config.corsAllowedOrigins="http://localhost:$PORT" \
     --set config.strava.redirectUri="http://localhost:$PORT/strava/callback" \

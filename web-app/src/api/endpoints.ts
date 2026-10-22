@@ -208,6 +208,8 @@ export const eventsApi = {
   setRegistrationWindow: (id: UUID, registrationOpensAt: LocalDateTime, registrationClosesAt?: LocalDateTime | null) =>
     request<ClubEvent>('PATCH', `/api/v1/events/${id}/registration-window`, { body: { registrationOpensAt, registrationClosesAt } }),
   cancel: (id: UUID) => request<ClubEvent>('POST', `/api/v1/events/${id}/cancel`),
+  /** this deployment's defaults for new events */
+  defaults: () => request<{ currency: string }>('GET', '/api/v1/events/defaults'),
   publish: (id: UUID) => request<ClubEvent>('POST', `/api/v1/events/${id}/publish`),
   complete: (id: UUID) => request<ClubEvent>('POST', `/api/v1/events/${id}/complete`),
   stats: (id: UUID) => request<EventStatsRow>('GET', `/api/v1/events/${id}/stats`),

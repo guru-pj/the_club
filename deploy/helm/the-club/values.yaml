@@ -58,22 +58,29 @@ config:
     # webhook worker (replica-safe: rows are leased with a conditional UPDATE)
     workerEnabled: true
     workerBatchSize: 25
-  # Uploaded images (profile pictures, club photos, event images): an S3-compatible bucket. Empty endpoint = uploads
-  # are refused with a clear message. The secret key is the media-s3-secret-key entry of the Secret. Browsers load
-  # images from publicBaseUrl: the bucket's public URL (or a CDN in front of it), or "/media" when mediaUpstream is
-  # set and the web app's nginx proxies the bucket.
+  # Uploads (profile pictures, club photos, event images, private documents): object storage. Empty bucket = uploads
+  # are refused with a clear message. Browsers load images from publicBaseUrl: the bucket's public URL (or a CDN in
+  # front of it), or "/media" when mediaUpstream is set and the web app's nginx proxies the bucket.
+  # Credentials: leave accessKey empty to use the cloud's identity through serviceAccount.annotations (EKS IRSA /
+  # Pod Identity, GKE Workload Identity, AKS workload identity); otherwise the media-s3-secret-key Secret entry (s3) or
+  # media-azure-connection-string (azure). Ready-made settings per cloud: values-aws.yaml, values-gcp.yaml, values-azure.yaml.
   media:
-    endpoint: ""                     # e.g. https://s3.eu-central-1.amazonaws.com or https://<account>.r2.cloudflarestorage.com
+    provider: s3                     # s3 (AWS S3, R2, SeaweedFS, MinIO) | gcs | azure
+    endpoint: ""                     # s3: empty for AWS, or e.g. https://<account>.r2.cloudflarestorage.com; azure: https://<account>.blob.core.windows.net
     region: us-east-1
-    bucket: ""
+    bucket: ""                       # images (publicly readable): an S3/GCS bucket or an Azure container
+    privateBucket: ""                # private documents (club application proofs): a bucket/container nobody can read publicly
+    gcsProjectId: ""
     accessKey: ""
     pathStyle: false                 # true for MinIO/SeaweedFS-style endpoints
     publicBaseUrl: ""                # e.g. https://media.example.com
     mediaUpstream: ""                # optional: http://<s3-host>:<port> for nginx to proxy /media/ to (path-style bucket "media")
     maxSize: 5MB
+  events:
+    defaultCurrency: INR             # currency of new events (ISO 4217: INR, USD, EUR, GBP, AUD, …)
   gateway:
-    # Per gateway POD and per client IP: the in-memory limiter is not shared between replicas, so the effective
-    # limit is (value x gateway replicas). Divide your intended limit by the replica count.
+    # Per client IP. With redis.enabled the count is shared by every gateway replica; without it each replica
+    # counts on its own, so the effective limit is (value x gateway replicas).
     rateLimitStrictPerMinute: 10
     rateLimitGeneralPerMinute: 300
   # Any additional environment variables for every Spring service
@@ -107,6 +114,33 @@ secrets:
   # Create the Secret from `data` below. Development only: values end up in Helm release history.
   create: false
   data: {}
+  # Or have the External Secrets Operator build that Secret from a cloud secret manager (AWS Secrets Manager,
+  # Google Secret Manager, Azure Key Vault, Vault, ...). One remote secret per key, named remotePrefix + key with
+  # dots turned into dashes (Key Vault names allow no dots), e.g. the-club-theclub-jwt-private-key.
+  # Requires the ESO CRDs and a (Cluster)SecretStore; see docs/CLOUD_DEPLOYMENT.md.
+  external:
+    enabled: false
+    secretStoreRef: {name: "", kind: ClusterSecretStore}
+    refreshInterval: 1h
+    remotePrefix: "the-club-"
+    keys:
+      - theclub.jwt.private-key
+      - theclub.jwt.public-key
+      - theclub.security.internal-api-key
+      - admin-password
+      - db-user-password
+      - db-auth-password
+      - db-activity-password
+      - db-club-password
+      - db-event-password
+      - db-notification-password
+      - strava-token-encryption-key
+      - zeptomail-webhook-token
+    # Add the keys of the features you use; each must exist in the secret manager, or the sync stops:
+    # razorpay-key-secret, razorpay-webhook-secret, zeptomail-token, smtp-password, strava-client-secret,
+    # media-s3-secret-key (S3 with static keys), media-azure-connection-string, redis-password
+    extraKeys: []
+    apiVersion: external-secrets.io/v1  # external-secrets.io/v1beta1 for operator versions before 0.17
 
 # ---------------------------------------------------------------------------------------------------------------
 # Databases. Production: managed MySQL 8 + PostgreSQL 15 (one database and least-privilege user per service,
@@ -146,6 +180,19 @@ backups:
   retentionDays: 14
   storage: 20Gi                       # per engine
   storageClass: ""
+  # Copy every dump off the cluster too (recommended): an rclone target, so any object store works. Credentials
+  # come from the cloud identity on serviceAccount (env_auth=true) or Secret entries mapped in secretEnv.
+  # See docs/CLOUD_DEPLOYMENT.md for each cloud.
+  offsite:
+    enabled: false
+    image: rclone/rclone:1.70.3
+    # AWS:   ":s3,provider=AWS,env_auth=true,region=eu-west-1:my-backups/the-club"
+    # GCP:   ":gcs,env_auth=true,bucket_policy_only=true:my-backups/the-club"
+    # Azure: ":azureblob,account=mystorageacct,env_auth=true:backups/the-club"
+    target: ""
+    intervalSeconds: 3600
+    env: {}                           # extra RCLONE_* settings
+    secretEnv: {}                     # e.g. {RCLONE_S3_ACCESS_KEY_ID: backup-access-key, RCLONE_S3_SECRET_ACCESS_KEY: backup-secret-key}
 
 # ---------------------------------------------------------------------------------------------------------------
 # Workloads
@@ -179,6 +226,8 @@ services:
       limits: {memory: 512Mi}
     calls: [user, auth, activity, club, event, notification]
     secretFiles: {}
+    optionalSecretFiles:
+      REDIS_PASSWORD: redis-password
   user:
     enabled: true
     image: user-service
@@ -192,6 +241,7 @@ services:
       ADMIN_PASSWORD: admin-password
     optionalSecretFiles:
       MEDIA_S3_SECRET_KEY: media-s3-secret-key
+      MEDIA_AZURE_CONNECTION_STRING: media-azure-connection-string
   auth:
     enabled: true
     image: auth-service
@@ -228,6 +278,8 @@ services:
       INTERNAL_API_KEY: theclub.security.internal-api-key
     optionalSecretFiles:
       MEDIA_S3_SECRET_KEY: media-s3-secret-key
+      MEDIA_AZURE_CONNECTION_STRING: media-azure-connection-string
+      REDIS_PASSWORD: redis-password
   event:
     enabled: true
     image: event-service
@@ -242,6 +294,7 @@ services:
       RAZORPAY_KEY_SECRET: razorpay-key-secret
       RAZORPAY_WEBHOOK_SECRET: razorpay-webhook-secret
       MEDIA_S3_SECRET_KEY: media-s3-secret-key
+      MEDIA_AZURE_CONNECTION_STRING: media-azure-connection-string
   notification:
     enabled: true
     image: notification-service
@@ -291,6 +344,8 @@ webApp:
   # DNS server nginx uses to re-resolve the gateway Service (kube-dns in almost every cluster)
   resolver: kube-dns.kube-system.svc.cluster.local
   podAnnotations: {}
+  service:
+    annotations: {}                   # e.g. GKE: cloud.google.com/backend-config for a longer timeout (live chat)
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -311,6 +366,22 @@ httpRoute:
   parentRefs: []                      # e.g. [{name: public-gateway, namespace: gateway-system}]
   hostnames: []
 
+# ---------------------------------------------------------------------------------------------------------------
+# Redis for running several replicas: gateway rate limits shared by every replica, and live chat passed between
+# club-service replicas at once (without it each replica checks the database every 2s). Either a small in-cluster
+# Redis (embedded) or a managed one: ElastiCache / MemoryDB, Memorystore, Azure Cache for Redis.
+# The password is the redis-password entry of the Secret (optional for a managed Redis using only network access).
+# ---------------------------------------------------------------------------------------------------------------
+redis:
+  enabled: false
+  embedded:
+    enabled: true                     # false: use host/port below
+    image: redis:7.4-alpine
+  host: ""                            # managed Redis endpoint, e.g. master.my-redis.xxxx.cache.amazonaws.com
+  port: 6379                          # Azure Cache for Redis with TLS: 6380
+  ssl: false                          # true for ElastiCache in-transit encryption, Memorystore TLS, Azure (6380)
+  cidrs: ["0.0.0.0/0"]                # egress to a managed Redis (NetworkPolicy)
+
 # Development mail catcher (SMTP 1025, UI 8025). Point config.mail at it with values-dev.yaml.
 mailpit:
   enabled: false
@@ -327,9 +398,15 @@ networkPolicy:
   databaseCidrs: ["0.0.0.0/0"]
   otlpCidrs: ["0.0.0.0/0"]
   otlpPorts: [4317, 4318]
-  # Internet egress for services with internetEgress: true (Strava, Razorpay, ZeptoMail/SMTP)
+  # Internet egress for services with internetEgress: true (Strava, Razorpay, ZeptoMail/SMTP, object storage)
   internetCidrs: ["0.0.0.0/0"]
   internetPorts: [443, 587, 465]
+  # The node's metadata server, for cloud identity that is served there (GKE Workload Identity, EC2 instance roles);
+  # given to services with internetEgress and to the off-site backup copy. EKS IRSA and AKS workload identity don't need it.
+  metadataServer:
+    enabled: false
+    cidrs: ["169.254.169.254/32"]     # GKE: also 169.254.169.252/32
+    ports: [80]                       # GKE: [80, 988]
 
 podDisruptionBudget:
   enabled: true
@@ -338,10 +415,17 @@ podDisruptionBudget:
 topologySpread:
   enabled: true                       # spread replicas across nodes (ScheduleAnyway)
 
+# Labels added to every pod (e.g. azure.workload.identity/use: "true" for AKS workload identity)
+podLabels: {}
+
 serviceAccount:
   create: true
   name: ""
-  annotations: {}                     # e.g. workload identity / IRSA for future cloud integrations
+  # Cloud identity for object storage and off-site backups instead of static keys:
+  #   EKS:  eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/the-club
+  #   GKE:  iam.gke.io/gcp-service-account: the-club@<project>.iam.gserviceaccount.com
+  #   AKS:  azure.workload.identity/client-id: <managed identity client id>  (plus podLabels azure.workload.identity/use)
+  annotations: {}
 
 podSecurityContext:
   runAsNonRoot: true
@@ -351,3 +435,7 @@ containerSecurityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   capabilities: {drop: [ALL]}
+
+# Extra manifests installed with the release (maps or template strings), e.g. a cloud provider's own resources.
+# values-gcp.yaml uses this for GKE's BackendConfig, ManagedCertificate and FrontendConfig.
+extraObjects: []

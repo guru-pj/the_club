@@ -2,6 +2,7 @@ package com.theclub.eventservice.controller;
 
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
+import com.theclub.eventservice.config.EventDefaultsProperties;
 import com.theclub.eventservice.dto.CheckInRequest;
 import com.theclub.eventservice.dto.CheckInResponse;
 import com.theclub.eventservice.dto.CreateEventRequest;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -49,10 +51,13 @@ public class EventController {
     private final CheckInService checkInService;
     private final FeedService feedService;
     private final EventStatsService statsService;
+    private final EventDefaultsProperties defaults;
 
     public EventController(EventService eventService, RegistrationService registrationService,
-                           CheckInService checkInService, FeedService feedService, EventStatsService statsService) {
+                           CheckInService checkInService, FeedService feedService, EventStatsService statsService,
+                           EventDefaultsProperties defaults) {
         this.statsService = statsService;
+        this.defaults = defaults;
         this.eventService = eventService;
         this.registrationService = registrationService;
         this.checkInService = checkInService;
@@ -107,6 +112,12 @@ public class EventController {
                                                   @Valid @RequestBody RegistrationWindowRequest request,
                                                   @AuthenticationPrincipal AuthenticatedUser caller) {
         return eventService.updateRegistrationWindow(eventId, request, caller);
+    }
+
+    /** What new events default to on this deployment, for the event form. */
+    @GetMapping("/defaults")
+    public Map<String, String> defaults() {
+        return Map.of("currency", defaults.currency());
     }
 
     /** Publishes a draft: it becomes visible, and registration opens within its window. */

@@ -10,14 +10,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.Transferable;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
-import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
-import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
-import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
@@ -48,7 +41,7 @@ class S3MediaStoreTest {
     @Container
     static final GenericContainer<?> SEAWEED = new GenericContainer<>("chrislusf/seaweedfs:4.47")
             .withCopyToContainer(Transferable.of(S3_CONFIG), "/etc/seaweedfs/s3.json")
-            .withCommand("server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data", "-volume.max=5")
+            .withCommand("server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data", "-volume.max=20")
             .withExposedPorts(8333)
             .waitingFor(Wait.forHttp("/").forPort(8333).forStatusCodeMatching(code -> code < 500));
 
@@ -58,21 +51,12 @@ class S3MediaStoreTest {
     @BeforeAll
     static void setUp() {
         String endpoint = "http://" + SEAWEED.getHost() + ":" + SEAWEED.getMappedPort(8333);
-        s3 = S3Client.builder()
-                .endpointOverride(URI.create(endpoint))
-                .region(Region.US_EAST_1)
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY)))
-                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
-                .httpClient(UrlConnectionHttpClient.create())
-                // Only the checksums S3 requires: the SDK's default extra checksums are rejected by some S3-compatible
-                // stores (SeaweedFS answers "The Content-Md5 you specified is not valid")
-                .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
-                .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
-                .build();
+        MediaProperties properties = new MediaProperties("s3", endpoint, null, "media", null, ACCESS_KEY, SECRET_KEY,
+                null, null, "/media", true, DataSize.ofKilobytes(64));
+        // the client the application builds, so its settings are what's tested
+        s3 = MediaAutoConfiguration.s3Client(properties);
         // No bucket yet: the first upload creates it
-        store = new S3MediaStore(s3, new MediaProperties(endpoint, null, "media", ACCESS_KEY, SECRET_KEY,
-                "/media", true, DataSize.ofKilobytes(64)));
+        store = new S3MediaStore(s3, properties);
     }
 
     @Test
@@ -85,6 +69,8 @@ class S3MediaStoreTest {
         // The declared type is ignored: the stored type comes from the bytes
         assertThat(head.contentType()).isEqualTo("image/png");
         assertThat(head.cacheControl()).contains("immutable");
+        // served as-is to browsers, so no transfer encoding may be stored with it
+        assertThat(head.contentEncoding()).isNull();
     }
 
     @Test
@@ -147,6 +133,20 @@ class S3MediaStoreTest {
 
         store.deletePrivate(stored.key());
         assertThat(store.readPrivate(stored.key())).isEmpty();
+    }
+
+    @Test
+    void privateDocumentsCanLiveInTheirOwnBucket() {
+        String endpoint = "http://" + SEAWEED.getHost() + ":" + SEAWEED.getMappedPort(8333);
+        MediaStore separate = new MediaAutoConfiguration().mediaStore(new MediaProperties("s3", endpoint, null, "media",
+                "media-private", ACCESS_KEY, SECRET_KEY, null, null, "/media", true, DataSize.ofKilobytes(64)));
+        byte[] pdf = "%PDF-1.7 proof".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+
+        StoredDocument stored = separate.storePrivate("verification/r2", upload("proof.pdf", "application/pdf", pdf));
+
+        assertThat(separate.readPrivate(stored.key())).hasValue(pdf);
+        assertThat(s3.headObject(h -> h.bucket("media-private").key(stored.key())).contentLength()).isEqualTo(pdf.length);
+        assertThatThrownBy(() -> s3.headObject(h -> h.bucket("media").key(stored.key()))).isInstanceOf(NoSuchKeyException.class);
     }
 
     @Test

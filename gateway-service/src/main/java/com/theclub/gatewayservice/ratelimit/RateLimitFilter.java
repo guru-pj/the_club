@@ -5,7 +5,9 @@ import com.theclub.gatewayservice.config.GatewayHardeningProperties;
 import io.micrometer.core.instrument.Metrics;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.Ordered;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -33,18 +35,25 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
     private final boolean enabled;
     private final ClientIpResolver clientIp;
     private final List<PathPattern> strictPaths;
-    private final RateLimiter strict;
-    private final RateLimiter general;
+    private final ClientLimiter strict;
+    private final ClientLimiter general;
 
-    public RateLimitFilter(GatewayHardeningProperties properties, ClientIpResolver clientIp) {
+    public RateLimitFilter(GatewayHardeningProperties properties, ClientIpResolver clientIp,
+                           ObjectProvider<ReactiveStringRedisTemplate> redis) {
         GatewayHardeningProperties.RateLimit config = properties.rateLimit();
         this.enabled = config.enabled();
         this.clientIp = clientIp;
         PathPatternParser parser = PathPatternParser.defaultInstance;
         this.strictPaths = config.strictPaths().stream().map(parser::parse).toList();
-        long idle = config.idleEviction().toNanos();
-        this.strict = new RateLimiter(config.strict(), config.maxTrackedClients(), idle, System::nanoTime);
-        this.general = new RateLimiter(config.general(), config.maxTrackedClients(), idle, System::nanoTime);
+        if (GatewayHardeningProperties.RateLimit.REDIS.equals(config.store())) {
+            ReactiveStringRedisTemplate template = redis.getObject();
+            this.strict = new RedisClientLimiter(template, "strict", config.strict());
+            this.general = new RedisClientLimiter(template, "general", config.general());
+        } else {
+            long idle = config.idleEviction().toNanos();
+            this.strict = new MemoryClientLimiter(new RateLimiter(config.strict(), config.maxTrackedClients(), idle, System::nanoTime));
+            this.general = new MemoryClientLimiter(new RateLimiter(config.general(), config.maxTrackedClients(), idle, System::nanoTime));
+        }
     }
 
     @Override
@@ -54,19 +63,21 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange);
         }
         String ip = clientIp.resolve(exchange.getRequest());
-        if (exchange.getRequest().getMethod() == HttpMethod.POST && isStrict(path)) {
-            long wait = strict.tryAcquire(ip);
+        Mono<Long> strictWait = exchange.getRequest().getMethod() == HttpMethod.POST && isStrict(path)
+                ? strict.tryAcquire(ip) : Mono.just(0L);
+        return strictWait.flatMap(wait -> {
             if (wait > 0) {
                 rejected("strict");
                 return tooManyRequests(exchange.getResponse(), wait);
             }
-        }
-        long wait = general.tryAcquire(ip);
-        if (wait > 0) {
-            rejected("general");
-            return tooManyRequests(exchange.getResponse(), wait);
-        }
-        return chain.filter(exchange);
+            return general.tryAcquire(ip).flatMap(generalWait -> {
+                if (generalWait > 0) {
+                    rejected("general");
+                    return tooManyRequests(exchange.getResponse(), generalWait);
+                }
+                return chain.filter(exchange);
+            });
+        });
     }
 
     /** theclub_gateway_rate_limited_total{bucket} — spikes mean brute force, scraping or a misbehaving client. */

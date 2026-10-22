@@ -1,0 +1,103 @@
+# Google Cloud (GKE). Layer on top of values-prod.yaml:
+#   helm upgrade --install the-club deploy/helm/the-club -n the-club \
+#     -f deploy/helm/the-club/values-prod.yaml -f deploy/helm/the-club/values-gcp.yaml --set global.imageTag=<git sha>
+# Uses: Cloud SQL for MySQL and PostgreSQL (private IP), Cloud Storage, Memorystore for Redis, Secret Manager through
+# the External Secrets Operator, the GKE Ingress (external Application Load Balancer) with a Google-managed
+# certificate, and Workload Identity instead of keys. Step by step: docs/CLOUD_DEPLOYMENT.md#google-cloud.
+# Fill in every CHANGE-ME.
+
+global:
+  imageRegistry: ghcr.io/guru-pj      # or <region>-docker.pkg.dev/<project>/the-club (Artifact Registry)
+
+config:
+  timeZone: Asia/Kolkata              # CHANGE-ME
+  events:
+    defaultCurrency: INR              # CHANGE-ME
+  media:
+    provider: gcs
+    endpoint: ""
+    bucket: the-club-media-CHANGE-ME              # images; allUsers have Storage Object Viewer
+    privateBucket: the-club-documents-CHANGE-ME   # proof documents; no public access
+    gcsProjectId: my-project-CHANGE-ME
+    publicBaseUrl: https://storage.googleapis.com/the-club-media-CHANGE-ME   # or a Cloud CDN host
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: the-club@my-project-CHANGE-ME.iam.gserviceaccount.com
+
+secrets:
+  name: the-club-secrets
+  external:
+    enabled: true
+    secretStoreRef: {name: gcp-secret-manager, kind: ClusterSecretStore}
+    extraKeys: [razorpay-key-secret, razorpay-webhook-secret, zeptomail-token, redis-password]
+
+databases:
+  mysql:
+    host: 10.10.0.3                   # CHANGE-ME: Cloud SQL for MySQL 8, private IP
+    params: "?sslMode=REQUIRED"
+  postgres:
+    host: 10.10.0.5                   # CHANGE-ME: Cloud SQL for PostgreSQL 15, private IP
+    params: "?sslmode=require"
+
+redis:
+  enabled: true
+  embedded:
+    enabled: false
+  host: 10.10.1.4                     # CHANGE-ME: Memorystore for Redis (AUTH on; the auth string is redis-password)
+  port: 6379                          # 6378 with in-transit encryption
+  ssl: false                          # true with in-transit encryption
+  cidrs: ["10.10.0.0/16"]             # CHANGE-ME
+
+ingress:
+  enabled: true
+  className: ""
+  host: theclub.example.com           # CHANGE-ME
+  annotations:
+    cert-manager.io/cluster-issuer: null
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: the-club-ip          # CHANGE-ME: a reserved global address
+    networking.gke.io/managed-certificates: the-club-cert
+    networking.gke.io/v1beta1.FrontendConfig: the-club-frontend
+  tls:
+    enabled: false                    # the Google-managed certificate below
+
+webApp:
+  # Google Front End ranges, trusted for X-Forwarded-For
+  realIpFrom: ["130.211.0.0/22", "35.191.0.0/16"]
+  service:
+    annotations:
+      cloud.google.com/neg: '{"ingress": true}'
+      cloud.google.com/backend-config: '{"default": "the-club-backend"}'
+
+networkPolicy:
+  ingressControllerNamespace: ""      # the load balancer reaches pods directly (NEGs)
+  databaseCidrs: ["10.10.0.0/16"]     # CHANGE-ME: the private services range
+  # Workload Identity tokens come from the GKE metadata server
+  metadataServer:
+    enabled: true
+    cidrs: ["169.254.169.254/32", "169.254.169.252/32"]
+    ports: [80, 988]
+
+extraObjects:
+  # Longer backend timeout for live chat (the default 30 s would end each stream early), and the health check path
+  - apiVersion: cloud.google.com/v1
+    kind: BackendConfig
+    metadata:
+      name: the-club-backend
+    spec:
+      timeoutSec: 900
+      connectionDraining: {drainingTimeoutSec: 30}
+      healthCheck: {type: HTTP, requestPath: /healthz, port: 8080}
+  - apiVersion: networking.gke.io/v1
+    kind: ManagedCertificate
+    metadata:
+      name: the-club-cert
+    spec:
+      domains: [theclub.example.com]  # CHANGE-ME
+  - apiVersion: networking.gke.io/v1beta1
+    kind: FrontendConfig
+    metadata:
+      name: the-club-frontend
+    spec:
+      redirectToHttps: {enabled: true}

@@ -31,12 +31,13 @@ interface FormState {
 
 type Errors = Partial<Record<keyof FormState, string>>
 
-function initialState(event?: ClubEvent): FormState {
+/** @param defaultCurrency this deployment's currency for new events (event-service EVENTS_DEFAULT_CURRENCY) */
+function initialState(event: ClubEvent | undefined, defaultCurrency: string): FormState {
   if (!event) {
     return {
       title: '', description: '', location: '', startTime: '',
       registrationOpensAt: toInputDateTime(nowLocal()), registrationClosesAt: '',
-      capacity: '', price: '0', currency: 'INR', points: '10', rules: '', subscribersOnly: false,
+      capacity: '', price: '0', currency: defaultCurrency, points: '10', rules: '', subscribersOnly: false,
     }
   }
   return {
@@ -49,7 +50,7 @@ function initialState(event?: ClubEvent): FormState {
     registrationClosesAt: event.registrationClosesAt === event.startTime ? '' : toInputDateTime(event.registrationClosesAt),
     capacity: event.capacity === null ? '' : String(event.capacity),
     price: String(event.price ?? 0),
-    currency: event.currency || 'INR',
+    currency: event.currency || defaultCurrency,
     points: String(event.points),
     rules: event.rules ?? '',
     subscribersOnly: event.subscribersOnly,
@@ -79,7 +80,7 @@ function validate(f: FormState, editing: boolean): Errors {
   const price = Number(f.price || 0)
   if (Number.isNaN(price) || price < 0) errors.price = 'Price cannot be negative'
   else if (Math.round(price * 100) !== price * 100) errors.price = 'Use at most two decimals'
-  if (!/^[A-Z]{3}$/.test(f.currency)) errors.currency = 'Use a 3-letter currency code, e.g. INR'
+  if (!/^[A-Z]{3}$/.test(f.currency)) errors.currency = 'Use a 3-letter currency code, e.g. INR, USD or EUR'
   const points = Number(f.points)
   if (!Number.isInteger(points) || points < 0 || points > 1000) errors.points = 'Points must be between 0 and 1000'
   return errors
@@ -103,11 +104,11 @@ function toRequest(f: FormState): EventRequest {
   }
 }
 
-function EventForm({ club, event }: { club: Club; event?: ClubEvent }) {
+function EventForm({ club, event, defaultCurrency }: { club: Club; event?: ClubEvent; defaultCurrency: string }) {
   const navigate = useNavigate()
   const toast = useToast()
   const editing = !!event
-  const [form, setForm] = useState<FormState>(() => initialState(event))
+  const [form, setForm] = useState<FormState>(() => initialState(event, defaultCurrency))
   const [errors, setErrors] = useState<Errors>({})
   const [serverError, setServerError] = useState<unknown>()
   const [saving, setSaving] = useState(false)
@@ -235,17 +236,19 @@ export default function EventFormPage() {
   const { clubId, eventId } = useParams()
   const { hasRole } = useAuth()
   const state = useAsync(async () => {
+    // an older server without /defaults falls back to INR
+    const currency = eventsApi.defaults().then((d) => d.currency, () => 'INR')
     if (eventId) {
       const event = await eventsApi.get(eventId)
-      return { event, club: await clubsApi.get(event.clubId) }
+      return { event, club: await clubsApi.get(event.clubId), currency: await currency }
     }
-    return { event: undefined, club: await clubsApi.get(clubId ?? '') }
+    return { event: undefined, club: await clubsApi.get(clubId ?? ''), currency: await currency }
   }, [clubId, eventId])
 
   if (state.loading && !state.data) return <Loading />
   if (state.error) return <div className="page page-narrow"><ErrorMessage error={state.error} onRetry={state.reload} /></div>
   if (!state.data) return null
-  const { club, event } = state.data
+  const { club, event, currency } = state.data
 
   if (!canManage(club, hasRole('ADMIN'))) {
     return (
@@ -262,7 +265,7 @@ export default function EventFormPage() {
         back={event ? { to: `/events/${event.id}`, label: event.title } : { to: `/clubs/${club.id}`, label: club.name }}
         title={event ? 'Edit event' : 'New event'}
         subtitle={club.name} />
-      <EventForm club={club} event={event} />
+      <EventForm club={club} event={event} defaultCurrency={currency} />
     </div>
   )
 }

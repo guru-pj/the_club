@@ -37,6 +37,9 @@ spec:
     metadata:
       labels:
         {{- include "theclub.labels" (dict "root" $root "component" $component) | nindent 8 }}
+        {{- with $root.Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       annotations:
         checksum/config: {{ include "theclub.configChecksum" $root }}
         {{- if and $root.Values.observability.metrics.podAnnotations (not $root.Values.observability.metrics.serviceMonitor.enabled) }}

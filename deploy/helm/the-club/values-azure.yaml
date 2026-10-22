@@ -1,0 +1,73 @@
+# Microsoft Azure (AKS). Layer on top of values-prod.yaml:
+#   helm upgrade --install the-club deploy/helm/the-club -n the-club \
+#     -f deploy/helm/the-club/values-prod.yaml -f deploy/helm/the-club/values-azure.yaml --set global.imageTag=<git sha>
+# Uses: Azure Database for MySQL and for PostgreSQL (flexible servers), Blob Storage, Azure Cache for Redis, Key Vault
+# through the External Secrets Operator, the AKS application routing add-on (managed NGINX) with cert-manager, and
+# workload identity instead of keys. Step by step: docs/CLOUD_DEPLOYMENT.md#azure. Fill in every CHANGE-ME.
+
+global:
+  imageRegistry: ghcr.io/guru-pj      # or <registry>.azurecr.io/the-club (Azure Container Registry)
+
+config:
+  timeZone: Asia/Kolkata              # CHANGE-ME
+  events:
+    defaultCurrency: INR              # CHANGE-ME
+  media:
+    provider: azure
+    endpoint: https://theclubmediachangeme.blob.core.windows.net    # CHANGE-ME: the storage account
+    bucket: media                     # container with anonymous read access for blobs
+    privateBucket: documents          # container without public access
+    publicBaseUrl: https://theclubmediachangeme.blob.core.windows.net/media   # or an Azure Front Door / CDN host
+
+podLabels:
+  azure.workload.identity/use: "true"
+
+serviceAccount:
+  annotations:
+    azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000   # CHANGE-ME: the managed identity
+
+secrets:
+  name: the-club-secrets
+  external:
+    enabled: true
+    secretStoreRef: {name: azure-key-vault, kind: ClusterSecretStore}
+    extraKeys: [razorpay-key-secret, razorpay-webhook-secret, zeptomail-token, redis-password]
+
+databases:
+  mysql:
+    host: the-club-mysql.mysql.database.azure.com             # CHANGE-ME
+    params: "?sslMode=REQUIRED"
+  postgres:
+    host: the-club-postgres.postgres.database.azure.com       # CHANGE-ME
+    params: "?sslmode=require"
+
+redis:
+  enabled: true
+  embedded:
+    enabled: false
+  host: the-club.redis.cache.windows.net                    # CHANGE-ME (the access key is redis-password)
+  port: 6380
+  ssl: true
+  cidrs: ["10.20.0.0/16"]             # CHANGE-ME: the VNet / private endpoint range
+
+ingress:
+  enabled: true
+  className: webapprouting.kubernetes.azure.com
+  host: theclub.example.com           # CHANGE-ME
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # uploads are up to 5 MB (multipart); NGINX's default limit is 1 MB
+    nginx.ingress.kubernetes.io/proxy-body-size: 11m
+    # live chat: keep the response open and unbuffered
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  tls:
+    enabled: true
+    secretName: the-club-tls
+
+webApp:
+  realIpFrom: ["10.0.0.0/8"]          # CHANGE-ME: the AKS pod / node ranges
+
+networkPolicy:
+  ingressControllerNamespace: app-routing-system
+  databaseCidrs: ["10.20.0.0/16"]     # CHANGE-ME
