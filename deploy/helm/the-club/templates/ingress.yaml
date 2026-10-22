@@ -7,7 +7,12 @@ metadata:
   name: {{ include "theclub.fullname" . }}
   labels:
     {{- include "theclub.labels" (dict "root" $ "component" "web") | nindent 4 }}
-  {{- with $i.annotations }}
+  {{- /* an annotation set to null or "" in a later values file (e.g. values-aws.yaml) is dropped */}}
+  {{- $annotations := dict }}
+  {{- range $k, $v := $i.annotations }}
+  {{- if not (kindIs "invalid" $v) }}{{- if ne (toString $v) "" }}{{- $_ := set $annotations $k $v }}{{- end }}{{- end }}
+  {{- end }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}

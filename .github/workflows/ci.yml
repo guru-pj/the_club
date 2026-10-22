@@ -72,13 +72,18 @@ jobs:
           diff docker/mysql/initdb/01-service-users.sh deploy/helm/the-club/files/mysql-01-service-users.sh
           diff docker/postgres/initdb/01-service-user.sh deploy/helm/the-club/files/postgres-01-service-user.sh
           diff scripts/backup.sh deploy/helm/the-club/files/backup.sh
-      - name: Lint and validate (defaults, dev, prod)
+      - name: Lint and validate (defaults, dev, prod, and prod on AWS, Google Cloud and Azure)
         run: |
           chart=deploy/helm/the-club
-          for values in "" "-f $chart/values-dev.yaml" "-f $chart/values-prod.yaml"; do
-            helm lint --strict $chart $values
-            helm template the-club $chart -n the-club $values \
-              | kubeconform -strict -summary -kubernetes-version 1.30.0 \
+          for values in "" "-f $chart/values-dev.yaml" "-f $chart/values-prod.yaml" \
+              "-f $chart/values-prod.yaml -f $chart/values-aws.yaml" \
+              "-f $chart/values-prod.yaml -f $chart/values-gcp.yaml" \
+              "-f $chart/values-prod.yaml -f $chart/values-azure.yaml"; do
+            echo "== values: ${values:-defaults}"
+            helm lint --strict $chart $values --set global.imageTag=ci
+            # cloud-specific CRDs (GKE BackendConfig, …) are checked when the catalog has their schema
+            helm template the-club $chart -n the-club $values --set global.imageTag=ci \
+              | kubeconform -strict -summary -kubernetes-version 1.30.0 -ignore-missing-schemas \
                   -schema-location default \
                   -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
           done

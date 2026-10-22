@@ -4,6 +4,7 @@ import com.theclub.common.media.MediaStore;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.client.ClubClient.ClubInfo;
+import com.theclub.eventservice.config.EventDefaultsProperties;
 import com.theclub.eventservice.dto.CreateEventRequest;
 import com.theclub.eventservice.dto.EventResponse;
 import com.theclub.eventservice.dto.PagedResponse;
@@ -46,10 +47,13 @@ public class EventService {
     private final ConfirmationNotifier notifier;
     private final PaymentService paymentService;
     private final MediaStore media;
+    private final EventDefaultsProperties defaults;
     private final Clock clock;
 
     public EventService(EventRepository events, RegistrationRepository registrations, ClubAccess clubAccess,
-                        ConfirmationNotifier notifier, PaymentService paymentService, MediaStore media, Clock clock) {
+                        ConfirmationNotifier notifier, PaymentService paymentService, MediaStore media,
+                        EventDefaultsProperties defaults, Clock clock) {
+        this.defaults = defaults;
         this.events = events;
         this.registrations = registrations;
         this.clubAccess = clubAccess;
@@ -74,9 +78,7 @@ public class EventService {
         if (request.price() != null) {
             event.setPrice(request.price());
         }
-        if (request.currency() != null) {
-            event.setCurrency(request.currency());
-        }
+        event.setCurrency(request.currency() != null ? request.currency() : defaults.currency());
         if (request.points() != null) {
             event.setPoints(request.points());
         }

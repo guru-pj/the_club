@@ -8,6 +8,16 @@ spring:
     use-jackson2-defaults: true
   application:
     name: gateway-service
+  # Only used with RATE_LIMIT_STORE=redis: a managed Redis (ElastiCache, Memorystore, Azure Cache for Redis) or the
+  # chart's own. The password comes from the redis-password secret.
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
+      timeout: 1s
   cloud:
     gateway:
       server:
@@ -61,6 +71,8 @@ theclub:
     max-body-bytes: ${GATEWAY_MAX_BODY_BYTES:1048576}
     rate-limit:
       enabled: ${RATE_LIMIT_ENABLED:true}
+      # memory: per gateway replica (the effective limit multiplies with the replica count); redis: shared by all
+      store: ${RATE_LIMIT_STORE:memory}
       # login, register, password reset, email verification (POST); token refresh only uses the general bucket
       strict:
         capacity: ${RATE_LIMIT_STRICT_PER_MINUTE:10}
@@ -89,6 +101,10 @@ management:
         # /actuator is never reachable from outside: nginx proxies only /api and the gateway never routes /actuator.
         # Prometheus scrapes /actuator/prometheus over the internal network.
         include: health,info,prometheus
+  # Redis is optional (RATE_LIMIT_STORE=redis); only then may its state affect /actuator/health
+  health:
+    redis:
+      enabled: ${REDIS_ENABLED:false}
   endpoint:
     health:
       probes:

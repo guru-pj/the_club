@@ -12,6 +12,18 @@ data:
   SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
   LOGGING_LEVEL_ROOT: {{ $c.logLevel | quote }}
   APP_TIME_ZONE: {{ $c.timeZone | quote }}
+  {{- if .Values.redis.enabled }}
+  # Redis: rate limits shared by every gateway replica, chat passed between club-service replicas at once
+  REDIS_ENABLED: "true"
+  REDIS_HOST: {{ .Values.redis.embedded.enabled | ternary (include "theclub.serviceName" (dict "root" $ "component" "redis")) .Values.redis.host | quote }}
+  REDIS_PORT: {{ .Values.redis.embedded.enabled | ternary 6379 .Values.redis.port | quote }}
+  REDIS_SSL: {{ and (not .Values.redis.embedded.enabled) .Values.redis.ssl | quote }}
+  RATE_LIMIT_STORE: redis
+  CHAT_FANOUT: redis
+  # the database check becomes a safety net
+  CHAT_RELAY_INTERVAL: PT15S
+  {{- end }}
+  EVENTS_DEFAULT_CURRENCY: {{ ($c.events).defaultCurrency | default "INR" | quote }}
   APP_BASE_URL: {{ $c.appBaseUrl | quote }}
   ADMIN_EMAIL: {{ $c.adminEmail | quote }}
   JWT_EXPIRATION: {{ $c.jwt.expiration | quote }}
@@ -43,7 +55,10 @@ data:
   STRAVA_WORKER_ENABLED: {{ $c.strava.workerEnabled | quote }}
   STRAVA_WORKER_BATCH_SIZE: {{ $c.strava.workerBatchSize | quote }}
   CORS_ALLOWED_ORIGINS: {{ $c.corsAllowedOrigins | quote }}
+  MEDIA_PROVIDER: {{ $c.media.provider | default "s3" | quote }}
   MEDIA_S3_ENDPOINT: {{ $c.media.endpoint | quote }}
+  MEDIA_PRIVATE_BUCKET: {{ $c.media.privateBucket | default "" | quote }}
+  MEDIA_GCS_PROJECT_ID: {{ $c.media.gcsProjectId | default "" | quote }}
   MEDIA_S3_REGION: {{ $c.media.region | quote }}
   MEDIA_S3_BUCKET: {{ $c.media.bucket | quote }}
   MEDIA_S3_ACCESS_KEY: {{ $c.media.accessKey | quote }}

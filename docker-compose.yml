@@ -30,7 +30,9 @@ x-spring-env: &spring-env
 # Uploaded images (user-, club- and event-service): the bundled SeaweedFS S3 store, or any S3-compatible service
 # when MEDIA_S3_ENDPOINT points elsewhere (see docs/PRODUCTION.md)
 x-media-env: &media-env
+  MEDIA_PROVIDER: ${MEDIA_PROVIDER:-s3}
   MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-http://seaweedfs:8333}
+  MEDIA_PRIVATE_BUCKET: ${MEDIA_PRIVATE_BUCKET:-}
   MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-media}
   MEDIA_S3_ACCESS_KEY: ${MEDIA_S3_ACCESS_KEY:-theclub-media}
   MEDIA_S3_REGION: ${MEDIA_S3_REGION:-us-east-1}
@@ -138,6 +140,34 @@ services:
       resources:
         limits:
           memory: 256M
+    logging: *logging
+
+  # Off-site copy of the dumps (recommended in production): `docker compose --profile offsite up -d`. Any rclone
+  # target: S3, Google Cloud Storage, Azure Blob, another server. Set BACKUP_OFFSITE_TARGET (and the credentials
+  # rclone needs, e.g. RCLONE_S3_ACCESS_KEY_ID / RCLONE_S3_SECRET_ACCESS_KEY) in .env. See docs/CLOUD_DEPLOYMENT.md.
+  backup-offsite:
+    image: rclone/rclone:1.70.3
+    container_name: backup-offsite
+    profiles: [offsite]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          rclone copy /backups "$$BACKUP_OFFSITE_TARGET" --min-age 2m --include "*.sql.gz" \
+            && echo "[offsite $$(date -u +%FT%TZ)] dumps copied off-site" \
+            || echo "[offsite $$(date -u +%FT%TZ)] ERROR: copying dumps failed"
+          sleep $${BACKUP_OFFSITE_INTERVAL_SECONDS:-3600}
+        done
+    environment:
+      HOME: /tmp
+      BACKUP_OFFSITE_TARGET: ${BACKUP_OFFSITE_TARGET:-}
+      BACKUP_OFFSITE_INTERVAL_SECONDS: ${BACKUP_OFFSITE_INTERVAL_SECONDS:-3600}
+      RCLONE_S3_ACCESS_KEY_ID: ${RCLONE_S3_ACCESS_KEY_ID:-}
+      RCLONE_S3_SECRET_ACCESS_KEY: ${RCLONE_S3_SECRET_ACCESS_KEY:-}
+      RCLONE_AZUREBLOB_KEY: ${RCLONE_AZUREBLOB_KEY:-}
+    volumes:
+      - backups:/backups:ro
     logging: *logging
 
   db-backup-postgres:
@@ -320,6 +350,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/eventdb
       SPRING_DATASOURCE_USERNAME: theclub_event
       PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
+      EVENTS_DEFAULT_CURRENCY: ${EVENTS_DEFAULT_CURRENCY:-INR}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
     secrets:
       - source: jwt_public_key

@@ -1,0 +1,77 @@
+# Amazon Web Services (EKS). Layer on top of values-prod.yaml:
+#   helm upgrade --install the-club deploy/helm/the-club -n the-club \
+#     -f deploy/helm/the-club/values-prod.yaml -f deploy/helm/the-club/values-aws.yaml --set global.imageTag=<git sha>
+# Uses: RDS for MySQL and PostgreSQL, S3 (+ CloudFront optional), ElastiCache for Redis, Secrets Manager through the
+# External Secrets Operator, the AWS Load Balancer Controller (ALB) with an ACM certificate, and IRSA (or EKS Pod
+# Identity) instead of static keys. Step by step: docs/CLOUD_DEPLOYMENT.md#aws. Fill in every CHANGE-ME.
+
+global:
+  imageRegistry: ghcr.io/guru-pj      # or <account>.dkr.ecr.<region>.amazonaws.com/the-club after mirroring the images
+
+config:
+  timeZone: Asia/Kolkata              # CHANGE-ME if your members aren't in India
+  events:
+    defaultCurrency: INR              # CHANGE-ME (USD, EUR, GBP, …)
+  media:
+    provider: s3
+    endpoint: ""                      # AWS itself (from the region)
+    region: eu-west-1                 # CHANGE-ME
+    bucket: the-club-media-CHANGE-ME              # images; public read through its bucket policy or CloudFront
+    privateBucket: the-club-documents-CHANGE-ME   # proof documents; Block Public Access on
+    accessKey: ""                     # empty: IRSA / Pod Identity credentials
+    pathStyle: false
+    publicBaseUrl: https://the-club-media-CHANGE-ME.s3.eu-west-1.amazonaws.com   # or https://media.example.com (CloudFront)
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/the-club   # CHANGE-ME (IRSA; omit with EKS Pod Identity)
+
+secrets:
+  name: the-club-secrets
+  external:
+    enabled: true
+    secretStoreRef: {name: aws-secrets-manager, kind: ClusterSecretStore}   # CHANGE-ME if named differently
+    extraKeys: [razorpay-key-secret, razorpay-webhook-secret, zeptomail-token]
+
+databases:
+  mysql:
+    host: the-club-mysql.xxxxxxxx.eu-west-1.rds.amazonaws.com        # CHANGE-ME: RDS for MySQL 8
+    params: "?sslMode=REQUIRED"
+  postgres:
+    host: the-club-postgres.xxxxxxxx.eu-west-1.rds.amazonaws.com     # CHANGE-ME: RDS for PostgreSQL 15
+    params: "?sslmode=require"
+
+redis:
+  enabled: true
+  embedded:
+    enabled: false
+  host: master.the-club.xxxxxx.euw1.cache.amazonaws.com              # CHANGE-ME: ElastiCache (Redis OSS / Valkey)
+  port: 6379
+  ssl: true                           # in-transit encryption on
+  cidrs: ["10.0.0.0/16"]              # CHANGE-ME: the VPC CIDR
+
+ingress:
+  enabled: true
+  className: alb
+  host: theclub.example.com           # CHANGE-ME
+  annotations:
+    cert-manager.io/cluster-issuer: null          # ACM provides the certificate
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-1:123456789012:certificate/CHANGE-ME
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # live chat keeps a response open; the server sends something every 20 s, so 120 s is plenty
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=120
+    # alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:...   # optional AWS WAF
+  tls:
+    enabled: false                    # TLS ends at the ALB
+
+webApp:
+  # the ALB's addresses (inside the VPC) are trusted for X-Forwarded-For
+  realIpFrom: ["10.0.0.0/16"]         # CHANGE-ME: the VPC CIDR
+
+networkPolicy:
+  ingressControllerNamespace: ""      # ALB targets pod IPs directly
+  databaseCidrs: ["10.0.0.0/16"]      # CHANGE-ME: the database subnets

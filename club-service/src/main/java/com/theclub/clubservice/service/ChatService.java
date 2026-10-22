@@ -74,8 +74,6 @@ public class ChatService {
     static final String REASON_MUTED = "MUTED";
     static final String REASON_BLOCKED = "BLOCKED";
     static final String REASON_NOT_CONNECTED = "NOT_CONNECTED";
-    /** How far back {@link #relayRecent()} looks for messages written on other replicas. */
-    static final Duration RELAY_WINDOW = Duration.ofSeconds(10);
 
     private final ChatConversationRepository conversations;
     private final ChatMessageRepository messages;
@@ -89,6 +87,7 @@ public class ChatService {
     private final MediaStore media;
     private final MediaProperties mediaProperties;
     private final ChatHub hub;
+    private final ChatFanout fanout;
     private final Clock clock;
     private final TransactionTemplate readOnly;
     private final TransactionTemplate newTransaction;
@@ -96,8 +95,9 @@ public class ChatService {
     public ChatService(ChatConversationRepository conversations, ChatMessageRepository messages, ChatReadRepository reads,
                        ChatBlockRepository blocks, ChatReportRepository reports, ClubChatMuteRepository mutes,
                        ClubMembershipRepository memberships, ClubService clubService, NotificationPublisher notifications,
-                       MediaStore media, MediaProperties mediaProperties, ChatHub hub, Clock clock,
+                       MediaStore media, MediaProperties mediaProperties, ChatHub hub, ChatFanout fanout, Clock clock,
                        PlatformTransactionManager transactions) {
+        this.fanout = fanout;
         this.conversations = conversations;
         this.messages = messages;
         this.reads = reads;
@@ -227,11 +227,7 @@ public class ChatService {
 
         ChatDtos.Message response = describe(List.of(message)).getFirst();
         Set<UUID> recipients = recipients(conversation, caller.id());
-        afterCommit(() -> {
-            if (hub.claim(response)) {
-                hub.deliver(recipients, response);
-            }
-        });
+        afterCommit(() -> fanout.publish(recipients, response));
         // One notification when a direct conversation gets its first unread message, not one per message
         if (firstUnread) {
             notifications.notifyAfterCommit(conversation.otherThan(caller.id()), TYPE_CHAT_MESSAGE,
@@ -274,11 +270,7 @@ public class ChatService {
         message.delete(by, now());
         ChatDtos.Message response = describe(List.of(message)).getFirst();
         Set<UUID> recipients = recipients(conversation, message.getSenderId());
-        afterCommit(() -> {
-            if (hub.claim(response)) {
-                hub.deliver(recipients, response);
-            }
-        });
+        afterCommit(() -> fanout.publish(recipients, response));
     }
 
     /** Reports a message to the admins; reporting it again does nothing. */
@@ -444,11 +436,11 @@ public class ChatService {
      * Messages this replica delivered itself are skipped.
      */
     @Transactional(readOnly = true)
-    public void relayRecent() {
+    public void relayRecent(Duration window) {
         if (hub.idle()) {
             return;
         }
-        List<ChatMessage> changed = messages.changedSince(now().minus(RELAY_WINDOW), PageRequest.of(0, 500)).stream()
+        List<ChatMessage> changed = messages.changedSince(now().minus(window), PageRequest.of(0, 500)).stream()
                 .filter(m -> !hub.alreadyDelivered(m.getId(), m.isDeleted()))
                 .toList();
         if (changed.isEmpty()) {
@@ -460,6 +452,7 @@ public class ChatService {
         for (ChatDtos.Message message : describe(changed)) {
             ChatConversation conversation = where.get(message.conversationId());
             if (conversation != null && hub.claim(message)) {
+                // straight to this replica's connections: every replica runs the relay itself
                 hub.deliver(recipients(conversation, message.senderId()), message);
             }
         }

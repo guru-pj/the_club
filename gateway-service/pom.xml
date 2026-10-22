@@ -31,6 +31,11 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
+        <!-- Rate limits shared by every gateway replica (RATE_LIMIT_STORE=redis); unused otherwise -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
+        </dependency>
         <!-- Since Spring Boot 4 the OpenTelemetry bridge and OTLP exporter are only auto-configured by this starter;
              the bare micrometer-tracing-bridge-otel and opentelemetry-exporter-otlp libraries export nothing -->
         <dependency>
@@ -51,6 +56,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-micrometer-metrics-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

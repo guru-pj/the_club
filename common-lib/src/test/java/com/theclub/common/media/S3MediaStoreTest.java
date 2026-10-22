@@ -48,7 +48,7 @@ class S3MediaStoreTest {
     @Container
     static final GenericContainer<?> SEAWEED = new GenericContainer<>("chrislusf/seaweedfs:4.47")
             .withCopyToContainer(Transferable.of(S3_CONFIG), "/etc/seaweedfs/s3.json")
-            .withCommand("server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data", "-volume.max=5")
+            .withCommand("server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data", "-volume.max=20")
             .withExposedPorts(8333)
             .waitingFor(Wait.forHttp("/").forPort(8333).forStatusCodeMatching(code -> code < 500));
 
@@ -71,8 +71,8 @@ class S3MediaStoreTest {
                 .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
                 .build();
         // No bucket yet: the first upload creates it
-        store = new S3MediaStore(s3, new MediaProperties(endpoint, null, "media", ACCESS_KEY, SECRET_KEY,
-                "/media", true, DataSize.ofKilobytes(64)));
+        store = new S3MediaStore(s3, new MediaProperties("s3", endpoint, null, "media", null, ACCESS_KEY, SECRET_KEY,
+                null, null, "/media", true, DataSize.ofKilobytes(64)));
     }
 
     @Test
@@ -147,6 +147,20 @@ class S3MediaStoreTest {
 
         store.deletePrivate(stored.key());
         assertThat(store.readPrivate(stored.key())).isEmpty();
+    }
+
+    @Test
+    void privateDocumentsCanLiveInTheirOwnBucket() {
+        String endpoint = "http://" + SEAWEED.getHost() + ":" + SEAWEED.getMappedPort(8333);
+        MediaStore separate = new MediaAutoConfiguration().mediaStore(new MediaProperties("s3", endpoint, null, "media",
+                "media-private", ACCESS_KEY, SECRET_KEY, null, null, "/media", true, DataSize.ofKilobytes(64)));
+        byte[] pdf = "%PDF-1.7 proof".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+
+        StoredDocument stored = separate.storePrivate("verification/r2", upload("proof.pdf", "application/pdf", pdf));
+
+        assertThat(separate.readPrivate(stored.key())).hasValue(pdf);
+        assertThat(s3.headObject(h -> h.bucket("media-private").key(stored.key())).contentLength()).isEqualTo(pdf.length);
+        assertThatThrownBy(() -> s3.headObject(h -> h.bucket("media").key(stored.key()))).isInstanceOf(NoSuchKeyException.class);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.theclub.eventservice.service;
 
 import com.theclub.common.media.MediaStore;
+import com.theclub.eventservice.config.EventDefaultsProperties;
 import com.theclub.common.security.AuthenticatedUser;
 import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.client.ClubClient.ClubInfo;
@@ -62,7 +63,8 @@ class EventServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new EventService(events, registrations, clubAccess, notifier, paymentService, media, CLOCK);
+        service = new EventService(events, registrations, clubAccess, notifier, paymentService, media,
+                new EventDefaultsProperties("inr"), CLOCK);
         when(paymentService.pendingHold()).thenReturn(java.time.Duration.ofMinutes(15));
         when(events.save(any(Event.class))).thenAnswer(inv -> inv.getArgument(0));
         when(clubAccess.requireOwnerOrAdmin(eq(clubId), any())).thenReturn(new ClubInfo(clubId, "Chennai Runners", ownerId, 3));

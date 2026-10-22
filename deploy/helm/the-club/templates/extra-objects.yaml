@@ -1,0 +1,10 @@
+{{- /* Any extra manifests, e.g. a cloud's own resources (GKE BackendConfig / ManagedCertificate / FrontendConfig).
+       Strings are rendered as templates, so they may use {{ include "theclub.fullname" . }} and the like. */ -}}
+{{- range .Values.extraObjects }}
+---
+{{- if typeIs "string" . }}
+{{ tpl . $ }}
+{{- else }}
+{{ tpl (toYaml .) $ }}
+{{- end }}
+{{- end }}
