@@ -177,16 +177,35 @@ docker run --rm -v "$PWD/observability/prometheus:/etc/prometheus:ro" --entrypoi
 | LoginLockoutSpike | many locked-account attempts | credential stuffing: check gateway 429s and source IPs in nginx logs |
 | GatewayRateLimitingSpike (info) | many 429s | abusive client, or limits too low for legitimate traffic (`RATE_LIMIT_*`) |
 | StravaRateLimited (info) / StravaRateLimitNearlyUsed | Strava quota hit or above 90% | imports resume when the window resets; request a higher quota from Strava |
+| AlertDeliveryFailing (critical) | Alertmanager failed to send notifications in 15m | `docker compose logs alertmanager`; SMTP password (`secrets/zeptomail-token` or `secrets/smtp-password`) or Slack webhook |
 
 ### Alert delivery
 
-`observability/alertmanager/alertmanager.yml` ships with a receiver that sends nothing: alerts are visible in
-Alertmanager and Grafana only. For production, uncomment the email (for example, ZeptoMail SMTP) or Slack
-example, put the credential in `secrets/` and mount it into the `alertmanager` service. Test it with:
+Alerts are sent by email through the same mail settings as the application, so a working mail setup is all it
+needs. `observability/alertmanager/render-config.sh` builds the receiver when the container starts:
+
+| Setting | Alerts are sent |
+|---|---|
+| `SPRING_PROFILES_ACTIVE=dev` | to Mailpit (http://localhost:8025), like every other email in development |
+| `MAIL_PROVIDER=zeptomail` | through ZeptoMail SMTP (`smtp.zeptomail.in:587`, same region as `ZEPTOMAIL_API_URL`) with `secrets/zeptomail-token` |
+| `MAIL_PROVIDER=smtp` | through `MAIL_HOST:MAIL_PORT` as `MAIL_USERNAME` with `secrets/smtp-password` |
+
+They go to `ALERT_EMAIL_TO` (default `ADMIN_EMAIL`) from `ALERT_EMAIL_FROM` (default `MAIL_FROM`). For Slack as
+well, put an incoming-webhook URL in `secrets/alertmanager-slack-webhook` (channel `ALERT_SLACK_CHANNEL`, default
+`#the-club-alerts`).
+
+Under the `prod` profile Alertmanager **refuses to start** when nothing can deliver: no SMTP password, a
+placeholder recipient such as `admin@theclub.local`, and no Slack webhook. `docker compose logs alertmanager` says
+which. Set `ALERT_DELIVERY=none` only if you deliberately run without notifications. The receiver line in the log
+(`alertmanager: receivers: email=true (smtp.zeptomail.in:587) slack=false`) shows what was configured.
+
+Send a test alert after any change:
 
 ```bash
 docker compose exec alertmanager amtool alert add test severity=warning --alertmanager.url=http://localhost:9093
 ```
+
+It arrives after `group_wait` (30s). `AlertDeliveryFailing` fires when Alertmanager cannot send.
 
 ## Health probes and operations
 

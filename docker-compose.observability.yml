@@ -113,13 +113,35 @@ services:
     image: prom/alertmanager:v0.27.0
     container_name: alertmanager
     restart: unless-stopped
+    # Builds the receivers from the application's mail settings, then starts Alertmanager with the arguments below
+    entrypoint: ["/bin/sh", "/etc/alertmanager/render-config.sh"]
     command:
-      - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
+    environment:
+      APP_PROFILE: ${SPRING_PROFILES_ACTIVE}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_STARTTLS: ${MAIL_STARTTLS}
+      ZEPTOMAIL_API_URL: ${ZEPTOMAIL_API_URL:-https://api.zeptomail.in/v1.1/email}
+      # Optional overrides: who gets alerts (default ADMIN_EMAIL) and the sender (default MAIL_FROM)
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_SLACK_CHANNEL: ${ALERT_SLACK_CHANNEL:-}
+      # "none" lets Alertmanager start under the prod profile without any receiver
+      ALERT_DELIVERY: ${ALERT_DELIVERY:-}
+    secrets:
+      - zeptomail-token
+      - smtp-password
+      - alertmanager-slack-webhook
     ports:
       - "127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"
     volumes:
       - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./observability/alertmanager/render-config.sh:/etc/alertmanager/render-config.sh:ro
       - alertmanager_data:/alertmanager
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/ready"]
@@ -204,6 +226,9 @@ services:
 secrets:
   grafana-admin-password:
     file: ./secrets/grafana-admin-password
+  # Slack incoming-webhook URL for alerts; created empty by scripts/generate-secrets.sh (empty = no Slack)
+  alertmanager-slack-webhook:
+    file: ./secrets/alertmanager-slack-webhook
 
 volumes:
   tempo_data:
