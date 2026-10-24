@@ -217,7 +217,8 @@ export const eventsApi = {
   byClub: (clubId: UUID, q: Paging & { upcoming?: boolean } = {}) =>
     request<Page<ClubEvent>>('GET', `/api/v1/events/club/${clubId}`, { query: q }),
   /** followed and subscribed clubs, plus clubs near the point when given */
-  upcoming: (q: { lat?: number; lng?: number; radiusKm?: number; limit?: number } = {}) =>
+  /** "nearby" uses lat/lng when given, otherwise clubs in `city` */
+  upcoming: (q: { lat?: number; lng?: number; radiusKm?: number; city?: string; limit?: number } = {}) =>
     request<EventCard[]>('GET', '/api/v1/events/upcoming', { query: q }),
   uploadImage: (id: UUID, file: File | Blob) => upload<ClubEvent>(`/api/v1/events/${id}/image`, file),
   removeImage: (id: UUID) => request<ClubEvent>('DELETE', `/api/v1/events/${id}/image`),

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { clubsApi, eventsApi } from '../api/endpoints'
 import { useAuth } from '../auth/AuthContext'
-import { CalendarIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, StarIcon, UsersIcon } from '../components/icons'
+import { CalendarIcon, ClockIcon, PinIcon, RepeatIcon, ShareIcon, StarIcon, TicketIcon, UsersIcon } from '../components/icons'
 import { useToast } from '../components/Toast'
 import { mediaUrl } from '../api/client'
 import { Badge, Button, Card, ErrorMessage, Loading, PageHeader, StatusBadge } from '../components/ui'
@@ -37,9 +37,14 @@ export default function EventPage() {
   if (!state.data) return null
   const { event, club, registrationId } = state.data
   const manage = canManage(club, hasRole('ADMIN'))
+  // The API reports the start time as the close time when none was configured
+  const closeSet = event.registrationClosesAt !== event.startTime
+  const closeLine = closeSet
+    ? `${isPast(event.registrationClosesAt) ? 'closed' : 'closes'} ${formatDateTime(event.registrationClosesAt)}`
+    : 'open until the event starts'
   const windowLine = isPast(event.registrationOpensAt)
-    ? `Registration ${isPast(event.registrationClosesAt) ? 'closed' : 'closes'} ${formatDateTime(event.registrationClosesAt)}`
-    : `Registration opens ${formatDateTime(event.registrationOpensAt)}`
+    ? `Registration ${closeLine}`
+    : `Registration opens ${formatDateTime(event.registrationOpensAt)}${closeSet ? ` · closes ${formatDateTime(event.registrationClosesAt)}` : ''}`
 
   return (
     <div className="page">
@@ -70,7 +75,13 @@ export default function EventPage() {
               </div>
               <div className="event-meta-item">
                 <StarIcon size={18} style={{ color: 'var(--accent)' }} />
-                <span>Earn <strong>{event.points} points</strong> when you check in · {formatMoney(event.price, event.currency)}</span>
+                <span>Earn <strong>{event.points} points</strong> when you check in</span>
+              </div>
+              <div className="event-meta-item">
+                <TicketIcon size={18} />
+                <span>{event.price > 0
+                  ? <>Registration fee <strong>{formatMoney(event.price, event.currency)}</strong>, paid securely in the app when you register</>
+                  : 'Free to attend'}</span>
               </div>
             </div>
             {event.description && (

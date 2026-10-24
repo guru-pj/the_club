@@ -23,6 +23,9 @@ public interface ClubRepository extends JpaRepository<Club, UUID> {
             order by c.name""")
     Page<Club> search(@Param("q") String q, @Param("city") String city, Pageable pageable);
 
+    /** "Nearby" for users who gave a city but no coordinates. */
+    List<Club> findByCityIgnoreCaseOrderByName(String city, Pageable pageable);
+
     @Query("select c from Club c where c.id in (select m.clubId from ClubMembership m where m.userId = :userId) order by c.name")
     List<Club> findJoinedBy(@Param("userId") UUID userId);
 

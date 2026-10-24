@@ -350,6 +350,11 @@ public class ClubService {
     }
 
     @Transactional(readOnly = true)
+    public List<Club> inCity(String city, int limit) {
+        return clubs.findByCityIgnoreCaseOrderByName(city.trim(), PageRequest.of(0, Math.clamp(limit, 1, MAX_PAGE_SIZE)));
+    }
+
+    @Transactional(readOnly = true)
     public List<Club> getAll(Collection<UUID> ids) {
         return clubs.findAllById(ids);
     }

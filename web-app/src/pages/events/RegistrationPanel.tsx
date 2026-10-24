@@ -46,10 +46,11 @@ export function RegistrationPanel({ event, club, registrationId, onChanged }: Pr
       pendingCheckout.set(event.id, res.payment)
       setCheckout(res.payment)
       setPayOpen(true)
+      onChanged()
     } else {
-      toast.success("You're registered! Your ticket is ready.")
+      // Free events are confirmed straight away: show the confirmation with the ticket
+      navigate(`/tickets/${res.registrationId}?new=1`)
     }
-    onChanged()
   }
 
   const register = () => run(startRegistration)
@@ -80,9 +81,8 @@ export function RegistrationPanel({ event, club, registrationId, onChanged }: Pr
     pendingCheckout.clear(event.id)
     setCheckout(null)
     setPayOpen(false)
-    toast.success("Payment successful — you're registered")
     onChanged()
-    navigate(`/tickets/${payment.registrationId}`)
+    navigate(`/tickets/${payment.registrationId}?new=1`)
   }
 
   const started = isPast(event.startTime)

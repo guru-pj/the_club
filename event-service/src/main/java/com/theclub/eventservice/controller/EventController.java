@@ -96,15 +96,16 @@ public class EventController {
 
     /**
      * Upcoming events from clubs the caller follows or subscribes to, plus (with lat/lng) clubs within
-     * radiusKm (default 25), soonest first.
+     * radiusKm (default 25) or, without coordinates, clubs in {@code city}; soonest first.
      */
     @GetMapping("/upcoming")
     public List<EventCard> upcoming(@RequestParam(required = false) Double lat,
                                     @RequestParam(required = false) Double lng,
                                     @RequestParam(required = false) Double radiusKm,
+                                    @RequestParam(required = false) String city,
                                     @RequestParam(required = false) Integer limit,
                                     @AuthenticationPrincipal AuthenticatedUser caller) {
-        return feedService.upcoming(caller, lat, lng, radiusKm, limit);
+        return feedService.upcoming(caller, lat, lng, radiusKm, city, limit);
     }
 
     @PatchMapping("/{eventId}/registration-window")

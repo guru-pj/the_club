@@ -98,8 +98,8 @@ function Discover() {
   )
   const popular = useAsync(() => clubsApi.popular(8), [])
   const events = useAsync(
-    () => eventsApi.upcoming({ lat: location?.latitude, lng: location?.longitude, limit: 4 }),
-    [location?.latitude, location?.longitude],
+    () => eventsApi.upcoming({ lat: location?.latitude, lng: location?.longitude, city, limit: 4 }),
+    [location?.latitude, location?.longitude, city],
   )
 
   return (
@@ -133,12 +133,16 @@ function Discover() {
             <div className="grid grid-auto">{events.data.map((card) => <EventCardView key={card.event.id} card={card} />)}</div>
           )}
       </section>
-      {!!popular.data?.length && (
-        <section>
-          <SectionTitle>Popular</SectionTitle>
-          <div className="grid grid-auto">{popular.data.map((club) => <ClubCard key={club.id} club={club} />)}</div>
-        </section>
-      )}
+      <section>
+        <SectionTitle>Popular</SectionTitle>
+        {popular.error ? <ErrorMessage error={popular.error} onRetry={popular.reload} />
+          : popular.loading && !popular.data ? <Loading />
+          : !popular.data?.length ? (
+            <Card><p className="muted small">No clubs yet. Clubs appear here once verified owners create them.</p></Card>
+          ) : (
+            <div className="grid grid-auto">{popular.data.map((club) => <ClubCard key={club.id} club={club} />)}</div>
+          )}
+      </section>
     </div>
   )
 }

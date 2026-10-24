@@ -24,8 +24,8 @@ export default function EventsPage() {
   const location = savedLocation(user)
   const [filter, setFilter] = useState<Filter>('ALL')
   const feed = useAsync(
-    () => eventsApi.upcoming({ lat: location?.latitude, lng: location?.longitude, limit: 50 }),
-    [location?.latitude, location?.longitude],
+    () => eventsApi.upcoming({ lat: location?.latitude, lng: location?.longitude, city: user?.city?.trim() || undefined, limit: 50 }),
+    [location?.latitude, location?.longitude, user?.city],
   )
   const cards = (feed.data ?? []).filter((c) => filter === 'ALL' || c.sources.includes(filter))
 

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, mediaUrl } from '../api/client'
-import { usersApi } from '../api/endpoints'
+import { eventsApi, usersApi } from '../api/endpoints'
 import { useAuth } from '../auth/AuthContext'
 import { ImagePicker } from '../components/ImagePicker'
 import { LocationControl } from '../components/LocationControl'
@@ -10,8 +10,39 @@ import { Avatar, Badge, Button, Card, ErrorMessage, Field, Loading, PageHeader }
 import { fieldError } from '../lib/fieldError'
 import { ResendVerification } from './account/ResendVerification'
 import { SecurityCard } from './account/SecurityCard'
-import { formatDate, humanize } from '../lib/format'
+import { formatDate, formatDateTime, humanize, nowLocal } from '../lib/format'
+import { useAsync } from '../lib/useAsync'
 import './account.css'
+
+/** The user's upcoming registered events (journey step 9: registrations are kept on the profile). */
+function MyRegistrations() {
+  const { data, error, loading, reload } = useAsync(() => eventsApi.myRegistrations(), [])
+  const now = nowLocal()
+  const upcoming = (data ?? [])
+    .filter((r) => (r.status === 'CONFIRMED' || r.status === 'PENDING_PAYMENT') && r.eventStatus !== 'CANCELLED' && r.startTime >= now)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+    .slice(0, 5)
+  return (
+    <Card title="My upcoming events" actions={<Link to="/tickets" className="small">All tickets</Link>}>
+      {loading && !data ? <Loading /> : error ? <ErrorMessage error={error} onRetry={reload} />
+        : upcoming.length === 0 ? <p className="muted small">You haven't registered for any upcoming events.</p>
+        : (
+          <div className="list">
+            {upcoming.map((r) => (
+              <Link key={r.registrationId} className="list-item"
+                    to={r.status === 'CONFIRMED' ? `/tickets/${r.registrationId}` : `/events/${r.eventId}`}>
+                <span className="list-item-main">
+                  <span className="bold truncate" style={{ display: 'block' }}>{r.eventTitle}</span>
+                  <span className="muted small">{formatDateTime(r.startTime)}{r.location ? ` · ${r.location}` : ''}</span>
+                </span>
+                {r.status === 'PENDING_PAYMENT' ? <Badge tone="warning">Payment pending</Badge> : <Badge tone="success">Registered</Badge>}
+              </Link>
+            ))}
+          </div>
+        )}
+    </Card>
+  )
+}
 
 export default function ProfilePage() {
   const { user, setUser, logout } = useAuth()
@@ -90,6 +121,7 @@ export default function ProfilePage() {
       <Card title="Location">
         <LocationControl />
       </Card>
+      <MyRegistrations />
       <SecurityCard />
       <Card title="Connected apps">
         <p className="muted">Connect Strava to import your runs and rides automatically. <Link to="/activities">Manage on the Activities page</Link>.</p>
