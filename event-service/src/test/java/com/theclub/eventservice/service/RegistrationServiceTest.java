@@ -153,10 +153,15 @@ class RegistrationServiceTest {
         Registration existing = new Registration(event.getId(), memberId);
         existing.setStatus(RegistrationStatus.CONFIRMED);
         when(registrations.findByEventIdAndUserId(event.getId(), memberId)).thenReturn(Optional.of(existing));
+        when(paymentService.hasSucceededPayment(existing.getId())).thenReturn(true);
 
         assertStatus(() -> service.cancelOwn(event.getId(), member), HttpStatus.CONFLICT, "refunds");
 
+        // what was paid decides, not the current price: dropping the fee to 0 does not allow a refund-free cancel
         event.setPrice(BigDecimal.ZERO);
+        assertStatus(() -> service.cancelOwn(event.getId(), member), HttpStatus.CONFLICT, "refunds");
+
+        when(paymentService.hasSucceededPayment(existing.getId())).thenReturn(false);
         existing.setTicketCode("abc");
         service.cancelOwn(event.getId(), member);
         assertThat(existing.getStatus()).isEqualTo(RegistrationStatus.CANCELLED);

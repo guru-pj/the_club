@@ -49,7 +49,10 @@ public class RegistrationService {
 
     @Transactional
     public RegisterResponse register(UUID eventId, AuthenticatedUser caller) {
-        Event unlocked = events.findById(eventId).orElseThrow(() -> ApiException.notFound("Event not found"));
+        Event unlocked = events.findById(eventId)
+                // a draft doesn't exist for anyone but its club owner
+                .filter(e -> e.getStatus() != EventStatus.DRAFT)
+                .orElseThrow(() -> ApiException.notFound("Event not found"));
         // Anyone signed in may register, unless the event is for the club's subscribers only
         if (unlocked.isSubscribersOnly() && !clubAccess.isMember(unlocked.getClubId(), caller.id())) {
             throw ApiException.forbidden("This event is for the club's subscribers; subscribe to the club to register")
@@ -107,7 +110,8 @@ public class RegistrationService {
         switch (registration.getStatus()) {
             case PENDING_PAYMENT -> { }
             case CONFIRMED -> {
-                if (!event.isFree()) {
+                // decided by what was paid, not the current price
+                if (paymentService.hasSucceededPayment(registration.getId())) {
                     throw ApiException.conflict("Contact the club owner for refunds");
                 }
             }

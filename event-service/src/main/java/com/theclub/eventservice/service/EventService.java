@@ -155,6 +155,13 @@ public class EventService {
             }
             event.setCapacity(request.capacity());
         }
+        boolean feeChanged = request.price() != null && request.price().compareTo(event.getPrice()) != 0
+                || request.currency() != null && !request.currency().equals(event.getCurrency());
+        if (feeChanged && paymentService.hasOpenOrPaidPayments(event.getId())) {
+            // otherwise a paid event could be made "free" and then cancelled or left without refunds
+            throw ApiException.conflict("The fee can't change once members have paid or started paying")
+                    .withCode("FEE_LOCKED");
+        }
         if (request.price() != null) {
             event.setPrice(request.price());
         }
@@ -192,9 +199,8 @@ public class EventService {
                         EnumSet.of(RegistrationStatus.CONFIRMED, RegistrationStatus.PENDING_PAYMENT))
                 .stream().map(Registration::getUserId).toList();
         notifier.eventCancelled(event, affected);
-        if (!event.isFree()) {
-            paymentService.refundAllForCancelledEvent(event);
-        }
+        // based on what was actually paid, not the current price
+        paymentService.refundAllForCancelledEvent(event);
         return view(event, caller.id());
     }
 

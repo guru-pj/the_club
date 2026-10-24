@@ -39,6 +39,8 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'members', label: 'Members' },
   { id: 'participation', label: 'Participation' },
 ]
+/** Club analytics: only the owner and admins can open these (event-service enforces it too) */
+const OWNER_TABS: TabId[] = ['participation']
 
 function ClubHeader({ club, canManage, onChanged }: { club: Club; canManage: boolean; onChanged: (club?: Club) => void }) {
   const toast = useToast()
@@ -191,7 +193,7 @@ export default function ClubPage() {
     <div className="page stack-lg">
       <ClubHeader club={data} canManage={canManage} onChanged={onChanged} />
       <div key={data.id}>
-        <Tabs tabs={TABS} active={tab} onChange={(id) => setParams(id === 'feed' ? {} : { tab: id }, { replace: true })} />
+        <Tabs tabs={canManage ? TABS : TABS.filter((t) => !OWNER_TABS.includes(t.id))} active={tab} onChange={(id) => setParams(id === 'feed' ? {} : { tab: id }, { replace: true })} />
         {tab === 'feed' && <FeedTab club={data} canManage={canManage} recapEventId={params.get('recap') ?? undefined} />}
         {tab === 'about' && <AboutTab club={data} />}
         {tab === 'chat' && <ChatTab club={data} onSubscribe={() => setParams({}, { replace: true })} />}
@@ -200,7 +202,7 @@ export default function ClubPage() {
         {tab === 'photos' && <PhotosTab clubId={data.id} canManage={canManage} />}
         {tab === 'leaderboard' && <LeaderboardTab clubId={data.id} />}
         {tab === 'members' && <MembersTab clubId={data.id} canManage={canManage} canMessage={!!data.myRole} onChanged={() => club.reload()} />}
-        {tab === 'participation' && <ParticipationTab clubId={data.id} />}
+        {tab === 'participation' && canManage && <ParticipationTab clubId={data.id} />}
       </div>
     </div>
   )
