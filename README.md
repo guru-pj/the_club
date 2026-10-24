@@ -41,6 +41,7 @@
 
 `common-lib` holds code shared by every service: JWT validation, the UUIDv7 generator, internal API-key auth and problem-detail error handling.
 Internal APIs, security model and conventions: [`docs/SERVICE_CONTRACTS.md`](docs/SERVICE_CONTRACTS.md).
+Engineering architecture (services, flows, deployment, known limitations): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Testing the API with Postman, with a ready-made collection and an end-to-end journey: [`docs/API_TESTING_POSTMAN.md`](docs/API_TESTING_POSTMAN.md).
 
 ---
 
