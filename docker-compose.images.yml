@@ -1,0 +1,51 @@
+# Production Compose with the images CI built, scanned and pushed (ghcr.io/<owner>/the-club-<service>:<git sha>)
+# instead of building on the server:
+#
+#   IMAGE_TAG=<full git sha of the commit to deploy> docker compose -f docker-compose.yml -f docker-compose.images.yml pull
+#   IMAGE_TAG=<same sha>                             docker compose -f docker-compose.yml -f docker-compose.images.yml up -d
+#
+# IMAGE_TAG is required (an exact commit, never "latest"), so the server runs exactly what CI tested. IMAGE_REGISTRY
+# defaults to ghcr.io/guru-pj; if the packages are private, `docker login ghcr.io` first. See docs/PRODUCTION.md §9.
+# Needs Docker Compose 2.24 or later (the !reset tag).
+
+services:
+  discovery-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-discovery-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  config-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-config-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  gateway-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-gateway-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  user-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-user-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  auth-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-auth-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  activity-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-activity-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  club-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-club-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  event-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-event-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  notification-service:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-notification-service:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always
+  web-app:
+    build: !reset null
+    image: ${IMAGE_REGISTRY:-ghcr.io/guru-pj}/the-club-web-app:${IMAGE_TAG:?set IMAGE_TAG to the git sha published by CI}
+    pull_policy: always

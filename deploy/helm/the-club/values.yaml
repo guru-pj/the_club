@@ -6,6 +6,10 @@ global:
   imageRegistry: ghcr.io/guru-pj
   # Defaults to the chart's appVersion; pin a commit SHA in production for reproducible rollbacks
   imageTag: ""
+  # Without an imageTag the chart's appVersion ("latest") is used. That is fine for trying the chart out, but a
+  # production install must name the exact image it runs: values-prod.yaml sets this to false, so rendering fails
+  # until --set global.imageTag=<git sha> is given.
+  allowLatestTag: true
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []   # e.g. [{name: ghcr-pull}]
 
@@ -160,13 +164,13 @@ databases:
     enabled: false
     storageClass: ""                  # "" = cluster default
     mysql:
-      image: mysql:8.0
+      image: mysql:8.0.46             # exact version: a restart must not change the server under live data
       storage: 10Gi
       resources:
         requests: {cpu: 100m, memory: 512Mi}
         limits: {memory: 1Gi}
     postgres:
-      image: postgres:15
+      image: postgres:15.19
       storage: 5Gi
       resources:
         requests: {cpu: 50m, memory: 256Mi}
@@ -376,7 +380,7 @@ redis:
   enabled: false
   embedded:
     enabled: true                     # false: use host/port below
-    image: redis:7.4-alpine
+    image: redis:7.4.11-alpine
   host: ""                            # managed Redis endpoint, e.g. master.my-redis.xxxx.cache.amazonaws.com
   port: 6379                          # Azure Cache for Redis with TLS: 6380
   ssl: false                          # true for ElastiCache in-transit encryption, Memorystore TLS, Azure (6380)

@@ -39,7 +39,7 @@ Versions come from `pom.xml`, the module poms, `web-app/package.json`, the Docke
 | Object storage SDKs | AWS SDK v2 BOM 2.57.1, Google Cloud libraries BOM 26.89.0, Azure SDK BOM 1.3.8 | user-, club-, event-service and `common-lib` (optional) |
 | Email templating | Thymeleaf | notification-service (`EmailRenderer`) |
 | Migrations | Flyway (`spring-boot-starter-flyway`) | managed by Boot |
-| Databases | MySQL 8 (`mysql:8.0` image), PostgreSQL 15 (`postgres:15`) | tests: H2 and Testcontainers (`mysql:8.4`, `postgres:15`) |
+| Databases | MySQL 8 (`mysql:8.0.46` image), PostgreSQL 15 (`postgres:15.19`) | tests: H2 and Testcontainers (`mysql:8.4`, `postgres:15`) |
 | Cache / pub-sub (optional) | Redis | `redis:7.4-alpine` in the Helm chart; not in Compose |
 | Object storage (Compose) | SeaweedFS S3 | `chrislusf/seaweedfs:4.47` |
 | Frontend | React 19, React Router 7, TypeScript ~7.0, Vite 8, Vitest 5, oxlint | `web-app/package.json` |
@@ -825,7 +825,6 @@ Each item below was checked in the code or configuration named.
 | Payments | `PaymentService.createFor` calls Razorpay's order API inside the registration transaction, while the event row is locked `PESSIMISTIC_WRITE`; refunds likewise run under the payment row lock. The Razorpay `RestClient` is built without explicit connect/read timeouts, so a slow Razorpay holds the lock and a DB connection and blocks other registrations for the same event. | `RegistrationService.register`, `PaymentService`, `RazorpayPaymentGateway` |
 | Notifications | Callers post to notification-service after commit and drop the request on failure; there is no caller-side outbox. An email (verification, ticket, refund) is lost if notification-service is unreachable at that moment. Verification can be resent by the user; tickets remain in the app. | `AccountMailer`, `ConfirmationNotifier`, `NotificationPublisher` |
 | Feign timeouts | activity-service does not set the Feign timeouts the other services set, so its notification calls use OpenFeign's defaults. | `activity-service/src/main/resources/application.yml` |
-| Image tags | The chart's `appVersion` is `"latest"` and `global.imageTag` defaults to empty, so an install without `--set global.imageTag=<sha>` deploys `:latest` (CI pushes both `:<sha>` and `:latest`). Rollbacks are only meaningful with pinned tags. | `Chart.yaml`, `_helpers.tpl` (`theclub.imageTag`) |
 | Backups | Dumps are gzip only, not encrypted, both in the `backups` volume and in the off-site rclone copy as configured. Use an encrypted bucket or an rclone `crypt` remote. Uploaded images are not backed up by these jobs. | `scripts/backup.sh`, `docker-compose.yml` `backup-offsite` |
 | NetworkPolicy defaults | `databaseCidrs`, `otlpCidrs`, `internetCidrs` and `redis.cidrs` default to `0.0.0.0/0`; narrow them in production. | `values.yaml` |
 | Single points | Compose is one host with one Eureka node, one MySQL and one PostgreSQL. In Kubernetes, the embedded databases and Redis are single instances meant for development. | `docker-compose.yml`, `templates/databases.yaml`, `templates/redis.yaml` |
