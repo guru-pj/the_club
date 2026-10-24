@@ -5,6 +5,7 @@
 global:
   imageRegistry: ghcr.io/guru-pj
   imageTag: ""                      # set to the commit SHA published by CI (never "latest" in production)
+  allowLatestTag: false             # refuse to render without an exact imageTag
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []              # [{name: ghcr-pull}] if the packages are private
 

@@ -375,12 +375,23 @@ All CI/CD lives in `.github/`.
 |---|---|---|
 | `ci.yml` → backend | push to main, pull requests | `mvn verify` on JDK 21 (all unit and integration tests) |
 | `ci.yml` → web | push to main, pull requests | `oxlint`, unit tests, production build |
-| `ci.yml` → images | push to main, after both pass | Builds each service image and the web image, scans them with Trivy (fails on fixable CRITICAL vulnerabilities), pushes `ghcr.io/<owner>/the-club-<service>:<sha>` and `:latest` |
-| `ci.yml` → dependency-scan | push to main, pull requests | Trivy scan of `pom.xml` and the lockfile, reported to GitHub code scanning |
+| `ci.yml` → images | push to main, after backend, web, Helm and the dependency scan pass | Builds each service image and the web image, scans them with Trivy (fails on fixable CRITICAL vulnerabilities), pushes `ghcr.io/<owner>/the-club-<service>:<sha>` and `:latest` |
+| `ci.yml` → dependency-scan | push to main, pull requests | Trivy scan of `pom.xml` and the lockfile; fails on fixable HIGH/CRITICAL vulnerabilities and lists them in the job summary |
 | `codeql.yml` | push to main, pull requests, weekly | CodeQL `security-extended` for Java and TypeScript |
-| `dependabot.yml` | weekly | Maven, npm, GitHub Actions and Docker base-image updates (minor/patch grouped) |
+| `dependabot.yml` | weekly | Maven, npm, GitHub Actions, Docker base images and the images in the Compose files (minor/patch grouped; database majors are left for a deliberate upgrade) |
 
-To deploy from the registry instead of building on the host, add `image: ghcr.io/<owner>/the-club-<service>:<sha>` to each service (for example in a `docker-compose.images.yml` override) and run `docker compose -f docker-compose.yml -f docker-compose.images.yml pull && ... up -d`.
+**Deploy the images CI tested instead of building on the server** (recommended for production). `docker-compose.images.yml` replaces every `build:` with the published image, and needs the full commit SHA:
+
+```bash
+export IMAGE_TAG=<full git sha of the commit to deploy>     # e.g. git rev-parse origin/main
+docker login ghcr.io                                       # only if the packages are private
+docker compose -f docker-compose.yml -f docker-compose.images.yml pull
+docker compose -f docker-compose.yml -f docker-compose.images.yml up -d
+```
+
+`IMAGE_TAG` is required (there is no `latest` fallback), so the server runs exactly the build that passed CI and the image scan; set `IMAGE_REGISTRY` if the images live somewhere other than `ghcr.io/guru-pj`. It needs Docker Compose 2.24 or later. Building on the host (§0 B6) still works for a first try or when CI isn't available.
+
+Reproducibility otherwise: the database, backup and observability images use exact versions (`mysql:8.0.46`, `postgres:15.19`, …), and every GitHub Action is pinned to a commit SHA with its version in a comment; Dependabot proposes updates to both.
 
 Recommended repository settings:
 - Protect `main`: require the `Backend`, `Web app` and `CodeQL` checks and at least one review.

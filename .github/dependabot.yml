@@ -60,3 +60,18 @@ updates:
     groups:
       base-images:
         patterns: ["*"]
+
+  # Images used directly by the Compose files (databases, backup, storage, observability)
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule:
+      interval: weekly
+    ignore:
+      # A database major upgrade needs a dump and restore; do it deliberately
+      - dependency-name: "mysql"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+    groups:
+      compose-images:
+        patterns: ["*"]

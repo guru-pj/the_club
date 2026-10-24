@@ -43,7 +43,11 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "theclub.imageTag" -}}
-{{- default .Chart.AppVersion .Values.global.imageTag -}}
+{{- $tag := default .Chart.AppVersion .Values.global.imageTag -}}
+{{- if and (eq $tag "latest") (not .Values.global.allowLatestTag) -}}
+{{- fail "global.imageTag must be set to the image published by CI (e.g. --set global.imageTag=<git sha>); \"latest\" is not reproducible" -}}
+{{- end -}}
+{{- $tag -}}
 {{- end -}}
 
 {{/* (dict "root" $ "image" "user-service") -> registry/the-club-user-service:tag */}}

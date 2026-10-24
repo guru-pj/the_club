@@ -63,7 +63,7 @@ x-depends-mysql: &depends-mysql
 services:
   # ===================== DATABASES =====================
   mysql:
-    image: mysql:8.0
+    image: mysql:8.0.46
     container_name: mysql
     restart: unless-stopped
     environment:
@@ -92,7 +92,7 @@ services:
     logging: *logging
 
   postgres:
-    image: postgres:15
+    image: postgres:15.19
     container_name: postgres
     restart: unless-stopped
     environment:
@@ -121,7 +121,7 @@ services:
   # Nightly dumps (BACKUP_SCHEDULE) into the 'backups' volume, kept BACKUP_RETENTION_DAYS. Each engine is dumped
   # with its own image so client and server versions always match. On demand: ./scripts/backup.sh
   db-backup-mysql:
-    image: mysql:8.0
+    image: mysql:8.0.46
     container_name: db-backup-mysql
     restart: unless-stopped
     entrypoint: ["bash", "/opt/theclub/scripts/backup.sh", "schedule"]
@@ -174,7 +174,7 @@ services:
     logging: *logging
 
   db-backup-postgres:
-    image: postgres:15
+    image: postgres:15.19
     container_name: db-backup-postgres
     restart: unless-stopped
     entrypoint: ["bash", "/opt/theclub/scripts/backup.sh", "schedule"]
