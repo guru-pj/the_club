@@ -62,6 +62,19 @@ public class ActivityService {
         return activities.findById(id).orElseThrow(() -> ApiException.notFound("Activity not found"));
     }
 
+    /**
+     * The activity if it belongs to the caller (or the caller is an admin). Anyone else gets 404, so activity ids
+     * of other users cannot be probed.
+     */
+    @Transactional(readOnly = true)
+    public Activity getVisibleTo(UUID id, AuthenticatedUser caller) {
+        Activity activity = get(id);
+        if (!activity.getUserId().equals(caller.id()) && !caller.isAdmin()) {
+            throw ApiException.notFound("Activity not found");
+        }
+        return activity;
+    }
+
     @Transactional
     public void delete(UUID id, AuthenticatedUser caller) {
         Activity activity = get(id);

@@ -5,6 +5,7 @@ import com.theclub.activityservice.dto.ActivityResponse;
 import com.theclub.activityservice.dto.PageResponse;
 import com.theclub.activityservice.service.ActivityService;
 import com.theclub.common.security.AuthenticatedUser;
+import com.theclub.common.web.ApiException;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -50,19 +51,24 @@ public class ActivityController {
         return PageResponse.of(activityService.list(caller.id(), null, from, to, page, size), ActivityResponse::from);
     }
 
+    /** The user's own activities; admins may view anyone's. Clubs see aggregates only (internal stats). */
     @GetMapping("/user/{userId}")
     public PageResponse<ActivityResponse> byUser(
             @PathVariable UUID userId,
+            @AuthenticationPrincipal AuthenticatedUser caller,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        if (!caller.id().equals(userId) && !caller.isAdmin()) {
+            throw ApiException.forbidden("You can only view your own activities");
+        }
         return PageResponse.of(activityService.list(userId, null, from, to, page, size), ActivityResponse::from);
     }
 
     @GetMapping("/{id}")
-    public ActivityResponse get(@PathVariable UUID id) {
-        return ActivityResponse.from(activityService.get(id));
+    public ActivityResponse get(@PathVariable UUID id, @AuthenticationPrincipal AuthenticatedUser caller) {
+        return ActivityResponse.from(activityService.getVisibleTo(id, caller));
     }
 
     @PutMapping("/{id}")

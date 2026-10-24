@@ -66,7 +66,7 @@ class ActivityControllerIntegrationTest {
                 .andExpect(jsonPath("$.items[0].userId").value(userId.toString()))
                 .andExpect(jsonPath("$.items[0].source").value("MANUAL"));
 
-        mvc.perform(get("/api/v1/activities/user/{id}", userId).header("Authorization", token(UUID.randomUUID(), "USER"))
+        mvc.perform(get("/api/v1/activities/user/{id}", userId).header("Authorization", token(userId, "USER"))
                         .param("from", now.minusDays(1).truncatedTo(ChronoUnit.SECONDS).toString())
                         .param("size", "1"))
                 .andExpect(status().isOk())
@@ -119,5 +119,26 @@ class ActivityControllerIntegrationTest {
         mvc.perform(post("/api/v1/activities").contentType(MediaType.APPLICATION_JSON)
                         .content(body("Run", LocalDateTime.now().minusHours(1))))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void otherUsersCannotReadSomeonesActivitiesButAdminsCan() throws Exception {
+        UUID owner = UUID.randomUUID();
+        UUID stranger = UUID.randomUUID();
+        String id = create(owner, "Morning run", LocalDateTime.now().minusHours(3));
+
+        mvc.perform(get("/api/v1/activities/user/{id}", owner).header("Authorization", token(stranger, "USER")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/activities/{id}", id).header("Authorization", token(stranger, "USER")))
+                .andExpect(status().isNotFound());
+
+        mvc.perform(get("/api/v1/activities/user/{id}", owner).header("Authorization", token(stranger, "USER", "ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(1));
+        mvc.perform(get("/api/v1/activities/{id}", id).header("Authorization", token(stranger, "USER", "ADMIN")))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/activities/{id}", id).header("Authorization", token(owner, "USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Morning run"));
     }
 }
