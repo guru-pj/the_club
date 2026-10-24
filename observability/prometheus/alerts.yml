@@ -120,3 +120,15 @@ groups:
         annotations:
           summary: "Strava {{ $labels.kind }} {{ $labels.window }} quota above 90%"
           description: "Usage is {{ $value | humanizePercentage }} of the Strava API limit; request a higher limit from Strava if this recurs."
+
+  - name: theclub-alerting
+    rules:
+      # Shows in Grafana and the Alertmanager UI even when the failing channel is the only one
+      - alert: AlertDeliveryFailing
+        expr: sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager cannot deliver {{ $labels.integration }} notifications"
+          description: "Notifications failed in the last 15 minutes. Check `docker compose logs alertmanager` and the SMTP credentials or Slack webhook."

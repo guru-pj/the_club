@@ -105,7 +105,7 @@ if [ ! -f "$s3_config" ] || [ "$(cat "$s3_config")" != "$new_config" ]; then
 fi
 
 # --- third-party credentials: created empty, fill in for production
-for optional in smtp-password razorpay-key-secret razorpay-webhook-secret strava-client-secret zeptomail-token; do
+for optional in smtp-password razorpay-key-secret razorpay-webhook-secret strava-client-secret zeptomail-token alertmanager-slack-webhook; do
     if [ ! -f "$SECRETS_DIR/$optional" ]; then
         : > "$SECRETS_DIR/$optional"
         chmod 644 "$SECRETS_DIR/$optional"

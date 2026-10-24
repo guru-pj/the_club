@@ -104,7 +104,7 @@ Then in a browser:
 (`scripts/smoke-test.sh` is for development stacks only, because it needs mock payments.)
 
 **B8. Turn on the remaining production features.**
-- **Monitoring:** see [`OBSERVABILITY.md`](OBSERVABILITY.md). Run `docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d`, then open Grafana through an SSH tunnel: `ssh -L 3001:127.0.0.1:3001 <server>`.
+- **Monitoring:** see [`OBSERVABILITY.md`](OBSERVABILITY.md). Run `docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d`, then open Grafana through an SSH tunnel: `ssh -L 3001:127.0.0.1:3001 <server>`. Alerts are emailed to `ADMIN_EMAIL` through your ZeptoMail setup (Alertmanager won't start under `prod` if they can't be delivered); send a test alert with `docker compose exec alertmanager amtool alert add test severity=warning --alertmanager.url=http://localhost:9093` and check it arrives.
 - **HSTS:** once HTTPS works, uncomment the `Strict-Transport-Security` line in `web-app/security-headers.conf` and run `docker compose -f docker-compose.yml up -d --build web-app`.
 - **Strava webhook subscription** (if you use Strava): [`STRAVA_SETUP.md`](STRAVA_SETUP.md).
 - **Offsite backups:** copy the `backups` volume off the server regularly (§7).
