@@ -260,6 +260,7 @@ services:
       SPRING_DATASOURCE_USERNAME: theclub_user
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       APP_BASE_URL: ${APP_BASE_URL}
+      ALLOW_DEV_PROFILE_ON_PUBLIC_URL: ${ALLOW_DEV_PROFILE_ON_PUBLIC_URL:-false}
     secrets:
       - source: jwt_public_key
         target: JWT_PUBLIC_KEY

@@ -116,6 +116,9 @@ theclub:
   app:
     # public URL of the web app, used for links in verification and password reset emails
     base-url: ${APP_BASE_URL:http://localhost:3000}
+  # Without the prod profile, a public https:// APP_BASE_URL makes the service refuse to start (common-lib
+  # ProductionSafetyCheck); true allows it for a deliberate test setup such as an HTTPS tunnel to a laptop
+  allow-dev-profile-on-public-url: ${ALLOW_DEV_PROFILE_ON_PUBLIC_URL:false}
   clients:
     notification-service:
       url: ${NOTIFICATION_SERVICE_URL:}
