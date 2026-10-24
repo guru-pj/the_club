@@ -2,7 +2,7 @@
 
 The Club is a website where fitness clubs (running, cycling, swimming and more) run their community: members join clubs, log workouts, sign up and pay for events, get a QR ticket, check in on the day, and earn points on monthly leaderboards. This document explains how it is built, in plain language, with no technical background assumed. Every technical word is explained where it first appears and again in the [Glossary](#glossary) at the end.
 
-For engineers: service contracts are in [SERVICE_CONTRACTS.md](SERVICE_CONTRACTS.md); deployment is in [DEPLOY_LINUX.md](DEPLOY_LINUX.md), [DEPLOY_MACOS.md](DEPLOY_MACOS.md) and [PRODUCTION.md](PRODUCTION.md).
+For engineers: the detailed engineering architecture is in [ARCHITECTURE.md](ARCHITECTURE.md), API testing with Postman in [API_TESTING_POSTMAN.md](API_TESTING_POSTMAN.md), service contracts in [SERVICE_CONTRACTS.md](SERVICE_CONTRACTS.md); deployment is in [DEPLOY_LINUX.md](DEPLOY_LINUX.md), [DEPLOY_MACOS.md](DEPLOY_MACOS.md) and [PRODUCTION.md](PRODUCTION.md).
 
 ## Who uses it
 
