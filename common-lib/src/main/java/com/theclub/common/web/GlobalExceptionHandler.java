@@ -3,6 +3,7 @@ package com.theclub.common.web;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -55,6 +56,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleConflict(DataIntegrityViolationException ex) {
         log.debug("Data integrity violation", ex);
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The request conflicts with existing data");
+    }
+
+    /** Two requests changed the same row at once (e.g. the same ticket scanned twice): the loser gets 409. */
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ProblemDetail handleConcurrentUpdate(OptimisticLockingFailureException ex) {
+        log.debug("Concurrent update", ex);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "This was just changed by another request; refresh and try again");
+        problem.setProperty("code", "CONCURRENT_UPDATE");
+        return problem;
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

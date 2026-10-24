@@ -242,6 +242,19 @@ public class PaymentService {
         return refunded;
     }
 
+    /** Whether any member has paid for the event or has a checkout in progress. */
+    @Transactional(readOnly = true)
+    public boolean hasOpenOrPaidPayments(UUID eventId) {
+        return payments.findByEventId(eventId).stream()
+                .anyMatch(p -> p.getStatus() == PaymentStatus.CREATED || p.getStatus() == PaymentStatus.SUCCEEDED);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasSucceededPayment(UUID registrationId) {
+        return payments.findByRegistrationId(registrationId).stream()
+                .anyMatch(p -> p.getStatus() == PaymentStatus.SUCCEEDED);
+    }
+
     @Transactional(readOnly = true)
     public PaymentResponse get(UUID paymentId, AuthenticatedUser caller) {
         Payment payment = payments.findById(paymentId).orElseThrow(() -> ApiException.notFound("Payment not found"));

@@ -1,8 +1,10 @@
 package com.theclub.eventservice.controller;
 
 import com.theclub.common.security.AuthenticatedUser;
+import com.theclub.common.web.ApiException;
 import com.theclub.eventservice.dto.MemberParticipation;
 import com.theclub.eventservice.dto.ParticipationResponse;
+import com.theclub.eventservice.service.ClubAccess;
 import com.theclub.eventservice.service.ParticipationService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,9 +21,11 @@ import java.util.UUID;
 public class ParticipationController {
 
     private final ParticipationService participationService;
+    private final ClubAccess clubAccess;
 
-    public ParticipationController(ParticipationService participationService) {
+    public ParticipationController(ParticipationService participationService, ClubAccess clubAccess) {
         this.participationService = participationService;
+        this.clubAccess = clubAccess;
     }
 
     @GetMapping("/me")
@@ -31,12 +35,18 @@ public class ParticipationController {
     }
 
     @GetMapping("/users/{userId}")
-    public ParticipationResponse user(@PathVariable UUID userId, @RequestParam(required = false) UUID clubId) {
+    public ParticipationResponse user(@PathVariable UUID userId, @RequestParam(required = false) UUID clubId,
+                                      @AuthenticationPrincipal AuthenticatedUser caller) {
+        if (!caller.id().equals(userId) && !caller.isAdmin()) {
+            throw ApiException.forbidden("You can only view your own participation");
+        }
         return participationService.forUser(userId, clubId);
     }
 
+    /** Club analytics: who attended and how often. Club owner or admin only. */
     @GetMapping("/clubs/{clubId}")
-    public List<MemberParticipation> club(@PathVariable UUID clubId) {
+    public List<MemberParticipation> club(@PathVariable UUID clubId, @AuthenticationPrincipal AuthenticatedUser caller) {
+        clubAccess.requireOwnerOrAdmin(clubId, caller);
         return participationService.forClub(clubId);
     }
 }

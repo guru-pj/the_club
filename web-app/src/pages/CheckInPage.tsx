@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
+import { ApiError } from '../api/client'
 import { clubsApi, eventsApi } from '../api/endpoints'
 import type { CheckInResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -13,7 +14,7 @@ import './events.css'
 
 type Result =
   | { ok: true; checkIn: CheckInResponse }
-  | { ok: false; code: string; message: string }
+  | { ok: false; warning: boolean; code: string; message: string }
 
 const SCANNER_ID = 'checkin-scanner'
 const REPEAT_WINDOW_MS = 5000
@@ -53,7 +54,10 @@ export default function CheckInPage() {
       reloadRegs()
       navigator.vibrate?.(80)
     } catch (e) {
-      setResult({ ok: false, code: trimmed, message: e instanceof Error ? e.message : String(e) })
+      // 409: a real ticket that can't be used now (already checked in, cancelled, outside the window): a warning,
+      // not the red "invalid ticket" result
+      const warning = e instanceof ApiError && e.status === 409
+      setResult({ ok: false, warning, code: trimmed, message: e instanceof Error ? e.message : String(e) })
       navigator.vibrate?.([60, 60, 60])
     } finally {
       inFlight.current = false
@@ -130,10 +134,10 @@ export default function CheckInPage() {
                 </div>
               </div>
             ) : (
-              <div className="scan-result scan-result-error" role="alert">
+              <div className={result.warning ? 'scan-result scan-result-warning' : 'scan-result scan-result-error'} role="alert">
                 <span className="icon-circle"><CloseIcon size={20} /></span>
                 <div>
-                  <div className="bold">Not checked in</div>
+                  <div className="bold">{result.warning ? 'Not checked in' : 'Invalid ticket'}</div>
                   <div className="small">{result.message}</div>
                   <div className="tiny mono">Ticket {shortCode(result.code)}</div>
                 </div>

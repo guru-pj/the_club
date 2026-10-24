@@ -46,6 +46,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -187,7 +188,7 @@ class EventFlowIntegrationTest {
                 .andExpect(jsonPath("$.eventsAttended").value(1))
                 .andExpect(jsonPath("$.totalPoints").value(25))
                 .andExpect(jsonPath("$.stars").value(0));
-        mvc.perform(as(get("/api/v1/participation/clubs/{clubId}", clubId), memberId, "USER"))
+        mvc.perform(as(get("/api/v1/participation/clubs/{clubId}", clubId), ownerId, "USER", "CLUB_OWNER"))
                 .andExpect(jsonPath("$[0].userId").value(memberId.toString()))
                 .andExpect(jsonPath("$[0].eventsAttended").value(1));
 
@@ -351,5 +352,52 @@ class EventFlowIntegrationTest {
         mvc.perform(as(get("/api/v1/events/{id}/registrations", eventId), ownerId, "USER", "CLUB_OWNER"))
                 .andExpect(jsonPath("$[0].status").value("CANCELLED"))
                 .andExpect(jsonPath("$[0].paymentStatus").value("REFUNDED"));
+    }
+
+    @Test
+    void feeIsLockedOncePaidAndCancellingStillRefundsWhatWasPaid() throws Exception {
+        String eventId = createEvent(",\"price\":500");
+        String paymentId = body(as(post("/api/v1/events/{id}/register", eventId), memberId, "USER"), 201)
+                .get("payment").get("paymentId").asText();
+        String signature = body(as(post("/api/v1/payments/{id}/mock-signature", paymentId), memberId, "USER")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"providerPaymentId\":\"pay_fee\"}"), 200)
+                .get("signature").asText();
+        mvc.perform(as(post("/api/v1/payments/{id}/confirm", paymentId), memberId, "USER")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"providerPaymentId\":\"pay_fee\",\"signature\":\"%s\"}".formatted(signature)))
+                .andExpect(status().isOk());
+
+        // making a paid event "free" would skip refunds on cancel and let members self-cancel without one
+        mvc.perform(as(put("/api/v1/events/{id}", eventId), ownerId, "USER", "CLUB_OWNER")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"price\":0}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("FEE_LOCKED"));
+        mvc.perform(as(put("/api/v1/events/{id}", eventId), ownerId, "USER", "CLUB_OWNER")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"price\":500,\"title\":\"Renamed run\"}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(as(post("/api/v1/events/{id}/cancel", eventId), ownerId, "USER", "CLUB_OWNER"))
+                .andExpect(status().isOk());
+        mvc.perform(as(get("/api/v1/payments/{id}", paymentId), memberId, "USER"))
+                .andExpect(jsonPath("$.status").value(org.hamcrest.Matchers.oneOf("REFUNDED", "REFUND_PENDING")))
+                .andExpect(jsonPath("$.registrationStatus").value("CANCELLED"));
+    }
+
+    @Test
+    void participationIsOwnerAnalyticsAndPersonalHistoryIsPrivate() throws Exception {
+        UUID stranger = UUID.randomUUID();
+        mvc.perform(as(get("/api/v1/participation/clubs/{id}", clubId), stranger, "USER"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/api/v1/participation/clubs/{id}", clubId), memberId, "USER"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/api/v1/participation/clubs/{id}", clubId), ownerId, "USER", "CLUB_OWNER"))
+                .andExpect(status().isOk());
+
+        mvc.perform(as(get("/api/v1/participation/users/{id}", memberId), stranger, "USER"))
+                .andExpect(status().isForbidden());
+        mvc.perform(as(get("/api/v1/participation/users/{id}", memberId), memberId, "USER"))
+                .andExpect(status().isOk());
+        mvc.perform(as(get("/api/v1/participation/users/{id}", memberId), stranger, "USER", "ADMIN"))
+                .andExpect(status().isOk());
     }
 }

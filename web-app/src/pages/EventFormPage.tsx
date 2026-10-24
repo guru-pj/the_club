@@ -108,6 +108,8 @@ function EventForm({ club, event, defaultCurrency }: { club: Club; event?: ClubE
   const navigate = useNavigate()
   const toast = useToast()
   const editing = !!event
+  // event-service refuses fee changes once members have paid (FEE_LOCKED), so refunds always match what was paid
+  const feeLocked = !!event && event.price > 0 && event.registeredCount > 0
   const [form, setForm] = useState<FormState>(() => initialState(event, defaultCurrency))
   const [errors, setErrors] = useState<Errors>({})
   const [serverError, setServerError] = useState<unknown>()
@@ -209,13 +211,14 @@ function EventForm({ club, event, defaultCurrency }: { club: Club; event?: ClubE
             </Field>
           </div>
           <div className="form-row">
-            <Field label="Price" htmlFor="price" error={err('price')} hint="0 makes the event free">
-              <input id="price" type="number" min={0} step="0.01" inputMode="decimal"
+            <Field label="Price" htmlFor="price" error={err('price')}
+                   hint={feeLocked ? 'Locked: members have already paid this fee' : '0 makes the event free'}>
+              <input id="price" type="number" min={0} step="0.01" inputMode="decimal" disabled={feeLocked}
                      className={err('price') ? 'input has-error' : 'input'} value={form.price} onChange={set('price')} />
             </Field>
             <Field label="Currency" htmlFor="currency" error={err('currency')}>
               <input id="currency" className={err('currency') ? 'input has-error' : 'input'} value={form.currency}
-                     onChange={set('currency')} maxLength={3} />
+                     onChange={set('currency')} maxLength={3} disabled={feeLocked} />
             </Field>
           </div>
         </div>
