@@ -262,7 +262,7 @@ curl -s http://127.0.0.1:8080/actuator/health            # gateway, from the hos
 |---|---|---|
 | Strict rate limit: login, register, password reset, email verification (POST) | 10 / minute / IP | `RATE_LIMIT_STRICT_PER_MINUTE` |
 | General rate limit: every `/api/**` call | 300 / minute / IP | `RATE_LIMIT_GENERAL_PER_MINUTE` |
-| Request body limit | 1 MB (413) | `GATEWAY_MAX_BODY_BYTES` |
+| Request body limit | 1 MB (413); 11 MB for `multipart/form-data` uploads, with each file capped at 5 MB by the service | `GATEWAY_MAX_BODY_BYTES`, `GATEWAY_MAX_UPLOAD_BODY_BYTES`, `MEDIA_MAX_SIZE` |
 | Security headers | `nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on auth responses | — |
 
 Rate-limited responses are `429` with a `Retry-After` header. Token refresh is deliberately excluded from the strict bucket: the web app calls it on every page load, and guessing a 256-bit refresh token is not feasible. Per-account login lockout is enforced separately by auth-service.
