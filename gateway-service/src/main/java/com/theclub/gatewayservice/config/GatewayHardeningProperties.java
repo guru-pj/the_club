@@ -11,14 +11,20 @@ import java.util.List;
  * @param trustForwardedFor take the client IP from X-Real-IP / X-Forwarded-For. Enable only when a trusted
  *                          reverse proxy (nginx in the web-app container) sits in front and sets those headers.
  * @param maxBodyBytes      largest accepted request body; larger requests get 413.
+ * @param maxUploadBodyBytes largest accepted multipart/form-data body (image and document uploads). The services
+ *                          cap each file themselves (MEDIA_MAX_SIZE); this only has to let such a request through.
  * @param rateLimit         per-client-IP token buckets.
  */
 @ConfigurationProperties(prefix = "theclub.gateway")
-public record GatewayHardeningProperties(boolean trustForwardedFor, Long maxBodyBytes, RateLimit rateLimit) {
+public record GatewayHardeningProperties(boolean trustForwardedFor, Long maxBodyBytes, Long maxUploadBodyBytes,
+                                         RateLimit rateLimit) {
 
     public GatewayHardeningProperties {
         if (maxBodyBytes == null) {
             maxBodyBytes = 1024L * 1024L;
+        }
+        if (maxUploadBodyBytes == null) {
+            maxUploadBodyBytes = 11L * 1024L * 1024L;
         }
         if (rateLimit == null) {
             rateLimit = new RateLimit(null, null, null, null, null, null, null);

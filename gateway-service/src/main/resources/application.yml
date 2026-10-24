@@ -69,6 +69,9 @@ theclub:
     # true only behind a trusted reverse proxy (nginx in the web-app container sets X-Real-IP / X-Forwarded-For)
     trust-forwarded-for: ${GATEWAY_TRUST_FORWARDED_FOR:false}
     max-body-bytes: ${GATEWAY_MAX_BODY_BYTES:1048576}
+    # multipart/form-data uploads (photos, documents): matches nginx and the services' 11 MB request limit;
+    # each file is still capped by the service (MEDIA_MAX_SIZE, 5 MB)
+    max-upload-body-bytes: ${GATEWAY_MAX_UPLOAD_BODY_BYTES:11534336}
     rate-limit:
       enabled: ${RATE_LIMIT_ENABLED:true}
       # memory: per gateway replica (the effective limit multiplies with the replica count); redis: shared by all

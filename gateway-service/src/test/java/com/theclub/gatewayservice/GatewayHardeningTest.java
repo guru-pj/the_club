@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "theclub.gateway.trust-forwarded-for=true",
         "theclub.gateway.max-body-bytes=100",
+        "theclub.gateway.max-upload-body-bytes=300",
         "theclub.gateway.rate-limit.strict.capacity=2",
         "theclub.gateway.rate-limit.strict.period=PT1M",
         "theclub.gateway.rate-limit.general.capacity=5",
@@ -128,6 +129,27 @@ class GatewayHardeningTest {
                 .contentType(MediaType.APPLICATION_JSON).body(chunks(2, 40), DataBuffer.class).exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class).value(body -> assertThat(body).endsWith("bytes=80"));
+    }
+
+    @Test
+    void uploadsGetTheLargerMultipartLimit() {
+        // a multipart body over the JSON limit but within the upload limit goes through
+        client.post().uri("/api/v1/users/me/photo").header("X-Real-IP", "10.0.20.1")
+                .contentType(MediaType.parseMediaType("multipart/form-data; boundary=b")).bodyValue("z".repeat(250)).exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).value(body -> assertThat(body).endsWith("bytes=250"));
+        client.post().uri("/api/v1/users/me/photo").header("X-Real-IP", "10.0.20.1")
+                .contentType(MediaType.parseMediaType("multipart/form-data; boundary=b")).bodyValue("z".repeat(301)).exchange()
+                .expectStatus().isEqualTo(413)
+                .expectBody(String.class).value(body -> assertThat(body).contains("exceeds 300 bytes"));
+        // chunked uploads are counted against the same limit
+        client.post().uri("/api/v1/users/me/photo").header("X-Real-IP", "10.0.20.2")
+                .contentType(MediaType.parseMediaType("multipart/form-data; boundary=b")).body(chunks(4, 100), DataBuffer.class).exchange()
+                .expectStatus().isEqualTo(413);
+        // other content types keep the small limit
+        client.post().uri("/api/v1/users/me/photo").header("X-Real-IP", "10.0.20.3")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM).bodyValue("z".repeat(250)).exchange()
+                .expectStatus().isEqualTo(413);
     }
 
     private static Flux<DataBuffer> chunks(int count, int size) {

@@ -29,17 +29,22 @@ import java.util.concurrent.atomic.AtomicLong;
 public class BodySizeLimitFilter implements GlobalFilter, Ordered {
 
     private final long maxBytes;
+    private final long maxUploadBytes;
 
     public BodySizeLimitFilter(GatewayHardeningProperties properties) {
         this.maxBytes = properties.maxBodyBytes();
+        this.maxUploadBytes = properties.maxUploadBodyBytes();
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
+        // uploads are multipart/form-data; everything else (JSON) keeps the small limit
+        long maxBytes = MediaType.MULTIPART_FORM_DATA.isCompatibleWith(request.getHeaders().getContentType())
+                ? maxUploadBytes : this.maxBytes;
         long declared = request.getHeaders().getContentLength();
         if (declared > maxBytes) {
-            return payloadTooLarge(exchange.getResponse());
+            return payloadTooLarge(exchange.getResponse(), maxBytes);
         }
         if (declared >= 0) {
             return chain.filter(exchange);
@@ -47,10 +52,10 @@ public class BodySizeLimitFilter implements GlobalFilter, Ordered {
         ServerWebExchange counted = exchange.mutate().request(new CountingRequest(request, maxBytes)).build();
         return ServerWebExchangeUtils.cacheRequestBody(counted,
                         cached -> chain.filter(counted.mutate().request(cached).build()))
-                .onErrorResume(BodyTooLargeException.class, e -> payloadTooLarge(exchange.getResponse()));
+                .onErrorResume(BodyTooLargeException.class, e -> payloadTooLarge(exchange.getResponse(), maxBytes));
     }
 
-    private Mono<Void> payloadTooLarge(ServerHttpResponse response) {
+    private Mono<Void> payloadTooLarge(ServerHttpResponse response, long maxBytes) {
         response.setStatusCode(HttpStatus.PAYLOAD_TOO_LARGE);
         response.getHeaders().setContentType(MediaType.APPLICATION_PROBLEM_JSON);
         byte[] body = ("{\"type\":\"about:blank\",\"title\":\"Payload Too Large\",\"status\":413,"
