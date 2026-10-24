@@ -79,6 +79,7 @@ How the services fit together. Public endpoints are reached through the gateway 
 | GET  | `/internal/clubs/{clubId}/audience` | — | `[uuid]`: subscribers and followers, each once (event announcements) |
 | GET  | `/internal/clubs/users/{userId}/related` | — | `{followed: [uuid], subscribed: [uuid]}` (the upcoming-events feed) |
 | GET  | `/internal/clubs/nearby?lat=&lng=&radiusKm=&limit=` | — | `[{id, name, logoUrl, distanceKm}]`, closest first |
+| GET  | `/internal/clubs/in-city?city=&limit=` | — | `[{id, name, logoUrl}]` whose city matches (case-insensitive); the event feed's "nearby" when the user has no coordinates |
 
 ### event-service
 | Method | Path | Body | Response |

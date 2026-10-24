@@ -73,6 +73,14 @@ public class InternalClubController {
                 .toList();
     }
 
+    /** Clubs whose city matches (case-insensitive): the event feed's "nearby" when the user has no coordinates. */
+    @GetMapping("/in-city")
+    public List<ClubSummary> inCity(@RequestParam String city, @RequestParam(defaultValue = "50") int limit) {
+        return clubService.inCity(city, limit).stream()
+                .map(c -> new ClubSummary(c.getId(), c.getName(), c.getLogoUrl()))
+                .toList();
+    }
+
     @PostMapping("/summaries")
     public List<ClubSummary> summaries(@Valid @RequestBody IdsRequest request) {
         return clubService.getAll(request.ids()).stream()

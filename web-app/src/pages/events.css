@@ -63,3 +63,10 @@
   .ticket { box-shadow: none; border: 1px solid #ccc; }
   .ticket-top { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Registration confirmation (ticket page right after registering) */
+.confirmation { text-align: center; max-width: 480px; margin: 0 auto 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.confirmation-icon {
+  width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--success-soft); color: var(--success);
+}

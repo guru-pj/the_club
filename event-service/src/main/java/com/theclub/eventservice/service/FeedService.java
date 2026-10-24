@@ -48,10 +48,12 @@ public class FeedService {
     }
 
     /**
-     * @param lat with lng, also includes events of clubs within {@code radiusKm} of the point
+     * @param lat  with lng, also includes events of clubs within {@code radiusKm} of the point
+     * @param city used for "nearby" instead when there are no coordinates: clubs whose city matches
      */
     @Transactional(readOnly = true)
-    public List<EventCard> upcoming(AuthenticatedUser caller, Double lat, Double lng, Double radiusKm, Integer limit) {
+    public List<EventCard> upcoming(AuthenticatedUser caller, Double lat, Double lng, Double radiusKm, String city,
+                                    Integer limit) {
         int max = limit == null ? 20 : Math.clamp(limit, 1, MAX_LIMIT);
         Map<UUID, Set<String>> sources = new LinkedHashMap<>();
         Map<UUID, Double> distance = new LinkedHashMap<>();
@@ -66,6 +68,11 @@ public class FeedService {
                 sources.computeIfAbsent(club.id(), k -> new LinkedHashSet<>()).add(NEARBY);
                 distance.put(club.id(), club.distanceKm());
                 clubs.put(club.id(), new ClubSummary(club.id(), club.name(), club.logoUrl()));
+            }
+        } else if (city != null && !city.isBlank()) {
+            for (ClubSummary club : clubClient.inCity(city.trim(), MAX_LIMIT)) {
+                sources.computeIfAbsent(club.id(), k -> new LinkedHashSet<>()).add(NEARBY);
+                clubs.put(club.id(), club);
             }
         }
         if (sources.isEmpty()) {

@@ -36,6 +36,9 @@ public interface ClubClient {
     List<NearbyClub> nearby(@RequestParam("lat") double lat, @RequestParam("lng") double lng,
                             @RequestParam("radiusKm") double radiusKm, @RequestParam("limit") int limit);
 
+    @GetMapping("/in-city")
+    List<ClubSummary> inCity(@RequestParam("city") String city, @RequestParam("limit") int limit);
+
     record ClubInfo(UUID id, String name, UUID ownerId, long memberCount) {
     }
 
