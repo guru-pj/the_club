@@ -64,7 +64,7 @@ services:
 
   # Local SMTP catcher for confirmation emails / QR tickets / password resets
   mailpit:
-    image: axllent/mailpit:v1.20
+    image: axllent/mailpit:v1.31
     container_name: mailpit
     restart: unless-stopped
     ports:
@@ -72,7 +72,7 @@ services:
 
   # Federated SQL over MySQL + PostgreSQL for ad-hoc analytics (development only)
   trino:
-    image: trinodb/trino:460
+    image: trinodb/trino:484
     container_name: trino
     ports:
       - "127.0.0.1:${TRINO_PORT}:8080"

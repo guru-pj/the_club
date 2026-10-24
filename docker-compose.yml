@@ -149,7 +149,7 @@ services:
   # target: S3, Google Cloud Storage, Azure Blob, another server. Set BACKUP_OFFSITE_TARGET (and the credentials
   # rclone needs, e.g. RCLONE_S3_ACCESS_KEY_ID / RCLONE_S3_SECRET_ACCESS_KEY) in .env. See docs/CLOUD_DEPLOYMENT.md.
   backup-offsite:
-    image: rclone/rclone:1.70.3
+    image: rclone/rclone:1.75.2
     container_name: backup-offsite
     profiles: [offsite]
     restart: unless-stopped
@@ -408,7 +408,7 @@ services:
   # S3-compatible store for uploaded images; nginx in web-app serves the "media" bucket read-only at /media/.
   # Only the services hold the key (secrets/media-s3-secret-key); anonymous access can read objects, never write.
   seaweedfs:
-    image: chrislusf/seaweedfs:4.47
+    image: chrislusf/seaweedfs:4.48
     container_name: seaweedfs
     restart: unless-stopped
     command: ["server", "-s3", "-s3.config=/run/secrets/seaweedfs-s3.json", "-dir=/data", "-volume.max=10"]

@@ -51,7 +51,7 @@ services:
 
   # ---------- traces
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.111.0
+    image: otel/opentelemetry-collector-contrib:0.163.2
     container_name: otel-collector
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -66,7 +66,7 @@ services:
     logging: *obs-logging
 
   tempo:
-    image: grafana/tempo:2.6.1
+    image: grafana/tempo:3.1.1
     container_name: tempo
     restart: unless-stopped
     # the image runs as uid 10001; let it own its data volume
@@ -83,7 +83,7 @@ services:
 
   # ---------- metrics & alerts
   prometheus:
-    image: prom/prometheus:v2.55.1
+    image: prom/prometheus:v3.15.1
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -110,7 +110,7 @@ services:
     logging: *obs-logging
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.34.1
     container_name: alertmanager
     restart: unless-stopped
     # Builds the receivers from the application's mail settings, then starts Alertmanager with the arguments below
@@ -156,7 +156,7 @@ services:
 
   # ---------- logs
   loki:
-    image: grafana/loki:3.2.1
+    image: grafana/loki:3.7.9
     container_name: loki
     restart: unless-stopped
     command: ["-config.file=/etc/loki/loki.yaml"]
@@ -170,7 +170,7 @@ services:
     logging: *obs-logging
 
   alloy:
-    image: grafana/alloy:v1.4.3
+    image: grafana/alloy:v1.21.0
     container_name: alloy
     restart: unless-stopped
     command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
@@ -189,7 +189,7 @@ services:
 
   # ---------- dashboards
   grafana:
-    image: grafana/grafana:11.3.0
+    image: grafana/grafana:13.2.4
     container_name: grafana
     restart: unless-stopped
     ports:
