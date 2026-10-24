@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: serve it with unprivileged nginx (runs as uid 101, listens on 8080), proxying /api to the gateway
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 # Rendered to /etc/nginx/conf.d/default.conf at start-up by the image's envsubst entrypoint
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 # Defaults for docker compose; Kubernetes overrides them (kube-dns + the gateway Service FQDN)
