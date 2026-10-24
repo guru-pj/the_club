@@ -211,7 +211,7 @@ The most-used values (all of them are commented in [`values.yaml`](../deploy/hel
 | Value | Meaning |
 |---|---|
 | `global.imageRegistry`, `global.imageTag`, `global.imagePullSecrets` | Where images come from; pin `imageTag` to a commit SHA |
-| `config.springProfilesActive` | `prod` enables fail-fast checks (no placeholder secrets, no mock payments) |
+| `config.springProfilesActive` | `prod` enables fail-fast checks (no placeholder secrets or mailboxes, no mock payments, secure cookies, verified emails, an https `appBaseUrl` that isn't `example.com`) |
 | `config.appBaseUrl`, `config.corsAllowedOrigins` | Public URL of the app |
 | `config.auth.cookieSecure`, `config.auth.requireEmailVerification` | Both `true` in production |
 | `config.payments.provider`, `config.payments.razorpayKeyId` | `razorpay` in production |

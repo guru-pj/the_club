@@ -89,7 +89,7 @@ mvn clean install -DskipTests
 docker compose -f docker-compose.yml up -d --build
 echo "Waiting for healthy services..."; end=$((SECONDS+600)); until ! docker compose -f docker-compose.yml ps --format '{{.Status}}' | grep -qE 'starting|unhealthy|Restarting'; do [ $SECONDS -gt $end ] && echo "Not healthy after 10 min - check: docker compose -f docker-compose.yml logs" && break; sleep 5; done; docker compose -f docker-compose.yml ps --format 'table {{.Service}}\t{{.Status}}'
 ```
-With `SPRING_PROFILES_ACTIVE=prod`, a service **refuses to start** if something is still a placeholder, for example mock payments, a missing ZeptoMail token or a missing Razorpay secret. If one keeps restarting, its log says exactly what's missing: `docker compose -f docker-compose.yml logs --tail=50 <service>`.
+With `SPRING_PROFILES_ACTIVE=prod`, a service **refuses to start** if something is still a development setting: mock payments, a missing ZeptoMail token or Razorpay secret, `AUTH_COOKIE_SECURE=false`, `REQUIRE_EMAIL_VERIFICATION=false`, a placeholder `ADMIN_EMAIL` such as `admin@theclub.local`, or an `APP_BASE_URL` that isn't your public `https://` address. The reverse is caught too: a public `https://` `APP_BASE_URL` without the `prod` profile stops user-service, because the development profile would otherwise be live (set `ALLOW_DEV_PROFILE_ON_PUBLIC_URL=true` only for a deliberate test setup). If one keeps restarting, its log says exactly what's missing: `docker compose -f docker-compose.yml logs --tail=50 <service>`.
 
 **B7. Verify.**
 ```bash
@@ -174,7 +174,7 @@ For production, change these values from the development defaults:
 
 | Variable | Production value |
 |---|---|
-| `SPRING_PROFILES_ACTIVE` | `prod` (enables fail-fast checks: no placeholder secrets, no mock payments) |
+| `SPRING_PROFILES_ACTIVE` | `prod` (enables fail-fast checks: no placeholder secrets or mailboxes, no mock payments, secure cookies, verified emails, an https `APP_BASE_URL`) |
 | `APP_BASE_URL` | `https://<your-host>` (used in password-reset and verification emails) |
 | `AUTH_COOKIE_SECURE` | `true` (the refresh cookie is sent over HTTPS only) |
 | `REQUIRE_EMAIL_VERIFICATION` | `true` |
